@@ -450,11 +450,17 @@ American spelling, short pages, every command and snippet actually run.
 
 Tests: `tests/run.sh` passes. `grep -rn 'demo/' README.md docs/ --exclude=plan*.md --exclude=next.md`
 finds nothing. Each fenced `sh` command in `docs/getting-started.md` and `docs/cli.md`
-was run here against `build/myphp` (the `curl` line through
-`MYPHP_DOWNLOAD_URL=file://...`). British spellings: `grep -rniE 'colour|behaviour|centre|initialis' docs/*.md README.md` finds nothing in the new pages.
+was run here against `build/myphp` (the `curl` installer script URL is mirrored
+with `file://`, and its download uses `MYPHP_DOWNLOAD_URL=file://...`).
+Correction in C11: the binary URL override cannot make the private raw script URL
+public; both are local fixtures until the user publishes. Composer uses C8's path
+repository until Packagist is available. UI commands use the screenshot switch
+for headless exit. British spellings: `grep -rniE 'colour|behaviour|centre|initialis' docs/*.md README.md` finds nothing in the new pages.
 
 Accept: a reader can go from nothing to a built app using `docs/getting-started.md`
-alone; `git ls-files demo` is empty; the working tree has no tracked binary.
+alone after the user publishes (with the local-build prerequisite documented until
+then); `git ls-files demo` is empty; the working tree has no tracked executable
+binary. Font assets remain tracked as required by the toolkit.
 
 ---
 

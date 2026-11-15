@@ -6,6 +6,12 @@ MyPHP draws native GPU desktop apps in plain PHP. Reference: MyGo
 
 ## What exists
 
+- `myphp`: standalone CLI with help/version, `init`, `run`, `build`, and bundled
+  `demo` commands. `build/make-myphp.sh` creates `build/myphp` (~12 MB) locally;
+  `install.sh` installs release assets and `build/release.sh --dry-run X.Y.Z`
+  verifies release preparation without publishing. Composer is editor-only.
+  See [Getting started](getting-started.md) and [CLI](cli.md).
+
 - PHP 8.4.27 (Remi, `php84`) with PHP-GLFW 2.2 and JIT. System `php` is 8.5
   without glfw. Use `php84` or another PHP with glfw for examples/tests.
 - Element tree, flexbox layout, NanoVG text/icons, instanced SDF quads for boxes,
@@ -34,8 +40,8 @@ MyPHP draws native GPU desktop apps in plain PHP. Reference: MyGo
 
 ## Verification
 
-The ordered A1–A7 and B1–B11 work is described in `docs/plan.md`. Each task is a
-separate commit. Test commands:
+The ordered A1–A7 and B1–B11 work is described in `docs/plan.md`; C1–C11 is in
+`docs/plan-cli.md`. Each task is a separate commit. Test commands:
 
 ```sh
 tests/run.sh
@@ -55,6 +61,14 @@ request, checks identical root pixels, terminates real zenity, and reads portal
 Settings. Screenshots are checked with pixel probes, not by eye.
 
 ## Traps and limits
+
+- Micro intercepts reads of its own filename: `micro_get_self_filename()` yields
+  only the payload. `/proc/self/exe` reads the real ELF file. `micro_get_sfxsize()`
+  includes any INI block, so it is not the size of the clean runtime.
+- The CLI records the clean size as `sfx-size` inside its phar at build time.
+  `myphp build` copies exactly those first bytes from `/proc/self/exe`, then adds
+  an app phar. Thus builds work offline without another PHP or runtime file;
+  `phar.readonly=0` is enabled only in the CLI, not in built apps.
 
 - There is no interactive desktop session on this machine. Xvfb `:99` supplies
   X11. The user's bus at `/run/user/1000/bus` exists, but its portal cannot start
@@ -85,8 +99,8 @@ Settings. Screenshots are checked with pixel probes, not by eye.
 
 ## Still needs the user's desktop
 
-Headless checks cannot confirm interactive usability. Run `php84 examples/desktop.php`
-(or `PHPUI_EXAMPLE=desktop build/dashboard`) and check:
+Headless checks cannot confirm interactive usability. Run `myphp demo desktop`
+and check:
 
 1. Open one file, open multiple Images-filtered files, cancel, save with a suggested
    name, choose a folder; cancel each chooser too.
@@ -98,6 +112,14 @@ Headless checks cannot confirm interactive usability. Run `php84 examples/deskto
 6. Open a URL and a PDF using the target field.
 7. System theme button, then switch GNOME's style: the app follows. Toggle theme
    in the app: it stops following until System theme is selected again.
+
+CLI checks include real embedded-binary runs, one-frame pixel comparisons, offline
+app builds, optional Composer install under system PHP without GLFW, atomic local
+installation/checksums, and a clean-main release dry run. The public install URL
+and Packagist cannot work until the maintainer publishes them; local file URLs and
+a Composer path repository were used for verification. No release was created.
+Maintainer steps 1–5 in `docs/plan-cli.md` remain open: visibility, license, first
+release, Packagist, and real-desktop acceptance.
 
 These manual checks are pending, not claimed as completed. Not in this batch:
 single instance, deep links, start at login, tray/menus, global shortcuts, multiple
