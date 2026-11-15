@@ -44,6 +44,8 @@ Headless check (renders, clicks, types, saves PNGs at 2x):
 Xvfb :99 & DISPLAY=:99 PHPUI_SCREENSHOTS=/tmp/shots php84 examples/dashboard.php
 ```
 
+Set `PHPUI_SCREENSHOT=/tmp/app.png` to save one frame at window size and exit.
+
 Renderer: `PHPUI_RENDERER=quads` (default), `nanovg-fast` or `nanovg`. Compare them with `php84 examples/bench-renderers.php`.
 
 Tests: `tests/run.sh` (or `PHP=/path/to/php-with-glfw tests/run.sh`). The runner uses Xvfb and a private D-Bus session, never the user's session bus.

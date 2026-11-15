@@ -166,6 +166,12 @@ final class App
     public function run(): void
     {
         try {
+            $path = getenv('PHPUI_SCREENSHOT');
+            if ($path !== false && $path !== '') {
+                glfwGetWindowSize($this->window, $w, $h);
+                $this->screenshot($path, $w, $h, 1);
+                return;
+            }
             while (!glfwWindowShouldClose($this->window)) {
                 $wait = 0.5;
                 foreach ($this->waitHints as $hint) $wait = min($wait, max(0.0001, $hint()));

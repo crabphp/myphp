@@ -4,6 +4,24 @@ declare(strict_types=1);
 
 require __DIR__ . '/lib.php';
 
+$one = getenv('PHPUI_TEST_TMP') . '/one.png';
+$env = getenv();
+unset($env['PHPUI_SCREENSHOTS']);
+$env['PHPUI_SCREENSHOT'] = $one;
+$start = microtime(true);
+$child = proc_open(['timeout', '5', PHP_BINARY, __DIR__ . '/../examples/todo.php'],
+    [1 => ['pipe', 'w'], 2 => STDERR], $pipes, env_vars: $env);
+stream_get_contents($pipes[1]); fclose($pipes[1]);
+same(0, proc_close($child), 'singular screenshot exits on its own');
+check(microtime(true) - $start < 5, 'one frame finishes within five seconds');
+check(is_file($one), 'one-frame PNG exists');
+$identify = proc_open(['magick', 'identify', '-format', '%wx%h', $one],
+    [1 => ['pipe', 'w'], 2 => STDERR], $pipes);
+same('640x560', stream_get_contents($pipes[1]), 'one-frame PNG has window dimensions');
+fclose($pipes[1]);
+same(0, proc_close($identify), 'identify succeeds');
+same('#f5f5f5', pixel($one, 0, 0), 'todo background is the light muted theme color');
+
 // The todo example exits after its scripted flow; assert its JSON from a child.
 $shots = getenv('PHPUI_TEST_TMP') . '/todo';
 $child = proc_open([PHP_BINARY, __DIR__ . '/../examples/todo.php'], [1 => ['pipe', 'w'], 2 => STDERR], $pipes,
