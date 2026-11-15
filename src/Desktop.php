@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace PhpUi;
 
-/** Desktop services (Linux portals with fallbacks; macOS system tools), advanced by the app's main loop. */
+/** Desktop services (Linux portals with fallbacks; macOS and Windows system tools), advanced by the app's main loop. */
 final class Desktop
 {
     public static string $appName = 'PHP UI';
@@ -45,10 +45,21 @@ final class Desktop
         return PHP_OS_FAMILY === 'Darwin';
     }
 
+    private static function windows(): bool
+    {
+        return PHP_OS_FAMILY === 'Windows';
+    }
+
+    /** Values travel in MYPHP_* environment variables, never inside the script text. */
+    private static function powershell(string $script, array $env, callable $done): bool
+    {
+        return self::spawn(['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', $script], $done, $env);
+    }
+
     private static function connection(): ?DBus
     {
         self::init();
-        if (self::mode() === 'fallback' || self::mac()) return null;
+        if (self::mode() === 'fallback' || self::mac() || self::windows()) return null;
         return self::$bus = DBus::session();
     }
 
@@ -71,7 +82,10 @@ final class Desktop
         $key = "$path\0$program";
         if (isset(self::$programs[$key])) return self::$programs[$key];
         $paths = str_contains($program, '/') ? [$program] : array_map(fn ($dir) => ($dir ?: '.') . '/' . $program, explode(PATH_SEPARATOR, $path));
-        foreach ($paths as $file) if (is_file($file) && is_executable($file)) return self::$programs[$key] = true;
+        foreach ($paths as $file) {
+            if (is_file($file) && is_executable($file)) return self::$programs[$key] = true;
+            if (self::windows() && is_file("$file.exe")) return self::$programs[$key] = true;
+        }
         return self::$programs[$key] = false;
     }
 
@@ -81,10 +95,17 @@ final class Desktop
         self::init();
         if (!$argv || !self::has($argv[0])) { self::$error = 'Program not found: ' . ($argv[0] ?? ''); return false; }
         try {
-            $process = @proc_open($argv, [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, env_vars: $env === null ? null : $env + getenv());
-            if (!is_resource($process)) { self::$error = 'Could not start ' . $argv[0]; return false; }
-            stream_set_blocking($pipes[1], false);
-            self::$jobs[] = ['process' => $process, 'pipe' => $pipes[1], 'out' => '', 'done' => $done];
+            // Windows pipes cannot be read without blocking the UI: collect output in a file there.
+            $file = self::windows() ? tempnam(sys_get_temp_dir(), 'phpui') : null;
+            $null = self::windows() ? 'NUL' : '/dev/null';
+            $process = @proc_open($argv, [0 => ['file', $null, 'r'], 1 => $file === null ? ['pipe', 'w'] : ['file', $file, 'w'], 2 => ['file', $null, 'w']], $pipes, env_vars: $env === null ? null : $env + getenv());
+            if (!is_resource($process)) {
+                if ($file !== null) @unlink($file);
+                self::$error = 'Could not start ' . $argv[0];
+                return false;
+            }
+            if ($file === null) stream_set_blocking($pipes[1], false);
+            self::$jobs[] = ['process' => $process, 'pipe' => $pipes[1] ?? null, 'file' => $file, 'out' => '', 'done' => $done];
             return true;
         } catch (\Throwable $e) { self::$error = $e->getMessage(); return false; }
     }
@@ -107,6 +128,10 @@ final class Desktop
             if (is_resource($job['pipe'])) {
                 $job['out'] .= stream_get_contents($job['pipe']);
                 fclose($job['pipe']);
+            }
+            if ($job['file'] !== null) {
+                $job['out'] = (string) @file_get_contents($job['file']);
+                @unlink($job['file']);
             }
             $exit = $status['exitcode'];
             proc_close($job['process']); // Only after proc_get_status reported exit.
@@ -196,6 +221,17 @@ final class Desktop
             });
             return;
         }
+        if (self::windows()) {
+            // Tray balloon: no custom icon, click or actions.
+            $script = 'Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; '
+                . '$n = New-Object System.Windows.Forms.NotifyIcon; $n.Icon = [System.Drawing.SystemIcons]::Information; $n.Visible = $true; '
+                . '$n.ShowBalloonTip(5000, $env:MYPHP_TITLE, $env:MYPHP_BODY, [System.Windows.Forms.ToolTipIcon]::None); Start-Sleep -Seconds 6; $n.Dispose()';
+            unset(self::$notifications[$id]);
+            self::powershell($script, ['MYPHP_TITLE' => $title, 'MYPHP_BODY' => $body === '' ? ' ' : $body], function ($code) {
+                if ($code !== 0) self::$error = "powershell exited with code $code";
+            });
+            return;
+        }
         $argv = ['notify-send', '--app-name=' . self::$appName];
         if ($icon !== '') $argv[] = '--icon=' . $icon;
         if (self::$notifications[$id]['click']) {
@@ -263,6 +299,13 @@ final class Desktop
             // Read once at start; "defaults" exits 1 when the key is missing, which means light.
             self::spawn(['defaults', 'read', '-g', 'AppleInterfaceStyle'], function ($code, $stdout) use ($generation) {
                 if ($generation === self::$themeGeneration) self::applyScheme($code === 0 && trim($stdout) === 'Dark' ? 1 : 2);
+            });
+            return;
+        }
+        if (self::windows()) {
+            // Read once at start; a missing value means the light default.
+            self::spawn(['reg', 'query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize', '/v', 'AppsUseLightTheme'], function ($code, $stdout) use ($generation) {
+                if ($generation === self::$themeGeneration) self::applyScheme($code === 0 && preg_match('/AppsUseLightTheme\s+REG_DWORD\s+0x0\b/', $stdout) ? 1 : 2);
             });
             return;
         }
@@ -336,7 +379,12 @@ final class Desktop
             return false;
         }
         if (file_exists($target)) $target = realpath($target);
-        $argv = self::mac() ? ['open', $target] : (self::has('xdg-open') ? ['xdg-open', $target] : ['gio', 'open', $target]);
+        $argv = match (true) {
+            self::mac() => ['open', $target],
+            self::windows() => ['rundll32', 'url.dll,FileProtocolHandler', $target],
+            self::has('xdg-open') => ['xdg-open', $target],
+            default => ['gio', 'open', $target],
+        };
         if (self::spawn($argv, function ($code) use ($done) {
             if ($code !== 0) self::$error = "Could not open target (exit $code)";
             self::deliver($done, $code === 0);
@@ -439,6 +487,7 @@ final class Desktop
         $d = self::$dialog;
         self::$dialog['path'] = null;
         if (self::mac()) { self::macFileDialog($d); return; }
+        if (self::windows()) { self::windowsFileDialog($d); return; }
         $argv = ['zenity', '--file-selection', '--title=' . $d['title']];
         if ($d['multiple']) array_push($argv, '--multiple', "--separator=\n");
         if ($d['directory']) $argv[] = '--directory';
@@ -495,6 +544,41 @@ final class Desktop
         }
     }
 
+    private static function windowsFileDialog(array $d): void
+    {
+        $filter = [];
+        foreach ($d['filters'] as $label => $extensions) {
+            $patterns = array_map(fn ($ext) => $ext === '*' ? '*.*' : '*.' . ltrim($ext, '.'), $extensions);
+            $filter[] = str_replace('|', ' ', (string) $label) . '|' . str_replace('|', '', implode(';', $patterns));
+        }
+        $script = 'Add-Type -AssemblyName System.Windows.Forms; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; '
+            . 'if ($env:MYPHP_KIND -eq "folder") { $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = $env:MYPHP_TITLE; '
+            . 'if ($env:MYPHP_FOLDER) { $d.SelectedPath = $env:MYPHP_FOLDER }; '
+            . 'if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $d.SelectedPath } else { exit 1 } } else { '
+            . 'if ($env:MYPHP_KIND -eq "save") { $d = New-Object System.Windows.Forms.SaveFileDialog } '
+            . 'else { $d = New-Object System.Windows.Forms.OpenFileDialog; $d.Multiselect = ($env:MYPHP_MULTIPLE -eq "1") }; '
+            . '$d.Title = $env:MYPHP_TITLE; if ($env:MYPHP_FOLDER) { $d.InitialDirectory = $env:MYPHP_FOLDER }; '
+            . 'if ($env:MYPHP_NAME) { $d.FileName = $env:MYPHP_NAME }; if ($env:MYPHP_FILTER) { $d.Filter = $env:MYPHP_FILTER }; '
+            . 'if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $d.FileNames -join "`n" } else { exit 1 } }';
+        $env = [
+            'MYPHP_KIND' => $d['directory'] ? 'folder' : ($d['method'] === 'SaveFile' ? 'save' : 'open'),
+            'MYPHP_TITLE' => $d['title'],
+            'MYPHP_FOLDER' => $d['folder'] !== null && is_dir($d['folder']) ? str_replace('/', '\\', $d['folder']) : '',
+            'MYPHP_NAME' => $d['name'] ?? '',
+            'MYPHP_MULTIPLE' => $d['multiple'] ? '1' : '0',
+            'MYPHP_FILTER' => implode('|', $filter),
+        ];
+        if (!self::powershell($script, $env, function ($code, $stdout) {
+            // Exit 1 is the user's Cancel.
+            if ($code !== 0 && $code !== 1) self::$error = "powershell exited with code $code";
+            $out = trim($stdout, "\r\n");
+            self::finishFile($code === 0 && $out !== '' ? preg_split('/\r?\n/', $out) : null);
+        })) {
+            self::$error = 'No file dialog available: powershell not found';
+            self::finishFile(null);
+        }
+    }
+
     public static function shutdown(): void
     {
         foreach (self::$jobs as &$job) {
@@ -504,6 +588,7 @@ final class Desktop
                 proc_terminate($job['process'], 9);
             }
             if (is_resource($job['pipe'])) fclose($job['pipe']);
+            if ($job['file'] !== null) @unlink($job['file']);
             $job['done'] = null;
         }
         unset($job);

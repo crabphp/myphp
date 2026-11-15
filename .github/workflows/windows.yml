@@ -1,0 +1,106 @@
+name: Windows binary
+
+# Builds myphp.exe (the Linux binary is built locally by build/release.sh).
+# On a published release the binary is attached to it.
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  push:
+    paths:
+      - .github/workflows/windows.yml
+      - build/craft-windows.yml
+      - build/make-myphp.*
+      - cli/**
+      - install.ps1
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ASSET: myphp-windows-x86_64.exe
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore the PHP runtime
+        id: runtime
+        uses: actions/cache@v4
+        with:
+          path: spc/buildroot/bin
+          key: runtime-windows-x86_64-${{ hashFiles('build/craft-windows.yml') }}
+
+      - name: Build the PHP runtime with static-php-cli
+        if: steps.runtime.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force spc | Out-Null
+          Set-Location spc
+          Copy-Item ..\build\craft-windows.yml craft.yml
+          curl.exe -fsSL -o spc.exe https://dl.static-php.dev/static-php-cli/spc-bin/nightly/spc-windows-x64.exe
+          .\spc.exe doctor --auto-fix
+          .\spc.exe craft
+          if ($LASTEXITCODE -ne 0) {
+            Get-ChildItem log -ErrorAction SilentlyContinue | ForEach-Object {
+              Select-String -Path $_.FullName -Pattern 'error [A-Z]+[0-9]+|fatal error|unresolved external' -Context 2,4 | Select-Object -Last 60
+            }
+            exit 1
+          }
+          Get-ChildItem buildroot\bin
+
+      - name: Build myphp
+        run: |
+          VERSION=dev
+          if [ "${{ github.event_name }}" = release ]; then VERSION=${{ github.event.release.tag_name }}; VERSION=${VERSION#v}; fi
+          PHP=$PWD/spc/buildroot/bin/php.exe MYPHP_VERSION=$VERSION build/make-myphp.sh spc/buildroot/bin/micro.sfx
+          build/myphp.exe version
+
+      - name: Smoke test (init, build, install)
+        run: |
+          WORK=$(mktemp -d)
+          cd "$WORK"
+          "$GITHUB_WORKSPACE/build/myphp.exe" init smoke
+          cd smoke
+          "$GITHUB_WORKSPACE/build/myphp.exe" build
+          ls -l build
+          test -f build/smoke.exe
+          echo "SMOKE=$WORK/smoke" >> "$GITHUB_ENV"
+          MYPHP_DOWNLOAD_URL=$(cygpath -w "$GITHUB_WORKSPACE/build/myphp.exe") MYPHP_INSTALL_DIR=$(cygpath -w "$WORK/bin") MYPHP_NO_PATH=1 \
+            pwsh -NoProfile -File "$GITHUB_WORKSPACE/install.ps1"
+
+      # Hosted runners have no GPU, so a software OpenGL (Mesa) is placed next to the binaries.
+      # A failure here is reported but not fatal.
+      - name: Smoke test (open a window)
+        continue-on-error: true
+        run: |
+          mkdir -p shots mesa
+          gh release download --repo pal1000/mesa-dist-win --pattern '*release-msvc.7z' --dir mesa
+          7z x -omesa/out mesa/*.7z > /dev/null
+          for dir in build "$SMOKE/build"; do cp mesa/out/x64/opengl32.dll mesa/out/x64/libgallium_wgl.dll "$dir/"; done
+          PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/built-app.png") "$SMOKE/build/smoke.exe"
+          PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/demo.png") build/myphp.exe demo dashboard
+          ls -l shots
+          rm -f build/*.dll
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp build/myphp.exe dist/$ASSET
+          (cd dist && sha256sum $ASSET > $ASSET.sha256)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: myphp-windows-x86_64
+          path: |
+            dist/
+            shots/
+
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/$ASSET dist/$ASSET.sha256 --clobber

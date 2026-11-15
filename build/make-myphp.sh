@@ -9,4 +9,3 @@ if [ ! -f "$SFX" ]; then
     exit 1
 fi
 "$PHP" -d phar.readonly=0 "$ROOT/build/make-myphp.php" "$SFX"
-ls -lh "${MYPHP_BUILD_DIR:-$ROOT/build}/myphp"

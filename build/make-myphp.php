@@ -7,8 +7,9 @@ $dir = getenv('MYPHP_BUILD_DIR') ?: __DIR__;
 if (!is_dir($dir) && !mkdir($dir, 0777, true)) throw new RuntimeException("Cannot create $dir");
 $sfx = $argv[1] ?? '';
 $bytes = file_get_contents($sfx);
-if (!in_array(substr((string) $bytes, 0, 4), ["\x7fELF", "\xcf\xfa\xed\xfe", "\xca\xfe\xba\xbe"], true)) {
-    throw new RuntimeException('micro.sfx is not an ELF or Mach-O executable');
+$windows = str_starts_with((string) $bytes, 'MZ');
+if (!$windows && !in_array(substr((string) $bytes, 0, 4), ["\x7fELF", "\xcf\xfa\xed\xfe", "\xca\xfe\xba\xbe"], true)) {
+    throw new RuntimeException('micro.sfx is not an ELF, Mach-O or Windows executable');
 }
 $out = "$dir/myphp.phar";
 if (is_file($out)) unlink($out);
@@ -26,5 +27,7 @@ $phar->setStub("<?php Phar::mapPhar('myphp.phar'); require 'phar://myphp.phar/cl
 $phar->stopBuffering();
 $ini = "phar.readonly=0\n";
 $binary = $bytes . "\xfd\xf6\x69\xe6" . pack('N', strlen($ini)) . $ini . file_get_contents($out);
-if (file_put_contents("$dir/myphp", $binary) !== strlen($binary)) throw new RuntimeException('Cannot write myphp binary');
-chmod("$dir/myphp", 0755);
+$target = "$dir/myphp" . ($windows ? '.exe' : '');
+if (file_put_contents($target, $binary) !== strlen($binary)) throw new RuntimeException('Cannot write myphp binary');
+chmod($target, 0755);
+printf("%s (%.1f MB)\n", $target, strlen($binary) / 1000000);

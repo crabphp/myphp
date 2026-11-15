@@ -20,10 +20,10 @@ function myphpPack(Phar $phar, string $root, string $prefix, ?string $output = n
     $walk($root);
 }
 
-/** ELF, or 64-bit Mach-O (thin or universal). */
+/** ELF, 64-bit Mach-O (thin or universal), or a Windows executable. */
 function myphpIsExecutable(string $bytes): bool
 {
-    return in_array(substr($bytes, 0, 4), ["\x7fELF", "\xcf\xfa\xed\xfe", "\xca\xfe\xba\xbe"], true);
+    return str_starts_with($bytes, 'MZ') || in_array(substr($bytes, 0, 4), ["\x7fELF", "\xcf\xfa\xed\xfe", "\xca\xfe\xba\xbe"], true);
 }
 
 /**
@@ -35,8 +35,9 @@ function myphpRuntime(int $size): string
     $read = fn (string $path): string => (string) @file_get_contents($path, length: $size);
     if (is_readable('/proc/self/exe')) return $read('/proc/self/exe');
     $self = Phar::running(false);
-    foreach (['symlink', 'link'] as $make) {
-        $alias = sys_get_temp_dir() . '/myphp-self-' . getmypid() . '-' . bin2hex(random_bytes(4));
+    // Hard links need the same volume, so also try next to the executable.
+    foreach ([['symlink', sys_get_temp_dir()], ['link', sys_get_temp_dir()], ['link', dirname($self)]] as [$make, $dir]) {
+        $alias = $dir . '/myphp-self-' . getmypid() . '-' . bin2hex(random_bytes(4));
         if (!@$make($self, $alias)) continue;
         try { $bytes = $read($alias); } finally { @unlink($alias); }
         if (strlen($bytes) === $size && myphpIsExecutable($bytes)) return $bytes;
@@ -63,6 +64,7 @@ function cmdBuild(array $args): int
     if (str_starts_with(basename($entry), '.')) return myphpError('entry file cannot be a dotfile');
     $project = dirname($entry);
     $output ??= (dirname($file) === '.' ? '' : dirname($file) . '/') . 'build/' . basename($project);
+    if (PHP_OS_FAMILY === 'Windows' && !str_ends_with(strtolower($output), '.exe')) $output .= '.exe';
     if (PHP_SAPI === 'micro') {
         $size = (int) file_get_contents(MYPHP_ROOT . '/sfx-size');
         if ($size < 4) return myphpError('invalid embedded runtime size');
@@ -75,7 +77,7 @@ function cmdBuild(array $args): int
         }
         $sfx = file_get_contents($path);
     }
-    if (!myphpIsExecutable($sfx)) return myphpError('runtime is not an ELF or Mach-O executable');
+    if (!myphpIsExecutable($sfx)) return myphpError('runtime is not an ELF, Mach-O or Windows executable');
     $dir = dirname($output);
     if (!is_dir($dir) && !mkdir($dir, 0777, true)) return myphpError("cannot create $dir");
     $target = realpath($dir) . '/' . basename($output);
