@@ -145,7 +145,10 @@ Files: `bin/myphp` (new, executable), `cli/main.php` (new), `tests/cli.php` (new
   `[exit code, stdout, stderr]`. It runs `getenv('MYPHP_BIN')` when set, else
   `[PHP_BINARY, 'bin/myphp']`. From C4 on, `MYPHP_BIN` is the built binary.
 
-Tests: `help` and no arguments: exit 0, stdout contains `myphp init <name>`.
+Tests: `help` and no arguments: exit 0, stdout contains `myphp version` (only
+implemented commands are listed; assert `myphp init <name>` starting in C6).
+Correction in C3: the original init assertion contradicted the requirement not to
+list commands before they exist.
 `version`: matches `/^myphp \S+ \(PHP 8\.\d+\.\d+\)$/`. `nope`: exit 2, stderr has
 `unknown command`, stdout empty.
 
