@@ -71,3 +71,36 @@ foreach (['version', '-v', '--version'] as $command) {
 same(2, $code, 'unknown command is usage error');
 same('', $out, 'unknown command has no stdout');
 check(str_contains($err, 'myphp: unknown command "nope"'), 'unknown command diagnostic');
+
+$project = getenv('PHPUI_TEST_TMP') . '/run-app';
+mkdir($project);
+file_put_contents("$project/app.php", <<<'PHP'
+<?php
+use PhpUi\App;
+use function PhpUi\{col, text};
+(new App('Test', 240, 100, fn () => col()->full()->bg('#ffffff')->p(20)
+    ->child(text('Hello from the phar')->textColor('#000000'))))->run();
+PHP);
+$shot = "$project/run.png";
+[$code, $out, $err] = cli(['run'], $project, ['PHPUI_SCREENSHOT' => $shot]);
+same(0, $code, "run without vendor or require: $err");
+check(is_file($shot), 'run writes a screenshot');
+same('#ffffff', pixel($shot, 0, 0), 'run background');
+[$code, $out] = cliProcess(['magick', $shot, '-crop', '190x30+20+20', '-format', '%[fx:mean]', 'info:']);
+check($code === 0 && (float) $out < 0.99, 'bundled font paints text');
+file_put_contents("$project/other.php", '<?php file_put_contents("args.json", json_encode([$argv, $argc, $_SERVER["argv"], $_SERVER["argc"], isset($command)]));');
+[$code, $out, $err] = cli(['run', 'other.php', 'a', 'b'], $project);
+same(0, $code, "run accepts arguments: $err");
+same([['other.php', 'a', 'b'], 3, ['other.php', 'a', 'b'], 3, false],
+    json_decode(file_get_contents("$project/args.json"), true), 'app gets argv/argc, not CLI locals');
+[$code, $out, $err] = cli(['run']);
+same(1, $code, 'missing app fails');
+check(str_contains($err, 'app.php not found'), 'missing app diagnostic');
+file_put_contents("$project/throws.php", '<?php throw new RuntimeException("app broke");');
+[$code, $out, $err] = cli(['run', 'throws.php'], $project);
+same(1, $code, 'app exception fails');
+check(str_contains($err, 'myphp: RuntimeException: app broke') && str_contains($err, '#0'), 'app exception and trace');
+[$code, $out, $err] = cli(['demo', 'todo'], env: ['PHPUI_SCREENSHOTS' => "$project/shots"]);
+same(0, $code, "bundled todo runs: $err");
+check(is_file("$project/shots/todo-1-start.png"), 'bundled todo screenshot');
+same(2, cli(['demo', 'nope'])[0], 'unknown demo is usage error');

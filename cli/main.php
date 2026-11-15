@@ -5,6 +5,7 @@ declare(strict_types=1);
 define('MYPHP_ROOT', dirname(__DIR__));
 ini_set('display_errors', 'stderr');
 error_reporting(E_ALL);
+require __DIR__ . '/run.php';
 
 function myphpVersion(): string
 {
