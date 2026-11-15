@@ -47,7 +47,7 @@ jobs:
           curl -fsSL -o spc https://dl.static-php.dev/static-php-cli/spc-bin/nightly/spc-macos-${{ matrix.spc }}
           chmod +x spc
           ./spc doctor --auto-fix
-          ./spc craft
+          ./spc craft || { grep -n -B3 -A12 -E 'error[: ]|Undefined symbols|ld: ' log/spc.shell.log | tail -200; exit 1; }
 
       - name: Build myphp
         run: |
