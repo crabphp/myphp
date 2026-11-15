@@ -1,0 +1,5 @@
+#!/usr/bin/python3
+import json, os, sys
+with open(os.environ['FAKE_LOG'], 'a') as out:
+    out.write(json.dumps({'method': os.path.basename(sys.argv[0]), 'argv': sys.argv[1:]}) + '\n')
+sys.exit(int(os.getenv('FAKE_OPEN_EXIT', '0')))

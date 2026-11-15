@@ -112,6 +112,27 @@ final class Desktop
         return self::$dialog || self::$jobs || self::$deferred || self::$bus?->pending() ? 1 / 60 : 0.5;
     }
 
+    /** Open a safe URL or existing path in the user's default application. */
+    public static function open(string $target, ?callable $done = null): bool
+    {
+        self::$error = null;
+        $scheme = strtolower((string) parse_url($target, PHP_URL_SCHEME));
+        if ($target === '' || str_starts_with($target, '-') || str_contains($target, "\0")
+            || (!in_array($scheme, ['http', 'https', 'mailto', 'file'], true) && !file_exists($target))) {
+            self::$error = 'Refused URL or missing file';
+            if ($done) self::defer(fn () => self::deliver($done, false));
+            return false;
+        }
+        if (file_exists($target)) $target = realpath($target);
+        $argv = self::has('xdg-open') ? ['xdg-open', $target] : ['gio', 'open', $target];
+        if (self::spawn($argv, function ($code) use ($done) {
+            if ($code !== 0) self::$error = "Could not open target (exit $code)";
+            self::deliver($done, $code === 0);
+        })) return true;
+        if ($done) self::defer(fn () => self::deliver($done, false));
+        return false;
+    }
+
     public static function openFile(callable $done, string $title = 'Open', array $filters = [], bool $multiple = false, ?string $folder = null): void
     {
         self::choose($done, 'OpenFile', $title, $filters, $multiple, false, $folder, null);
