@@ -24,7 +24,8 @@ if ! xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
 fi
 export PHPUI_TEST_TMP=$logs
 export FAKE_LOG="$logs/fake.jsonl"
-if (( $# == 0 )); then set -- tests/*.php; fi
+if (( $# == 0 )); then set -- tests/*.php examples/bench*.php; fi
+export PHPUI_BENCH_RUNS=2 PHPUI_BENCH_SMALL=1
 status=0
 for file in "$@"; do
     [[ $file == tests/lib.php ]] && continue
@@ -39,7 +40,7 @@ for file in "$@"; do
             done
             test -f "$PHPUI_TEST_TMP/ready"
         fi
-        "$PHP" "$1"
+        if [[ $1 == examples/bench.php ]]; then "$PHP" "$1" 10; else "$PHP" "$1"; fi
     ' bash "$file" >"$logs/$(basename "$file").log" 2>&1 & group=$!
     wait "$group" || status=1
     kill -- -"$group" 2>/dev/null || true

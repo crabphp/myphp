@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 // Times the dashboard: building the tree, layout, painting, a whole frame,
-// and a pointer move (hover). Usage: php examples/bench-dashboard.php
+// and a pointer move (hover). Usage: php84 examples/bench-dashboard.php
 
 use PhpUi\Element;
 
@@ -16,10 +16,12 @@ $get = fn (string $prop) => (new ReflectionProperty($app, $prop))->getValue($app
 $painter = $get('painter');
 $layout = $get('layout');
 glfwSwapInterval(0);
-[$w, $h] = [1440, 900];
+[$w, $h] = getenv('PHPUI_BENCH_SMALL') ? [360, 225] : [1440, 900];
+glfwSetWindowSize($app->window, $w, $h);
 
 $time = function (callable $fn, int $runs = 200): array {
-    for ($i = 0; $i < 10; $i++) $fn();
+    $runs = max(1, (int) (getenv('PHPUI_BENCH_RUNS') ?: $runs));
+    for ($i = 0; $i < min(10, $runs); $i++) $fn();
     $t = [];
     for ($i = 0; $i < $runs; $i++) {
         $s = hrtime(true);
@@ -41,11 +43,7 @@ $layout->compute($tree, $w, $h);
 $rows = [
     'build tree' => $time(fn () => $render()),
     'layout' => $time(fn () => $layout->compute($tree, $w, $h)),
-    'paint (CPU)' => $time(function () use ($painter, $tree, $w, $h) {
-        $painter->vg->beginFrame($w, $h, 1);
-        $painter->paint($tree, true);
-        $painter->vg->cancelFrame();
-    }),
+    'render' => $time(fn () => $painter->render($tree, $w, $h, 1, true)),
     'whole frame' => $time(fn () => $app->frame()),
     'pointer move' => $time(fn () => $app->pointer(mt_rand(0, $w), mt_rand(0, $h))),
 ];

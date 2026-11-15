@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-// Times each stage of a frame for a list of N rows: build tree, layout, paint (CPU side), GPU.
-// Usage: php examples/bench.php [rows...]
+// Times each stage of a frame: build tree, layout, render submission, whole frame.
+// Usage: php84 examples/bench.php [rows...]
 
 require __DIR__ . '/../src/autoload.php';
 
@@ -17,7 +17,7 @@ $tree = fn (int $n) => col()->full()->bg('#131619')->textColor('#e8e9eb')->p(16)
         ->bg($i % 2 ? '#17191c' : '#1b1e21')->hover(fn ($s) => $s->bg('#ffffff10'))
         ->child(checkbox($i % 3 === 0, fn () => null))
         ->child(text("Row number $i with some text")->grow())
-        ->child(div()->size(24)->icon('close', '#6b7078', 8)->onClick(fn () => null)), range(1, $n)));
+        ->child(div()->size(24)->icon('x', '#6b7078', 8)->onClick(fn () => null)), range(1, $n)));
 
 $app = new App('bench', 800, 600, fn () => $tree(10));
 $painter = (new ReflectionProperty($app, 'painter'))->getValue($app);
@@ -31,9 +31,9 @@ $time = function (callable $fn, int $runs): float {
 };
 
 printf("PHP %s, JIT %s\n", PHP_VERSION, (opcache_get_status(false)['jit']['on'] ?? false) ? 'on' : 'off');
-printf("%6s %6s %8s %8s %8s %8s %8s\n", 'rows', 'nodes', 'build', 'layout', 'paint', 'frame', 'fps');
+printf("%6s %6s %8s %8s %8s %8s %8s\n", 'rows', 'nodes', 'build', 'layout', 'render', 'frame', 'fps');
 foreach ($sizes as $n) {
-    $runs = max(5, intdiv(2000, $n));
+    $runs = max(1, (int) (getenv('PHPUI_BENCH_RUNS') ?: max(5, intdiv(2000, $n))));
     $count = fn ($e) => 1 + array_sum(array_map($GLOBALS['countFn'], $e->children));
     $GLOBALS['countFn'] = $count;
     $root = $tree($n);
@@ -42,9 +42,7 @@ foreach ($sizes as $n) {
     $build = $time(fn () => $tree($n), $runs);
     $lay = $time(fn () => $layout->compute($root, 800, 600), $runs);
     $paint = $time(function () use ($painter, $root) {
-        $painter->vg->beginFrame(800, 600, 1);
-        $painter->paint($root, true);
-        $painter->vg->cancelFrame();
+        $painter->render($root, 800, 600, 1, true);
     }, $runs);
 
     // Whole frame through App, including GPU submit and swap.

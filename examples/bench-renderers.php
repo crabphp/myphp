@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 // Compares the three renderers on the dashboard: CPU time to issue a frame
 // (PHP paint walk plus NanoVG/GL submission) and time for the GPU to finish it.
-// Usage: php examples/bench-renderers.php
+// Usage: php84 examples/bench-renderers.php
 
 putenv('PHPUI_SCREENSHOTS');
 putenv('PHPUI_NO_RUN=1');
@@ -15,7 +15,7 @@ $layout = (new ReflectionProperty($app, 'layout'))->getValue($app);
 glfwSwapInterval(0);
 
 $median = function (array $t): float { sort($t); return $t[intdiv(count($t), 2)]; };
-[$w, $h] = [1440, 900];
+[$w, $h] = getenv('PHPUI_BENCH_SMALL') ? [360, 225] : [1440, 900];
 glfwSetWindowSize($app->window, $w, $h);
 glfwPollEvents();
 glfwGetFramebufferSize($app->window, $fbw, $fbh);
@@ -32,7 +32,7 @@ $results = [];
 foreach (['nanovg', 'nanovg-fast', 'quads'] as $mode) {
     $painter->mode = $mode;
     $cpu = $gpu = [];
-    for ($i = 0; $i < 30; $i++) {
+    for ($i = 0; $i < max(1, (int) (getenv('PHPUI_BENCH_RUNS') ?: 30)); $i++) {
         glViewport(0, 0, $fbw, $fbh);
         glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glFinish();
