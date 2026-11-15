@@ -17,6 +17,11 @@ final class Desktop
     private static ?array $dialog = null;
     private static int $token = 0;
     private static ?DBus $chooserBus = null;
+    private static ?bool $systemDark = null;
+    private static ?DBus $themeBus = null;
+    private static ?int $themeListener = null;
+    private static ?\Closure $themeChange = null;
+    private static int $themeGeneration = 0;
 
     public static function lastError(): ?string { return self::$error; }
 
@@ -109,7 +114,61 @@ final class Desktop
 
     public static function waitHint(): float
     {
-        return self::$dialog || self::$jobs || self::$deferred || self::$bus?->pending() ? 1 / 60 : 0.5;
+        if (self::$dialog || self::$jobs || self::$deferred || self::$bus?->pending()) return 1 / 60;
+        return self::$themeListener !== null ? 0.25 : 0.5;
+    }
+
+    public static function systemDark(): ?bool { return self::$systemDark; }
+
+    public static function followSystemTheme(?callable $onChange = null): void
+    {
+        Theme::use('system');
+        self::$themeChange = $onChange === null ? null : $onChange(...);
+        if (self::$themeListener !== null) self::$themeBus?->off(self::$themeListener);
+        self::$themeListener = null;
+        $generation = ++self::$themeGeneration;
+        $bus = self::connection();
+        if (!$bus) { self::themeFallback($generation); return; }
+        self::$themeBus = $bus;
+        self::$themeListener = $bus->on('org.freedesktop.portal.Settings', 'SettingChanged', function ($args) {
+            if (($args[0] ?? '') === 'org.freedesktop.appearance' && ($args[1] ?? '') === 'color-scheme') self::applyScheme($args[2]);
+        }, self::PORTAL_PATH);
+        self::readScheme('ReadOne', $generation);
+    }
+
+    private static function readScheme(string $method, int $generation): void
+    {
+        self::$themeBus->call(self::PORTAL, self::PORTAL_PATH, 'org.freedesktop.portal.Settings', $method, 'ss', ['org.freedesktop.appearance', 'color-scheme'], function ($result, $error) use ($method, $generation) {
+            if ($generation !== self::$themeGeneration) return;
+            if ($error) {
+                if ($method === 'ReadOne' && str_contains($error, 'UnknownMethod')) { self::readScheme('Read', $generation); return; }
+                self::$error = $error;
+                self::themeFallback($generation);
+            } else self::applyScheme($result[0]);
+        });
+    }
+
+    private static function applyScheme(mixed $value): void
+    {
+        while (is_array($value) && count($value) === 2) $value = $value[1];
+        self::$systemDark = match ($value) { 1 => true, 2 => false, default => null };
+        if (self::$systemDark === null || Theme::$source !== 'system') return;
+        $mode = self::$systemDark ? 'dark' : 'light';
+        if (Theme::$mode === $mode) return;
+        Theme::set($mode);
+        self::deliver(self::$themeChange, self::$systemDark);
+    }
+
+    private static function themeFallback(int $generation): void
+    {
+        if (self::$themeListener !== null) self::$themeBus?->off(self::$themeListener);
+        self::$themeListener = null;
+        if (self::mode() === 'portal') { self::$error ??= 'No desktop portal available'; return; }
+        self::spawn(['gsettings', 'get', 'org.gnome.desktop.interface', 'color-scheme'], function ($code, $stdout) use ($generation) {
+            if ($generation !== self::$themeGeneration) return;
+            if ($code !== 0) { self::$error = "gsettings exited with code $code"; return; }
+            self::applyScheme(match (trim($stdout, " \r\n\t'\"")) { 'prefer-dark' => 1, 'prefer-light' => 2, default => 0 });
+        });
     }
 
     public static function clipboard(): string
@@ -311,6 +370,10 @@ final class Desktop
         self::$deferred = [];
         self::$dialog = null;
         self::$chooserBus = null;
+        self::$themeListener = null;
+        self::$themeBus = null;
+        self::$themeChange = null;
+        self::$themeGeneration++;
         self::$bus?->close();
         self::$bus = null;
     }

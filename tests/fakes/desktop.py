@@ -11,7 +11,7 @@ from gi.repository import GLib
 DBusGMainLoop(set_as_default=True)
 bus = dbus.SessionBus()
 loop = GLib.MainLoop()
-settings = {'chooser': 'ok:/tmp/one'}
+settings = {'chooser': 'ok:/tmp/one', 'scheme': '1', 'settings': 'ok'}
 
 
 def log(method, **args):
@@ -32,6 +32,8 @@ class Test(dbus.service.Object):
     def Set(self, key, value):
         settings[str(key)] = str(value)
         log('Set', key=key, value=value)
+        if key == 'scheme':
+            signal(None, 'org.freedesktop.portal.Settings', 'SettingChanged', 'ssv', ['org.freedesktop.appearance', 'color-scheme', dbus.UInt32(int(value), variant_level=1)], '/org/freedesktop/portal/desktop')
 
     @dbus.service.method('org.myphp.Test', in_signature='v', out_signature='v')
     def Echo(self, value):
@@ -56,6 +58,20 @@ class Request(dbus.service.Object):
 
 
 class Portal(dbus.service.Object):
+    @dbus.service.method('org.freedesktop.portal.Settings', in_signature='ss', out_signature='v')
+    def ReadOne(self, namespace, key):
+        log('ReadOne', namespace=namespace, key=key)
+        if settings['settings'] == 'legacy':
+            raise dbus.exceptions.DBusException('Old portal', name='org.freedesktop.DBus.Error.UnknownMethod')
+        if settings['settings'] == 'error':
+            raise dbus.exceptions.DBusException('No settings', name='org.freedesktop.portal.Error.Failed')
+        return dbus.UInt32(int(settings['scheme']), variant_level=1)
+
+    @dbus.service.method('org.freedesktop.portal.Settings', in_signature='ss', out_signature='v')
+    def Read(self, namespace, key):
+        log('Read', namespace=namespace, key=key)
+        return dbus.UInt32(int(settings['scheme']), variant_level=2)
+
     def choose(self, method, parent, title, options, sender):
         token = str(options['handle_token'])
         path = '/org/freedesktop/portal/desktop/request/' + sender[1:].replace('.', '_') + '/' + token
@@ -85,7 +101,7 @@ class Portal(dbus.service.Object):
 
     @dbus.service.method('org.freedesktop.DBus.Properties', in_signature='ss', out_signature='v')
     def Get(self, iface, name):
-        return dbus.UInt32(4)
+        return dbus.UInt32(2 if iface == 'org.freedesktop.portal.Settings' else 4)
 
 
 requests = []
