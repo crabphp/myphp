@@ -104,3 +104,37 @@ check(str_contains($err, 'myphp: RuntimeException: app broke') && str_contains($
 same(0, $code, "bundled todo runs: $err");
 check(is_file("$project/shots/todo-1-start.png"), 'bundled todo screenshot');
 same(2, cli(['demo', 'nope'])[0], 'unknown demo is usage error');
+
+$workspace = getenv('PHPUI_TEST_TMP') . '/init';
+mkdir($workspace);
+[$code, $out, $err] = cli(['init', 'hello'], $workspace);
+same(0, $code, "init succeeds: $err");
+check(str_contains($out, 'Created hello.'), 'init prints next steps');
+$hello = "$workspace/hello";
+foreach (['app.php', 'composer.json', '.gitignore', 'README.md'] as $file) {
+    check(is_file("$hello/$file"), "init writes $file");
+    check(!str_contains(file_get_contents("$hello/$file"), '{{'), "$file has no template markers");
+}
+[$code, $out, $err] = cliProcess([PHP_BINARY, '-l', "$hello/app.php"]);
+same(0, $code, "template syntax: $err");
+$composer = json_decode(file_get_contents("$hello/composer.json"), true, flags: JSON_THROW_ON_ERROR);
+same('app/hello', $composer['name'], 'composer name');
+same('^1.0', $composer['require-dev']['phpgl/ide-stubs'], 'editor stubs package');
+same('dev-main', $composer['require-dev']['crabphp/myphp'], 'dev constraint');
+check(!file_exists("$hello/vendor"), 'init does not run composer');
+[$code, $out, $err] = cli(['run'], $hello, ['PHPUI_SCREENSHOT' => "$workspace/hello.png"]);
+same(0, $code, "new counter runs without vendor: $err");
+check(is_file("$workspace/hello.png"), 'new counter screenshot');
+same(1, cli(['init', 'hello'], $workspace)[0], 'init refuses nonempty directory');
+same(2, cli(['init'], $workspace)[0], 'init requires name');
+same(2, cli(['init', 'bad name'], $workspace)[0], 'init rejects unsafe name');
+mkdir("$workspace/empty");
+same(0, cli(['init', 'empty'], $workspace)[0], 'init accepts empty directory');
+same(0, cli(['init', 'Mixed..Name-'], $workspace)[0], 'directory names may contain repeated punctuation');
+same('app/mixed-name', json_decode(file_get_contents("$workspace/Mixed..Name-/composer.json"), true)['name'], 'composer name normalizes punctuation and case');
+check(str_contains(cli(['help'])[1], 'myphp init <name>'), 'help now lists init');
+if (is_file("$buildDir/versioned/myphp")) {
+    [$code] = cliProcess(["$buildDir/versioned/myphp", 'init', 'versioned'], $workspace);
+    same(0, $code, 'versioned init succeeds');
+    same('^9.9', json_decode(file_get_contents("$workspace/versioned/composer.json"), true)['require-dev']['crabphp/myphp'], 'release constraint');
+}

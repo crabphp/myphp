@@ -255,7 +255,10 @@ Files: `cli/main.php` (or `cli/init.php`), `cli/template/app.php`,
         }
 
     `{{constraint}}` is `^X.Y` from the CLI version, or `dev-main` when the version is
-    `dev`. (`name` is lowercased; Composer rejects uppercase.)
+    `dev`. (`name` is lowercased, punctuation runs become `-`, and trailing
+    punctuation is removed for the Composer package name only.)
+    Correction in C6: Composer rejects valid directory names such as `Mixed..Name-`
+    even after lowercasing; `composer validate` confirmed the stricter package regex.
   - `gitignore`: `/vendor/` and `/build/`.
   - `README.md`: the three commands and a link to
     `https://github.com/crabphp/myphp/blob/main/docs/getting-started.md`.

@@ -1,0 +1,9 @@
+{
+    "name": "app/{{name}}",
+    "description": "A MyPHP desktop app",
+    "type": "project",
+    "require-dev": {
+        "crabphp/myphp": "{{constraint}}",
+        "phpgl/ide-stubs": "^1.0"
+    }
+}
