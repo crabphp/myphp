@@ -28,6 +28,16 @@ if (getenv('PHPUI_TEST_MODE') === 'real-portal') {
     $difference = stream_get_contents($pipes[2]); fclose($pipes[2]);
     same(0, proc_close($p), "closing request restores root pixels ($difference)");
     Desktop::shutdown();
+    putenv('PHPUI_DESKTOP=fallback');
+    $done = false;
+    Desktop::openFile(function () use (&$done) { $done = true; });
+    until(fn () => false, 1);
+    check(!$done, 'real zenity remains open without blocking');
+    $jobs = (new ReflectionProperty(Desktop::class, 'jobs'))->getValue();
+    $pid = proc_get_status(end($jobs)['process'])['pid'];
+    Desktop::shutdown();
+    until(fn () => !posix_kill($pid, 0));
+    check(!posix_kill($pid, 0), 'shutdown ends real zenity');
     exit;
 }
 
@@ -65,4 +75,51 @@ Desktop::openFile(function ($paths) use (&$second) { $second = $paths; });
 Desktop::poll();
 same(null, $second, 'second concurrent chooser is refused');
 check(str_contains(Desktop::lastError(), 'already open'), 'concurrent chooser records reason');
+Desktop::shutdown();
+
+$path = getenv('PATH');
+putenv('PATH=' . __DIR__ . '/fakes/bin:' . $path);
+fakeSet('chooser', 'error');
+$result = false;
+Desktop::openFile(function ($paths) use (&$result) { $result = $paths; });
+until(function () use (&$result) { return $result !== false; });
+same(['/tmp/fake'], $result, 'portal error falls back to zenity');
+putenv('PHPUI_DESKTOP=fallback');
+putenv("FAKE_ZENITY_OUT=/tmp/a space\n/tmp/é\n");
+$result = false;
+Desktop::openFile(function ($paths) use (&$result) { $result = $paths; }, 'Images', ['Images' => ['png', 'jpg']], true, '/tmp');
+until(function () use (&$result) { return $result !== false; });
+same(['/tmp/a space', '/tmp/é'], $result, 'zenity multiple decodes newline-separated paths');
+$args = array_slice(fakeCalls('zenity'), -1)[0]['argv'];
+same(['--file-selection', '--title=Images', '--multiple', "--separator=\n", '--filename=/tmp/', '--file-filter=Images | *.png *.jpg'], $args, 'zenity open argv preserves each argument');
+foreach (['saveFile', 'pickFolder'] as $method) {
+    $result = false;
+    $cb = function ($value) use (&$result) { $result = $value; };
+    if ($method === 'saveFile') Desktop::saveFile($cb, 'Save', 'a file.txt', '/tmp');
+    else Desktop::pickFolder($cb, folder: '/tmp');
+    until(function () use (&$result) { return $result !== false; });
+    $args = array_slice(fakeCalls('zenity'), -1)[0]['argv'];
+    check(in_array($method === 'saveFile' ? '--save' : '--directory', $args), "$method uses zenity mode flag");
+    check(in_array($method === 'saveFile' ? '--filename=/tmp/a file.txt' : '--filename=/tmp/', $args), "$method gets filename suggestion");
+}
+foreach ([1, 2] as $code) {
+    putenv("FAKE_ZENITY_EXIT=$code");
+    $result = false;
+    Desktop::openFile(function ($paths) use (&$result) { $result = $paths; });
+    until(function () use (&$result) { return $result !== false; });
+    same(null, $result, "zenity exit $code returns null");
+    if ($code === 2) check(str_contains(Desktop::lastError(), 'code 2'), 'zenity failure records reason');
+}
+putenv('FAKE_ZENITY_EXIT=0'); putenv('FAKE_ZENITY_SLEEP=1');
+$result = false; $turns = 0;
+Desktop::openFile(function ($paths) use (&$result) { $result = $paths; });
+until(function () use (&$result, &$turns) { $turns++; return $result !== false; });
+check($turns > 100, 'slow zenity does not block polling');
+putenv('PATH=/nonexistent');
+$result = false;
+Desktop::openFile(function ($paths) use (&$result) { $result = $paths; });
+Desktop::poll();
+same(null, $result, 'missing zenity completes with null');
+same('No file dialog available: install xdg-desktop-portal or zenity', Desktop::lastError(), 'missing chooser has actionable error');
+putenv('PATH=' . $path);
 Desktop::shutdown();

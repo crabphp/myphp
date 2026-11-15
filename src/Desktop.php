@@ -197,8 +197,31 @@ final class Desktop
 
     private static function fileFallback(): void
     {
-        self::$error ??= 'No file dialog available: install xdg-desktop-portal or zenity';
-        self::finishFile(null);
+        if (!self::$dialog) return;
+        if (self::mode() === 'portal') {
+            self::$error ??= 'No desktop portal available';
+            self::finishFile(null);
+            return;
+        }
+        $d = self::$dialog;
+        self::$dialog['path'] = null;
+        $argv = ['zenity', '--file-selection', '--title=' . $d['title']];
+        if ($d['multiple']) array_push($argv, '--multiple', "--separator=\n");
+        if ($d['directory']) $argv[] = '--directory';
+        if ($d['method'] === 'SaveFile') $argv[] = '--save';
+        $filename = ($d['folder'] !== null ? rtrim($d['folder'], '/') . '/' : '') . ($d['name'] ?? '');
+        if ($filename !== '') $argv[] = '--filename=' . $filename;
+        foreach ($d['filters'] as $label => $extensions) {
+            $argv[] = '--file-filter=' . $label . ' | ' . implode(' ', array_map(fn ($ext) => $ext === '*' ? '*' : '*.' . ltrim($ext, '.'), $extensions));
+        }
+        if (!self::spawn($argv, function ($code, $stdout) {
+            if ($code !== 0 && $code !== 1) self::$error = "zenity exited with code $code";
+            $out = rtrim($stdout, "\r\n");
+            self::finishFile($code === 0 && $out !== '' ? explode("\n", $out) : null);
+        })) {
+            self::$error = 'No file dialog available: install xdg-desktop-portal or zenity';
+            self::finishFile(null);
+        }
     }
 
     public static function shutdown(): void

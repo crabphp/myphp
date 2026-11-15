@@ -1,0 +1,7 @@
+#!/usr/bin/python3
+import json, os, sys, time
+with open(os.environ['FAKE_LOG'], 'a') as out:
+    out.write(json.dumps({'method': 'zenity', 'argv': sys.argv[1:]}) + '\n')
+time.sleep(float(os.getenv('FAKE_ZENITY_SLEEP', '0')))
+sys.stdout.write(os.getenv('FAKE_ZENITY_OUT', '/tmp/fake\n'))
+sys.exit(int(os.getenv('FAKE_ZENITY_EXIT', '0')))
