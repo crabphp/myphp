@@ -133,6 +133,48 @@ same(0, cli(['init', 'empty'], $workspace)[0], 'init accepts empty directory');
 same(0, cli(['init', 'Mixed..Name-'], $workspace)[0], 'directory names may contain repeated punctuation');
 same('app/mixed-name', json_decode(file_get_contents("$workspace/Mixed..Name-/composer.json"), true)['name'], 'composer name normalizes punctuation and case');
 check(str_contains(cli(['help'])[1], 'myphp init <name>'), 'help now lists init');
+
+[$code, $out, $err] = cli(['build'], $hello, ['PATH' => '', 'TMPDIR' => $workspace]);
+same(0, $code, "build offline with no PHP on PATH: $err");
+check(is_executable("$hello/build/hello"), 'built app is executable');
+$sfx = file_get_contents(getenv('HOME') . '/.cache/spc/buildroot/bin/micro.sfx');
+same(hash('sha256', $sfx), hash('sha256', file_get_contents("$hello/build/hello", length: strlen($sfx))), 'app has clean runtime prefix');
+$standalone = "$workspace/standalone";
+mkdir($standalone);
+copy("$hello/build/hello", "$standalone/counter"); chmod("$standalone/counter", 0755);
+[$code, $out, $err] = cliProcess(['/usr/bin/env', '-i', 'DISPLAY=' . getenv('DISPLAY'), "HOME=$standalone",
+    "XDG_CACHE_HOME=$standalone/cache", "PHPUI_SCREENSHOT=$standalone/built.png", "$standalone/counter"]);
+same(0, $code, "standalone app without PHP: $err");
+check(is_file("$standalone/built.png"), 'standalone screenshot exists');
+foreach ([[0, 0], [85, 50], [110, 130], [240, 240]] as [$x, $y]) {
+    same(pixel("$workspace/hello.png", $x, $y), pixel("$standalone/built.png", $x, $y), "built/run pixels agree at $x,$y");
+}
+file_put_contents("$hello/data.txt", 'packed data');
+mkdir("$hello/vendor"); file_put_contents("$hello/vendor/x.php", '<?php');
+file_put_contents("$hello/.env", 'secret');
+symlink("$hello/.env", "$hello/leaked-env");
+file_put_contents("$hello/probe.php", <<<'PHP'
+<?php
+echo json_encode([file_get_contents(__DIR__ . '/data.txt'), file_exists(__DIR__ . '/vendor/x.php'),
+    file_exists(__DIR__ . '/.env'), file_exists(__DIR__ . '/leaked-env'), file_exists(__DIR__ . '/build/hello'),
+    ini_get('phar.readonly'), file_exists(__DIR__ . '/probe-output')]);
+PHP);
+file_put_contents("$hello/probe-output", 'previous output');
+[$code, $out, $err] = cli(['build', 'probe.php', '-o', 'probe-output'], $hello);
+same(0, $code, "build alternate entry/output: $err");
+[$code, $out, $err] = cliProcess(["$hello/probe-output"]);
+same(0, $code, "run packed data probe: $err");
+same(['packed data', false, false, false, false, '1', false], json_decode($out, true), 'packs data, excludes dependencies, dotfiles, links, builds and output; no CLI INI');
+[$code, $out, $err] = cli(['build', '-o', "$workspace/out/app2"], $hello);
+same(0, $code, "build creates output parents: $err");
+check(is_executable("$workspace/out/app2"), 'custom output exists');
+same(1, cli(['build', 'missing.php'], $hello)[0], 'missing build entry fails');
+same(1, cli(['build', '.env'], $hello)[0], 'hidden entry fails rather than building a broken app');
+same(2, cli(['build', '-o'], $hello)[0], 'missing output argument is usage error');
+same(1, cli(['build', '-o', 'app.php'], $hello)[0], 'build cannot overwrite entry');
+[$code, $out, $err] = cliProcess([PHP_BINARY, __DIR__ . '/../bin/myphp', 'build'], $hello, ['MYPHP_SFX' => '']);
+same(1, $code, 'source build requires runtime');
+check(str_contains($err, 'build needs the myphp binary'), 'source build explains runtime requirement');
 if (is_file("$buildDir/versioned/myphp")) {
     [$code] = cliProcess(["$buildDir/versioned/myphp", 'init', 'versioned'], $workspace);
     same(0, $code, 'versioned init succeeds');

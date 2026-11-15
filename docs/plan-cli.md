@@ -287,7 +287,9 @@ Files: `cli/main.php` (or `cli/build.php`), `tests/cli.php`.
   afterwards:
   - `src/` and `assets/` copied from `MYPHP_ROOT`.
   - The project under `app/`, recursively, skipping `vendor/`, `build/`, `.git/` and
-    any path with a component starting with `.`. Skip the output file itself.
+    any path with a component starting with `.`. Skip the output file itself and
+    symlinks. Clarification in C7: following a link could accidentally bundle data
+    outside the project (including secrets); symlinks are not app assets.
   - Stub: `<?php Phar::mapPhar('app.phar'); require 'phar://app.phar/src/autoload.php'; require 'phar://app.phar/app/<entry>'; __HALT_COMPILER();`
 - Write sfx + phar to the output (create `build/`), `chmod 0755`, print
   `Built build/hello (12.1 MB)`.

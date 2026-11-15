@@ -1,0 +1,84 @@
+<?php
+
+declare(strict_types=1);
+
+/** Copy regular files only; never follow symlinks out of a project. */
+function myphpPack(Phar $phar, string $root, string $prefix, ?string $output = null, bool $project = false): void
+{
+    $walk = function (string $dir, string $relative = '') use (&$walk, $phar, $prefix, $output, $project): void {
+        foreach (new DirectoryIterator($dir) as $file) {
+            if ($file->isDot() || $file->isLink()) continue;
+            $name = $file->getFilename();
+            if ($project && (str_starts_with($name, '.') || in_array($name, ['vendor', 'build'], true) && $file->isDir())) continue;
+            $path = $file->getPathname();
+            if ($path === $output) continue;
+            $entry = $relative . $name;
+            if ($file->isDir()) $walk($path, "$entry/");
+            elseif ($file->isFile()) $phar->addFile($path, "$prefix/$entry");
+        }
+    };
+    $walk($root);
+}
+
+function cmdBuild(array $args): int
+{
+    $file = null;
+    $output = null;
+    for ($i = 0; $i < count($args); $i++) {
+        if ($args[$i] === '-o' && $output === null && isset($args[$i + 1]) && !str_starts_with($args[$i + 1], '-')) {
+            $output = $args[++$i];
+        } elseif (!str_starts_with($args[$i], '-') && $file === null) {
+            $file = $args[$i];
+        } else {
+            return myphpError('usage: myphp build [file] [-o output]', 2);
+        }
+    }
+    $file ??= 'app.php';
+    if (!is_file($file)) return myphpError("$file not found");
+    $entry = realpath($file);
+    if (str_starts_with(basename($entry), '.')) return myphpError('entry file cannot be a dotfile');
+    $project = dirname($entry);
+    $output ??= (dirname($file) === '.' ? '' : dirname($file) . '/') . 'build/' . basename($project);
+    if (PHP_SAPI === 'micro') {
+        $size = (int) file_get_contents(MYPHP_ROOT . '/sfx-size');
+        if ($size < 4) return myphpError('invalid embedded runtime size');
+        $sfx = file_get_contents('/proc/self/exe', length: $size);
+        if (strlen($sfx) !== $size) return myphpError('cannot read the embedded runtime');
+    } else {
+        $path = getenv('MYPHP_SFX');
+        if (!$path || !is_file($path) || ini_get('phar.readonly')) {
+            return myphpError('build needs the myphp binary (or MYPHP_SFX and -d phar.readonly=0)');
+        }
+        $sfx = file_get_contents($path);
+    }
+    if (!str_starts_with($sfx, "\x7fELF")) return myphpError('runtime is not an ELF executable');
+    $dir = dirname($output);
+    if (!is_dir($dir) && !mkdir($dir, 0777, true)) return myphpError("cannot create $dir");
+    $target = realpath($dir) . '/' . basename($output);
+    if ($target === $entry || realpath($target) === $entry) return myphpError('output would overwrite the entry file');
+    $temp = tempnam(sys_get_temp_dir(), 'myphp-');
+    unlink($temp);
+    $archive = "$temp.phar";
+    $staged = null;
+    try {
+        $phar = new Phar($archive);
+        $phar->startBuffering();
+        myphpPack($phar, MYPHP_ROOT . '/src', 'src');
+        myphpPack($phar, MYPHP_ROOT . '/assets', 'assets');
+        myphpPack($phar, $project, 'app', $target, true);
+        $app = var_export('phar://app.phar/app/' . basename($entry), true);
+        $phar->setStub("<?php Phar::mapPhar('app.phar'); require 'phar://app.phar/src/autoload.php'; require $app; __HALT_COMPILER();");
+        $phar->stopBuffering();
+        $bytes = $sfx . file_get_contents($archive);
+        $staged = tempnam(realpath($dir), '.myphp-');
+        if (file_put_contents($staged, $bytes) !== strlen($bytes) || !chmod($staged, 0755) || !rename($staged, $target)) {
+            return myphpError("cannot write $output");
+        }
+        printf("Built %s (%.1f MB)\n", $output, strlen($bytes) / 1000000);
+        return 0;
+    } finally {
+        unset($phar);
+        if (is_file($archive)) unlink($archive);
+        if ($staged !== null && is_file($staged)) unlink($staged);
+    }
+}

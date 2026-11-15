@@ -7,6 +7,7 @@ ini_set('display_errors', 'stderr');
 error_reporting(E_ALL);
 require __DIR__ . '/run.php';
 require __DIR__ . '/init.php';
+require __DIR__ . '/build.php';
 
 function myphpVersion(): string
 {
