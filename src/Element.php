@@ -19,6 +19,7 @@ final class Element
     public ?\Closure $onClickOutside = null;
     public ?\Closure $onInput = null;
     public ?\Closure $onSubmit = null;
+    public ?\Closure $onDrop = null;
     public ?\Closure $draw = null;
     public ?string $id = null;
     public string $placeholder = '';
@@ -89,6 +90,8 @@ final class Element
     public function stopClicks(): self { return $this->set('stop', true); }
     public function onInput(callable $fn): self { $this->onInput = $fn(...); return $this; }
     public function onSubmit(callable $fn): self { $this->onSubmit = $fn(...); return $this; }
+    /** $fn receives the paths dropped on this element or one of its children. */
+    public function onDrop(callable $fn): self { $this->onDrop = $fn(...); return $this; }
 
     /** Styles applied while the pointer is over this element: ->hover(fn($s) => $s->bg('#333')). */
     public function hover(callable $fn): self

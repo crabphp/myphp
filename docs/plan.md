@@ -535,8 +535,11 @@ Element::onDrop(callable $fn): self          // $fn(array $paths); the nearest o
 App::drop(array $paths, ?float $x = null, ?float $y = null): void   // scripted, like click()
 ```
 
-- `glfwSetDropCallback($window, fn (array $paths) => $this->drop($paths))` (check the
-  callback's arguments with a `...$args` dump first; PHP-GLFW's are not documented).
+- `glfwSetDropCallback($window, fn (int $count, array $paths) => $this->drop($paths))`.
+  The original one-argument callback was wrong: verified against PHP-GLFW 2.2's
+  `phpglfw_callback_dropcallback_handler` in the static-php-cli source cache, which
+  builds two PHP arguments (count, paths). A real XDND callback dump cannot be made
+  here; verify on the user's desktop with the B11 drop target.
 - `drop()`: `fresh()`, move the pointer if x/y are given, find the nearest element with
   `onDrop` from the top element up (`handler()`), call it; else call the window handler.
   Then `stale`/`dirty`.

@@ -29,6 +29,7 @@ final class App
     private bool $dirty = true;
     private bool $stale = true;
     private ?\Closure $onKey = null;
+    private ?\Closure $onDrop = null;
     private static ?self $current = null;
     private array $pollers = [], $waitHints = [], $shutdownHandlers = [];
     private array $modals = [];
@@ -68,6 +69,8 @@ final class App
             $action === GLFW_PRESS ? $this->press($this->mouseX, $this->mouseY) : $this->release($this->mouseX, $this->mouseY);
         });
         glfwSetScrollCallback($this->window, fn (float $dx, float $dy) => $this->wheel($dy));
+        // PHP-GLFW 2.2 passes (count, paths), without the native window argument.
+        glfwSetDropCallback($this->window, fn (int $count, array $paths) => $this->drop($paths));
         glfwSetCharCallback($this->window, fn (int $codepoint) => $this->type(mb_chr($codepoint, 'UTF-8')));
         glfwSetKeyCallback($this->window, function (int $key, int $scancode, int $action, int $mods) {
             if ($action !== GLFW_RELEASE) $this->key($key, $mods);
@@ -89,6 +92,22 @@ final class App
     {
         $this->onKey = $fn(...);
         return $this;
+    }
+
+    public function onDrop(callable $fn): self
+    {
+        $this->onDrop = $fn(...);
+        return $this;
+    }
+
+    public function drop(array $paths, ?float $x = null, ?float $y = null): void
+    {
+        $this->fresh();
+        if ($x !== null || $y !== null) $this->pointer($x ?? $this->mouseX, $y ?? $this->mouseY);
+        $target = $this->handler($this->top($this->mouseX, $this->mouseY), fn (Element $e) => $e->onDrop !== null);
+        if ($target) ($target->onDrop)($paths);
+        elseif (!$this->modals && $this->onDrop) ($this->onDrop)($paths, $this->mouseX, $this->mouseY);
+        $this->invalidate();
     }
 
     /** Queue a modal overlay; a builder keeps its colors and state fresh. */
