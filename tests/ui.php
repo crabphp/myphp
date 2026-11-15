@@ -80,3 +80,20 @@ foreach (['set', 'use'] as $method) {
     catch (InvalidArgumentException) { check(true, "$method rejects invalid value"); }
 }
 PhpUi\Theme::use('light');
+
+$sentence = str_repeat('A long sentence wraps inside its panel. ', 8);
+$wrapApp = new PhpUi\App('Wrap', 500, 300, fn () => PhpUi\col()->full()->bg('#ffffff')->p(20)
+    ->child(PhpUi\paragraph($sentence, 400)->bg('#eeeeee')));
+$painter = PhpUi\Painter::$shared;
+$lines = $painter->wrap($sentence, 400);
+check(count($lines) > 1, 'long sentence wraps to multiple lines');
+check(max(array_map(fn ($line) => $painter->textWidth($line, 'regular', 14), $lines)) <= 400, 'every wrapped line fits');
+same(['first', '', 'third'], $painter->wrap("first\n\nthird", 400), 'wrapping preserves explicit newlines');
+$wordLines = $painter->wrap(str_repeat('é', 100), 40);
+check(count($wordLines) > 1 && implode('', $wordLines) === str_repeat('é', 100), 'oversized Unicode words split without losing characters');
+$shot = getenv('PHPUI_TEST_TMP') . '/wrap.png';
+$wrapApp->screenshot($shot, 500, 300, 1);
+$probe = proc_open(['magick', $shot, '-crop', '70x300+430+0', '-format', '%[fx:mean]', 'info:'], [1 => ['pipe', 'w'], 2 => STDERR], $pipes);
+$mean = stream_get_contents($pipes[1]); fclose($pipes[1]);
+same(0, proc_close($probe), 'paragraph pixel probe succeeds');
+same('1', $mean, 'no text pixels outside the paragraph box');

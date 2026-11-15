@@ -273,6 +273,16 @@ function toast(string $title, string $description, ?string $icon = 'circle-check
 
 // Display -------------------------------------------------------------------
 
+/** Fixed-width wrapped text, measured with the app's painter at build time. */
+function paragraph(string $text, float $width, float $size = 14): Element
+{
+    $painter = Painter::$shared ?? throw new \LogicException('Create an App before building a paragraph');
+    return col()->w($width)->textSize($size)->children(array_map(
+        fn (string $line) => text($line)->font('regular')->h($painter->lineHeight($size)),
+        $painter->wrap($text, $width, 'regular', $size),
+    ));
+}
+
 function separator(bool $vertical = false): Element
 {
     return $vertical ? div()->w(1)->bg(t('border')) : div()->h(1)->bg(t('border'));

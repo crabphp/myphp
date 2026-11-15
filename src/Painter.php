@@ -24,6 +24,7 @@ use GL\VectorGraphics\VGContext;
  */
 final class Painter
 {
+    public static ?self $shared = null;
     public VGContext $vg;
     public string $mode;
     private ?QuadRenderer $quads = null;
@@ -68,6 +69,7 @@ final class Painter
                 throw new \RuntimeException("Cannot load font $file");
             }
         }
+        self::$shared = $this;
     }
 
     /**
@@ -96,6 +98,30 @@ final class Painter
         $this->vg->fontSize($size);
         $this->vg->textLetterSpacing($tracking);
         return $this->vg->textBounds(0, 0, $text);
+    }
+
+    /** Wrap at spaces and explicit newlines; split oversized words by Unicode character. */
+    public function wrap(string $text, float $width, string $font = 'regular', float $size = 14): array
+    {
+        if ($width <= 0) throw new \InvalidArgumentException('Wrap width must be positive');
+        $lines = [];
+        foreach (explode("\n", str_replace(["\r\n", "\r"], "\n", $text)) as $paragraph) {
+            $line = '';
+            foreach (preg_split('/[\t ]+/u', trim($paragraph), -1, PREG_SPLIT_NO_EMPTY) as $word) {
+                $next = $line === '' ? $word : "$line $word";
+                if ($this->textWidth($next, $font, $size) <= $width) { $line = $next; continue; }
+                if ($line !== '') { $lines[] = $line; $line = ''; }
+                foreach (mb_str_split($word) as $char) {
+                    if ($line !== '' && $this->textWidth($line . $char, $font, $size) > $width) {
+                        $lines[] = $line;
+                        $line = '';
+                    }
+                    $line .= $char;
+                }
+            }
+            $lines[] = $line;
+        }
+        return $lines;
     }
 
     public function lineHeight(float $size): float
