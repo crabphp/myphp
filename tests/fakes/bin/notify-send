@@ -1,0 +1,8 @@
+#!/usr/bin/python3
+import json, os, sys, time
+with open(os.environ['FAKE_LOG'], 'a') as out:
+    out.write(json.dumps({'method': 'notify-send', 'argv': sys.argv[1:]}) + '\n')
+time.sleep(float(os.getenv('FAKE_NOTIFY_SLEEP', '0')))
+if any(arg.startswith('--action=') for arg in sys.argv):
+    print(os.getenv('FAKE_NOTIFY_ACTION', 'default'))
+sys.exit(int(os.getenv('FAKE_NOTIFY_EXIT', '0')))

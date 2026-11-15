@@ -94,6 +94,11 @@ final class App
         return $this;
     }
 
+    public function focus(): void
+    {
+        glfwFocusWindow($this->window);
+    }
+
     public function onDrop(callable $fn): self
     {
         $this->onDrop = $fn(...);

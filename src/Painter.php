@@ -65,30 +65,11 @@ final class Painter
             'regular' => 'Geist-Regular', 'medium' => 'Geist-Medium', 'semibold' => 'Geist-SemiBold',
             'bold' => 'Geist-Bold', 'mono' => 'GeistMono-Regular', 'mono-semibold' => 'GeistMono-SemiBold',
         ] as $name => $file) {
-            if ($this->vg->createFont($name, self::realFile("$assets/fonts/$file.ttf")) < 0) {
+            if ($this->vg->createFont($name, realFile("$assets/fonts/$file.ttf")) < 0) {
                 throw new \RuntimeException("Cannot load font $file");
             }
         }
         self::$shared = $this;
-    }
-
-    /**
-     * NanoVG opens fonts with C file functions, which cannot read inside a phar.
-     * Inside one, copy the file out once to a cache folder and return that path.
-     */
-    private static function realFile(string $path): string
-    {
-        if (!str_starts_with($path, 'phar://')) return $path;
-        $data = file_get_contents($path);
-        $base = getenv('XDG_CACHE_HOME') ?: (getenv('HOME') ? getenv('HOME') . '/.cache' : sys_get_temp_dir());
-        $dir = "$base/phpui/" . substr(md5($data), 0, 12);
-        $out = "$dir/" . basename($path);
-        if (!is_file($out)) {
-            @mkdir($dir, 0700, true);
-            file_put_contents("$out.tmp", $data);
-            rename("$out.tmp", $out);
-        }
-        return $out;
     }
 
     public function textWidth(string $text, string $font, float $size, float $tracking = 0): float

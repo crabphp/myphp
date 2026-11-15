@@ -22,6 +22,9 @@ final class Desktop
     private static ?int $themeListener = null;
     private static ?\Closure $themeChange = null;
     private static int $themeGeneration = 0;
+    private static int $notificationId = 0;
+    private static array $notifications = [];
+    private static ?DBus $notificationBus = null;
 
     public static function lastError(): ?string { return self::$error; }
 
@@ -115,7 +118,85 @@ final class Desktop
     public static function waitHint(): float
     {
         if (self::$dialog || self::$jobs || self::$deferred || self::$bus?->pending()) return 1 / 60;
-        return self::$themeListener !== null ? 0.25 : 0.5;
+        if (self::$themeListener !== null) return 0.25;
+        foreach (self::$notifications as $note) if ($note['click'] && !$note['close']) return 0.25;
+        return 0.5;
+    }
+
+    public static function notify(string $title, string $body = '', ?callable $onClick = null, ?string $icon = null, array $actions = []): int
+    {
+        $id = ++self::$notificationId;
+        self::$error = null;
+        self::$notifications[$id] = ['server' => null, 'close' => false, 'click' => $onClick, 'job' => null];
+        if (count(self::$notifications) > 64) unset(self::$notifications[array_key_first(self::$notifications)]);
+        try { $icon = $icon === null ? '' : realFile($icon); }
+        catch (\Throwable $e) { self::$error = $e->getMessage(); unset(self::$notifications[$id]); return $id; }
+        $bus = self::connection();
+        if (!$bus) { self::notificationFallback($id, $title, $body, $icon, $actions); return $id; }
+        if (self::$notificationBus !== $bus) {
+            self::$notificationBus = $bus;
+            $bus->on('org.freedesktop.Notifications', 'ActionInvoked', function ($args) {
+                foreach (self::$notifications as $note) if ($note['server'] === $args[0] && !$note['close']) self::deliver($note['click'], $args[1]);
+            }, '/org/freedesktop/Notifications');
+            $bus->on('org.freedesktop.Notifications', 'NotificationClosed', function ($args) {
+                foreach (self::$notifications as $id => $note) if ($note['server'] === $args[0]) unset(self::$notifications[$id]);
+            }, '/org/freedesktop/Notifications');
+        }
+        $wireActions = [];
+        if ($onClick) {
+            $wireActions = ['default', 'Open'];
+            foreach ($actions as $key => $label) array_push($wireActions, (string) $key, $label);
+        }
+        $bus->call('org.freedesktop.Notifications', '/org/freedesktop/Notifications', 'org.freedesktop.Notifications', 'Notify', 'susssasa{sv}i', [self::$appName, 0, $icon, $title, $body, $wireActions, [], -1], function ($result, $error) use ($id, $title, $body, $icon, $actions) {
+            if (!isset(self::$notifications[$id])) return;
+            if ($error) { self::$error = $error; self::notificationFallback($id, $title, $body, $icon, $actions); return; }
+            self::$notifications[$id]['server'] = $result[0];
+            if (self::$notifications[$id]['close']) self::closeNotification($id);
+        });
+        return $id;
+    }
+
+    public static function closeNotification(int $id): void
+    {
+        if (!isset(self::$notifications[$id])) return;
+        self::$notifications[$id]['close'] = true;
+        $note = self::$notifications[$id];
+        if ($note['server'] !== null) {
+            self::$notificationBus?->call('org.freedesktop.Notifications', '/org/freedesktop/Notifications', 'org.freedesktop.Notifications', 'CloseNotification', 'u', [$note['server']], function ($result, $error) { if ($error) self::$error = $error; });
+            unset(self::$notifications[$id]);
+        } elseif ($note['job'] !== null) {
+            $job = &self::$jobs[$note['job']];
+            if (isset($job)) {
+                if (proc_get_status($job['process'])['running']) proc_terminate($job['process'], 9);
+                $job['done'] = null;
+            }
+            unset($job, self::$notifications[$id]);
+        }
+    }
+
+    private static function notificationFallback(int $id, string $title, string $body, string $icon, array $actions): void
+    {
+        if (!isset(self::$notifications[$id])) return;
+        if (self::mode() === 'portal' || self::$notifications[$id]['close']) {
+            self::$error ??= 'No notification service available';
+            unset(self::$notifications[$id]);
+            return;
+        }
+        $argv = ['notify-send', '--app-name=' . self::$appName];
+        if ($icon !== '') $argv[] = '--icon=' . $icon;
+        if (self::$notifications[$id]['click']) {
+            $argv[] = '--action=default=Open';
+            foreach ($actions as $key => $label) $argv[] = "--action=$key=$label";
+        }
+        array_push($argv, '--', $title, $body);
+        if (!self::spawn($argv, function ($code, $stdout) use ($id) {
+            $note = self::$notifications[$id] ?? null;
+            unset(self::$notifications[$id]);
+            if ($code !== 0) { self::$error = "notify-send exited with code $code"; return; }
+            $action = trim($stdout);
+            if ($note && !$note['close'] && $action !== '') self::deliver($note['click'], $action);
+        })) { unset(self::$notifications[$id]); return; }
+        self::$notifications[$id]['job'] = array_key_last(self::$jobs);
     }
 
     public static function systemDark(): ?bool { return self::$systemDark; }
@@ -374,6 +455,9 @@ final class Desktop
         self::$themeBus = null;
         self::$themeChange = null;
         self::$themeGeneration++;
+        // Notices already delivered to the desktop intentionally outlive the app.
+        self::$notifications = [];
+        self::$notificationBus = null;
         self::$bus?->close();
         self::$bus = null;
     }

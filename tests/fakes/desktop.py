@@ -31,9 +31,21 @@ class Test(dbus.service.Object):
     @dbus.service.method('org.myphp.Test', in_signature='ss', out_signature='')
     def Set(self, key, value):
         settings[str(key)] = str(value)
+        if key == 'notifications' and value == 'off':
+            bus.release_name('org.freedesktop.Notifications')
         log('Set', key=key, value=value)
         if key == 'scheme':
             signal(None, 'org.freedesktop.portal.Settings', 'SettingChanged', 'ssv', ['org.freedesktop.appearance', 'color-scheme', dbus.UInt32(int(value), variant_level=1)], '/org/freedesktop/portal/desktop')
+
+    @dbus.service.method('org.myphp.Test', in_signature='us', out_signature='')
+    def Invoke(self, id, action):
+        if id in notes:
+            signal(notes[id], 'org.freedesktop.Notifications', 'ActionInvoked', 'us', [id, action], '/org/freedesktop/Notifications')
+
+    @dbus.service.method('org.myphp.Test', in_signature='u', out_signature='')
+    def CloseNote(self, id):
+        if id in notes:
+            signal(notes[id], 'org.freedesktop.Notifications', 'NotificationClosed', 'uu', [id, 2], '/org/freedesktop/Notifications')
 
     @dbus.service.method('org.myphp.Test', in_signature='v', out_signature='v')
     def Echo(self, value):
@@ -104,8 +116,32 @@ class Portal(dbus.service.Object):
         return dbus.UInt32(2 if iface == 'org.freedesktop.portal.Settings' else 4)
 
 
+class Notifications(dbus.service.Object):
+    @dbus.service.method('org.freedesktop.Notifications', in_signature='susssasa{sv}i', out_signature='u', sender_keyword='sender')
+    def Notify(self, app, replaces, icon, title, body, actions, hints, timeout, sender):
+        id = len(notes) + 1
+        notes[id] = sender
+        log('Notify', id=id, app=app, replaces=replaces, icon=icon, title=title, body=body, actions=actions, hints=hints, timeout=timeout)
+        return dbus.UInt32(id)
+
+    @dbus.service.method('org.freedesktop.Notifications', in_signature='u', out_signature='')
+    def CloseNotification(self, id):
+        log('CloseNotification', id=id)
+        if id in notes:
+            signal(notes[id], 'org.freedesktop.Notifications', 'NotificationClosed', 'uu', [id, 3], '/org/freedesktop/Notifications')
+
+    @dbus.service.method('org.freedesktop.Notifications', in_signature='', out_signature='as')
+    def GetCapabilities(self):
+        return ['actions', 'body']
+
+    @dbus.service.method('org.freedesktop.Notifications', in_signature='', out_signature='ssss')
+    def GetServerInformation(self):
+        return ('MyPHP fake', 'MyPHP', '1', '1.2')
+
+
 requests = []
-names = [dbus.service.BusName('org.myphp.Test', bus), dbus.service.BusName('org.freedesktop.portal.Desktop', bus)]
-objects = [Test(bus, '/org/myphp/Test'), Portal(bus, '/org/freedesktop/portal/desktop')]
+notes = {}
+names = [dbus.service.BusName(n, bus) for n in ['org.myphp.Test', 'org.freedesktop.portal.Desktop', 'org.freedesktop.Notifications']]
+objects = [Test(bus, '/org/myphp/Test'), Portal(bus, '/org/freedesktop/portal/desktop'), Notifications(bus, '/org/freedesktop/Notifications')]
 Path(os.environ['PHPUI_TEST_TMP'], 'ready').touch()
 loop.run()
