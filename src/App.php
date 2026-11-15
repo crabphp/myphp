@@ -71,6 +71,9 @@ final class App
             if ($action !== GLFW_RELEASE) $this->key($key, $mods);
         });
         glfwSetWindowRefreshCallback($this->window, fn () => $this->dirty = true);
+        $this->poller(Desktop::poll(...));
+        $this->waitHint(Desktop::waitHint(...));
+        $this->onShutdown(Desktop::shutdown(...));
     }
 
     /** Ask for a new frame, e.g. after state changed outside an event handler. */

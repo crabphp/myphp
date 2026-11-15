@@ -327,7 +327,7 @@ constructor), `tests/desktop-jobs.php`.
 final class Desktop {
     public static function poll(): bool          // DBus::poll() + children; true when a callback ran
     public static function waitHint(): float     // 1/60, 0.25 or 0.5 (see A3)
-    public static function shutdown(): void      // kill children, close notifications we own, close the bus
+    public static function shutdown(): void      // kill children, close the bus; notifications outlive us (B10)
     public static function lastError(): ?string
     public static string $appName = 'PHP UI';    // shown by notifications and dialogs
     /** @internal */
