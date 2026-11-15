@@ -36,3 +36,25 @@ $counterApp = new PhpUi\App('Counter', 200, 100, fn () => PhpUi\col()->full()->c
 $counterApp->clickId('count');
 $counterApp->clickId('count');
 same(2, $counter->value, 'two clicks without a frame both run');
+same($counterApp, PhpUi\App::current(), 'current is the most recently created app');
+$turns = 0;
+$counterApp->poller(function () use (&$turns, $counter) {
+    if (++$turns !== 3) return false;
+    $counter->value = 7;
+    return true;
+});
+$counterApp->step();
+$counterApp->step();
+$counterApp->step();
+same('7', $counterApp->find('count')->children[0]->text, 'third poller turn rebuilds the tree');
+$counterApp->press(10, 10);
+$counterApp->poller(fn () => true);
+$counterApp->step();
+$counterApp->release(10, 10);
+same(7, $counter->value, 'outside callback cancels an in-flight press');
+$shutdown = false;
+$counterApp->onShutdown(function () use (&$shutdown) { $shutdown = true; });
+$counterApp->poller(fn () => throw new RuntimeException('loop failure'));
+try { $counterApp->run(); } catch (RuntimeException $e) { same('loop failure', $e->getMessage(), 'loop exception propagates'); }
+check($shutdown, 'shutdown handler runs when the loop throws');
+same(null, PhpUi\App::current(), 'destroyed app is no longer current');

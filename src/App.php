@@ -29,6 +29,8 @@ final class App
     private bool $dirty = true;
     private bool $stale = true;
     private ?\Closure $onKey = null;
+    private static ?self $current = null;
+    private array $pollers = [], $waitHints = [], $shutdownHandlers = [];
 
     public function __construct(string $title, int $width, int $height, callable $render)
     {
@@ -39,7 +41,13 @@ final class App
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
         glfwWindowHint(GLFW_SCALE_TO_MONITOR, GL_TRUE);
         glfwWindowHint(GLFW_STENCIL_BITS, 8);
-        $this->window = glfwCreateWindow($width, $height, $title);
+        $window = glfwCreateWindow($width, $height, $title);
+        if (!$window) {
+            glfwTerminate();
+            throw new \RuntimeException('GLFW could not create the window');
+        }
+        $this->window = $window;
+        self::$current = $this;
         glfwMakeContextCurrent($this->window);
         glfwSwapInterval(1);
 
@@ -78,15 +86,65 @@ final class App
         return $this;
     }
 
+    public static function current(): ?App
+    {
+        return self::$current;
+    }
+
+    public function poller(callable $fn): self
+    {
+        $this->pollers[] = $fn(...);
+        return $this;
+    }
+
+    public function waitHint(callable $fn): self
+    {
+        $this->waitHints[] = $fn(...);
+        return $this;
+    }
+
+    public function onShutdown(callable $fn): self
+    {
+        $this->shutdownHandlers[] = $fn(...);
+        return $this;
+    }
+
     public function run(): void
     {
-        while (!glfwWindowShouldClose($this->window)) {
-            // Sleep until input arrives; wake twice a second to blink the caret.
-            glfwWaitEventsTimeout(0.5);
-            if ($this->dirty || $this->focusId !== null) $this->frame();
+        try {
+            while (!glfwWindowShouldClose($this->window)) {
+                $wait = 0.5;
+                foreach ($this->waitHints as $hint) $wait = min($wait, max(0.0001, $hint()));
+                glfwWaitEventsTimeout($wait);
+                $this->step();
+            }
+        } finally {
+            try {
+                // A failing shutdown handler must not skip the remaining cleanup.
+                $error = null;
+                foreach ($this->shutdownHandlers as $fn) {
+                    try { $fn(); } catch (\Throwable $e) { $error ??= $e; }
+                }
+                if ($error) throw $error;
+            } finally {
+                // Keep GLFW's GL entry points loaded until PHP releases GPU objects.
+                // Terminating here makes NanoVG destructors crash at script shutdown.
+                glfwDestroyWindow($this->window);
+                if (self::$current === $this) self::$current = null;
+            }
         }
-        glfwDestroyWindow($this->window);
-        glfwTerminate();
+    }
+
+    /** One loop turn, without waiting. */
+    public function step(): void
+    {
+        foreach ($this->pollers as $poll) {
+            if ($poll()) {
+                $this->stale = $this->dirty = true;
+                $this->pressed = null;
+            }
+        }
+        if ($this->dirty || $this->focusId !== null) $this->frame();
     }
 
     /** Build, lay out and draw one frame to the window. */

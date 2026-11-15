@@ -171,6 +171,9 @@ public function waitHint(callable $fn): self    // $fn(): float, seconds the loo
   returned true: `stale = true`, `dirty = true`, `pressed = null`.
 - Wrap the loop in `try { } finally { }`: run shutdown handlers
   (`public function onShutdown(callable $fn): self`), then destroy the window.
+- Do not call `glfwTerminate()` in this teardown: A3's exception test exposed a
+  native crash when NanoVG objects are destroyed after GLFW unloads its GL entry
+  points. Destroy the window; let process shutdown terminate GLFW.
 - Add `public function step(): void`: one loop turn without waiting (pollers, then a
   frame if dirty). Tests use it instead of `run()`.
 - Throw a clear error if `glfwCreateWindow()` fails.
