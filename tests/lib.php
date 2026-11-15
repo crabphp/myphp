@@ -26,6 +26,32 @@ function until(callable $ready, float $seconds = 3, ?callable $poll = null): boo
     } while (microtime(true) < $end);
     return false;
 }
+/** Run with isolated output files, bounded time, and no shell interpolation. */
+function cliProcess(array $command, ?string $cwd = null, array $env = [], float $timeout = 10): array
+{
+    $out = tempnam(getenv('PHPUI_TEST_TMP'), 'stdout-');
+    $err = tempnam(getenv('PHPUI_TEST_TMP'), 'stderr-');
+    $process = proc_open($command, [0 => ['file', '/dev/null', 'r'],
+        1 => ['file', $out, 'w'], 2 => ['file', $err, 'w']], $pipes,
+        $cwd ?? getenv('PHPUI_TEST_TMP'), $env + getenv());
+    $deadline = microtime(true) + $timeout;
+    do {
+        $status = proc_get_status($process);
+        if (!$status['running']) break;
+        if (microtime(true) > $deadline) {
+            proc_terminate($process, 9);
+            proc_close($process);
+            unlink($out); unlink($err);
+            throw new RuntimeException('Command timed out: ' . implode(' ', $command));
+        }
+        usleep(10000);
+    } while (true);
+    proc_close($process);
+    $result = [$status['exitcode'], file_get_contents($out), file_get_contents($err)];
+    unlink($out); unlink($err);
+    return $result;
+}
+
 function fakeSet(string $key, string $value): void
 {
     $done = false;

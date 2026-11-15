@@ -353,7 +353,8 @@ and without `vendor/`.
 
 ### C9. `install.sh`
 
-Files: `install.sh` (new, repo root, POSIX `sh`), `tests/install.php` (new).
+Files: `install.sh` (new, repo root, POSIX `sh`), `tests/install.php` (new),
+`tests/lib.php`, `tests/cli.php` (share the bounded argv-based process helper).
 
 - `set -eu`. Linux and `x86_64` only (`uname -s`, `uname -m`); otherwise
   `myphp: only Linux x86-64 is supported for now` and exit 1.
