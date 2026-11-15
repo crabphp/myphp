@@ -8,6 +8,7 @@ namespace PhpUi;
 final class Theme
 {
     public static string $mode = 'light';
+    public static string $source = 'light';
 
     private const LIGHT = [
         'background' => '#ffffff', 'foreground' => '#0a0a0a',
@@ -50,9 +51,22 @@ final class Theme
         return self::$mode === 'dark';
     }
 
+    public static function set(string $mode): void
+    {
+        if (!in_array($mode, ['light', 'dark'], true)) throw new \InvalidArgumentException("Invalid theme mode: $mode");
+        self::$mode = $mode;
+    }
+
+    public static function use(string $source): void
+    {
+        if (!in_array($source, ['system', 'light', 'dark'], true)) throw new \InvalidArgumentException("Invalid theme source: $source");
+        self::$source = $source;
+        if ($source !== 'system') self::set($source);
+    }
+
     public static function toggle(): void
     {
-        self::$mode = self::dark() ? 'light' : 'dark';
+        self::use(self::dark() ? 'light' : 'dark');
     }
 
     /** Blend $b over $a by $amount (0..1), as an opaque color. */

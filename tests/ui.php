@@ -67,3 +67,16 @@ $counterApp->poller(fn () => throw new RuntimeException('loop failure'));
 try { $counterApp->run(); } catch (RuntimeException $e) { same('loop failure', $e->getMessage(), 'loop exception propagates'); }
 check($shutdown, 'shutdown handler runs when the loop throws');
 same(null, PhpUi\App::current(), 'destroyed app is no longer current');
+
+PhpUi\Theme::use('light');
+PhpUi\Theme::use('system');
+PhpUi\Theme::set('dark');
+same('system', PhpUi\Theme::$source, 'setting a mode preserves the system source');
+check(PhpUi\Theme::dark(), 'explicit dark setter works');
+PhpUi\Theme::toggle();
+same('light', PhpUi\Theme::$source, 'toggle leaves the system source explicit');
+foreach (['set', 'use'] as $method) {
+    try { PhpUi\Theme::$method('invalid'); check(false, "$method rejects invalid value"); }
+    catch (InvalidArgumentException) { check(true, "$method rejects invalid value"); }
+}
+PhpUi\Theme::use('light');
