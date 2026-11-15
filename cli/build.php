@@ -20,6 +20,30 @@ function myphpPack(Phar $phar, string $root, string $prefix, ?string $output = n
     $walk($root);
 }
 
+/** ELF, or 64-bit Mach-O (thin or universal). */
+function myphpIsExecutable(string $bytes): bool
+{
+    return in_array(substr($bytes, 0, 4), ["\x7fELF", "\xcf\xfa\xed\xfe", "\xca\xfe\xba\xbe"], true);
+}
+
+/**
+ * The runtime prefix of this executable. The micro SAPI hides that prefix when a script
+ * opens the executable by its own path, so read it through /proc or a temporary link.
+ */
+function myphpRuntime(int $size): string
+{
+    $read = fn (string $path): string => (string) @file_get_contents($path, length: $size);
+    if (is_readable('/proc/self/exe')) return $read('/proc/self/exe');
+    $self = Phar::running(false);
+    foreach (['symlink', 'link'] as $make) {
+        $alias = sys_get_temp_dir() . '/myphp-self-' . getmypid() . '-' . bin2hex(random_bytes(4));
+        if (!@$make($self, $alias)) continue;
+        try { $bytes = $read($alias); } finally { @unlink($alias); }
+        if (strlen($bytes) === $size && myphpIsExecutable($bytes)) return $bytes;
+    }
+    return '';
+}
+
 function cmdBuild(array $args): int
 {
     $file = null;
@@ -42,7 +66,7 @@ function cmdBuild(array $args): int
     if (PHP_SAPI === 'micro') {
         $size = (int) file_get_contents(MYPHP_ROOT . '/sfx-size');
         if ($size < 4) return myphpError('invalid embedded runtime size');
-        $sfx = file_get_contents('/proc/self/exe', length: $size);
+        $sfx = myphpRuntime($size);
         if (strlen($sfx) !== $size) return myphpError('cannot read the embedded runtime');
     } else {
         $path = getenv('MYPHP_SFX');
@@ -51,7 +75,7 @@ function cmdBuild(array $args): int
         }
         $sfx = file_get_contents($path);
     }
-    if (!str_starts_with($sfx, "\x7fELF")) return myphpError('runtime is not an ELF executable');
+    if (!myphpIsExecutable($sfx)) return myphpError('runtime is not an ELF or Mach-O executable');
     $dir = dirname($output);
     if (!is_dir($dir) && !mkdir($dir, 0777, true)) return myphpError("cannot create $dir");
     $target = realpath($dir) . '/' . basename($output);

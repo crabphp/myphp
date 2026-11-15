@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace PhpUi;
 
-/** Linux desktop services, advanced by the app's main loop. */
+/** Desktop services (Linux portals with fallbacks; macOS system tools), advanced by the app's main loop. */
 final class Desktop
 {
     public static string $appName = 'PHP UI';
@@ -40,10 +40,15 @@ final class Desktop
         return getenv('PHPUI_DESKTOP') ?: 'auto';
     }
 
+    private static function mac(): bool
+    {
+        return PHP_OS_FAMILY === 'Darwin';
+    }
+
     private static function connection(): ?DBus
     {
         self::init();
-        if (self::mode() === 'fallback') return null;
+        if (self::mode() === 'fallback' || self::mac()) return null;
         return self::$bus = DBus::session();
     }
 
@@ -182,6 +187,15 @@ final class Desktop
             unset(self::$notifications[$id]);
             return;
         }
+        if (self::mac()) {
+            // Notification Center via osascript: no icon, no click actions.
+            $script = 'on run argv' . "\n" . 'display notification (item 2 of argv) with title (item 1 of argv)' . "\n" . 'end run';
+            unset(self::$notifications[$id]);
+            self::spawn(['osascript', '-e', $script, $title, $body], function ($code) {
+                if ($code !== 0) self::$error = "osascript exited with code $code";
+            });
+            return;
+        }
         $argv = ['notify-send', '--app-name=' . self::$appName];
         if ($icon !== '') $argv[] = '--icon=' . $icon;
         if (self::$notifications[$id]['click']) {
@@ -245,6 +259,13 @@ final class Desktop
         if (self::$themeListener !== null) self::$themeBus?->off(self::$themeListener);
         self::$themeListener = null;
         if (self::mode() === 'portal') { self::$error ??= 'No desktop portal available'; return; }
+        if (self::mac()) {
+            // Read once at start; "defaults" exits 1 when the key is missing, which means light.
+            self::spawn(['defaults', 'read', '-g', 'AppleInterfaceStyle'], function ($code, $stdout) use ($generation) {
+                if ($generation === self::$themeGeneration) self::applyScheme($code === 0 && trim($stdout) === 'Dark' ? 1 : 2);
+            });
+            return;
+        }
         self::spawn(['gsettings', 'get', 'org.gnome.desktop.interface', 'color-scheme'], function ($code, $stdout) use ($generation) {
             if ($generation !== self::$themeGeneration) return;
             if ($code !== 0) { self::$error = "gsettings exited with code $code"; return; }
@@ -315,7 +336,7 @@ final class Desktop
             return false;
         }
         if (file_exists($target)) $target = realpath($target);
-        $argv = self::has('xdg-open') ? ['xdg-open', $target] : ['gio', 'open', $target];
+        $argv = self::mac() ? ['open', $target] : (self::has('xdg-open') ? ['xdg-open', $target] : ['gio', 'open', $target]);
         if (self::spawn($argv, function ($code) use ($done) {
             if ($code !== 0) self::$error = "Could not open target (exit $code)";
             self::deliver($done, $code === 0);
@@ -417,6 +438,7 @@ final class Desktop
         }
         $d = self::$dialog;
         self::$dialog['path'] = null;
+        if (self::mac()) { self::macFileDialog($d); return; }
         $argv = ['zenity', '--file-selection', '--title=' . $d['title']];
         if ($d['multiple']) array_push($argv, '--multiple', "--separator=\n");
         if ($d['directory']) $argv[] = '--directory';
@@ -432,6 +454,43 @@ final class Desktop
             self::finishFile($code === 0 && $out !== '' ? explode("\n", $out) : null);
         })) {
             self::$error = 'No file dialog available: install xdg-desktop-portal or zenity';
+            self::finishFile(null);
+        }
+    }
+
+    /** Values travel as argv items, never inside the script text. */
+    private static function macFileDialog(array $d): void
+    {
+        $verb = $d['directory'] ? 'choose folder' : ($d['method'] === 'SaveFile' ? 'choose file name' : 'choose file');
+        $script = "set r to $verb with prompt (item 1 of argv)";
+        $argv = [$d['title']];
+        if ($d['folder'] !== null && is_dir($d['folder'])) {
+            $argv[] = $d['folder'];
+            $script .= ' default location (POSIX file (item ' . count($argv) . ' of argv))';
+        }
+        if ($verb === 'choose file name' && ($d['name'] ?? '') !== '') {
+            $argv[] = $d['name'];
+            $script .= ' default name (item ' . count($argv) . ' of argv)';
+        }
+        if ($verb === 'choose file') {
+            $types = [];
+            foreach ($d['filters'] as $extensions) foreach ($extensions as $ext) $types[] = ltrim($ext, '.');
+            if ($types && !in_array('*', $types, true)) {
+                $first = count($argv) + 1;
+                array_push($argv, ...$types);
+                $script .= " of type (items $first thru -1 of argv)";
+            }
+            if ($d['multiple']) $script .= ' with multiple selections allowed';
+        }
+        $script = "on run argv\n$script\nif class of r is not list then set r to {r}\nset out to \"\"\n"
+            . "repeat with f in r\nset out to out & POSIX path of f & linefeed\nend repeat\nreturn out\nend run";
+        if (!self::spawn(['osascript', '-e', $script, ...$argv], function ($code, $stdout) {
+            // Exit 1 is the user's Cancel (error -128).
+            if ($code !== 0 && $code !== 1) self::$error = "osascript exited with code $code";
+            $out = rtrim($stdout, "\r\n");
+            self::finishFile($code === 0 && $out !== '' ? explode("\n", $out) : null);
+        })) {
+            self::$error = 'No file dialog available: osascript not found';
             self::finishFile(null);
         }
     }

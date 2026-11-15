@@ -1,4 +1,4 @@
-# Desktop (Linux)
+# Desktop
 
 ```sh
 myphp demo desktop
@@ -57,14 +57,14 @@ Theme::set('dark');   // mode only, preserves source
 Theme::toggle();      // changes mode and switches source to explicit light/dark
 ```
 
-| API | First choice | Fallback |
-|---|---|---|
-| File chooser | Desktop portal FileChooser | `zenity` |
-| Notifications | `org.freedesktop.Notifications` | `notify-send` (0.8+ for actions) |
-| System theme | Portal Settings read + signals | `gsettings get` (one read, no live updates) |
-| Open URL/file | `xdg-open` | `gio open` |
-| Clipboard/drop | GLFW | — |
-| Message/confirm | In-app components | — |
+| API | Linux first choice | Linux fallback | macOS (experimental) |
+|---|---|---|---|
+| File chooser | Desktop portal FileChooser | `zenity` | `osascript` (`choose file`) |
+| Notifications | `org.freedesktop.Notifications` | `notify-send` (0.8+ for actions) | `osascript`; no icon, click or actions |
+| System theme | Portal Settings read + signals | `gsettings get` (one read, no live updates) | `defaults read` (one read, no live updates) |
+| Open URL/file | `xdg-open` | `gio open` | `open` |
+| Clipboard/drop | GLFW | — | GLFW |
+| Message/confirm | In-app components | — | In-app components |
 
 `PHPUI_DESKTOP=auto` is the default (bus first, then tools). `portal` disables the
 file/notification/theme tool fallbacks; `fallback` skips D-Bus. D-Bus needs `posix`
@@ -76,14 +76,16 @@ Known limits:
 - File dialogs are not tied to the app window: PHP-GLFW does not expose its X11
   window ID. A chooser may appear behind the app. Zenity multiple results cannot
   represent filenames containing newlines.
-- Inputs support Ctrl+V (line breaks become spaces), Ctrl+C and Ctrl+X. With no
+- Inputs support Ctrl+V (line breaks become spaces), Ctrl+C and Ctrl+X (Cmd on
+  macOS). With no
   selection yet, copy and cut take the **whole input**. On X11 the clipboard is
   owned by the app and disappears on quit unless a clipboard manager saves it.
 - System-theme fallback has no live updates. No-preference preserves the current
   theme. Toggling the theme in the app stops following the system.
 - `open()` accepts `http:`, `https:`, `mailto:`, `file:` and existing local paths;
   it rejects other schemes and targets starting with `-`.
-- This batch targets Linux and one window. macOS/Windows desktop backends, tray,
+- One window. On macOS, notifications are shown as coming from Script Editor and
+  file-type filters are a flat list of extensions. Windows desktop backends, tray,
   menus, global shortcuts, single instance and deep links are not implemented.
 
 Tests: `tests/run.sh` uses deterministic private-bus fakes;

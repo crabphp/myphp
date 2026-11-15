@@ -363,7 +363,7 @@ final class App
         $input = $this->focused();
         $used = false;
         if ($input) {
-            if (($mods & GLFW_MOD_CONTROL) && in_array($key, [GLFW_KEY_V, GLFW_KEY_C, GLFW_KEY_X], true)) {
+            if (($mods & (PHP_OS_FAMILY === 'Darwin' ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL)) && in_array($key, [GLFW_KEY_V, GLFW_KEY_C, GLFW_KEY_X], true)) {
                 if ($key === GLFW_KEY_V) $this->type(preg_replace('/\r\n|[\r\n]/', ' ', Desktop::clipboard()));
                 else {
                     Desktop::setClipboard($input->text);

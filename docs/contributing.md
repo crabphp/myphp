@@ -33,9 +33,9 @@ does not need GLFW. Do not commit `vendor/` or the root `composer.lock`.
 ## Build the runtime
 
 Use [static-php-cli](https://github.com/crazywhalecc/static-php-cli), targeting glibc
-(glfw cannot be fully static). In its checkout, set `craft.yml`: PHP 8.4, extensions
-`glfw,opcache,phar,mbstring,ctype,tokenizer,zlib,posix,pcntl`, SAPIs `cli` and `micro`.
-On Fedora, supply the X11 library paths:
+(glfw cannot be fully static). In its checkout, use `build/craft.yml` (PHP 8.4,
+extensions `glfw,opcache,phar,mbstring,ctype,tokenizer,zlib,posix,pcntl`, SAPIs `cli`
+and `micro`). On Fedora, supply the X11 library paths:
 
 ```sh
 mkdir -p x11libs
@@ -50,3 +50,11 @@ reuse the clean runtime prefix, with no INI block or OPcache/JIT (micro crashes 
 
 Fonts: Geist and Geist Mono (OFL, `assets/fonts`). Icons: Lucide (ISC, `assets/icons`).
 
+## macOS binaries
+
+`.github/workflows/macos.yml` builds `myphp-macos-arm64` and `myphp-macos-x86_64` on
+GitHub runners with the same recipe, smoke-tests `init`, `build` and `install.sh`,
+and attaches the binaries to a release when it is published (`build/release.sh` only
+uploads the Linux binary). Run it by hand from the Actions tab to get test binaries
+as artifacts. Nobody has run these on a real Mac yet: `src/Desktop.php` uses
+`osascript`, `defaults` and `open` there instead of D-Bus.

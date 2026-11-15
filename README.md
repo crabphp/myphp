@@ -9,7 +9,7 @@ webview, no Electron. Apps build into a single file you can send to anyone.
 
 ## Install
 
-Linux x86-64 with X11 or XWayland and OpenGL:
+Linux x86-64 (X11 or XWayland, OpenGL), or macOS on Apple Silicon or Intel (experimental):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/crabphp/myphp/main/install.sh | sh
@@ -89,7 +89,8 @@ myphp demo todo
 
 ## Status
 
-Early. Linux only for now; macOS and Windows later. Not yet: tray icons, menus,
+Early. Linux is the main platform; macOS is experimental (built by CI, not yet
+tested on real hardware); Windows later. Not yet: tray icons, menus,
 multiple windows, global shortcuts.
 
 ## License

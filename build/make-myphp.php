@@ -7,7 +7,9 @@ $dir = getenv('MYPHP_BUILD_DIR') ?: __DIR__;
 if (!is_dir($dir) && !mkdir($dir, 0777, true)) throw new RuntimeException("Cannot create $dir");
 $sfx = $argv[1] ?? '';
 $bytes = file_get_contents($sfx);
-if (!str_starts_with($bytes, "\x7fELF")) throw new RuntimeException('micro.sfx is not an ELF executable');
+if (!in_array(substr((string) $bytes, 0, 4), ["\x7fELF", "\xcf\xfa\xed\xfe", "\xca\xfe\xba\xbe"], true)) {
+    throw new RuntimeException('micro.sfx is not an ELF or Mach-O executable');
+}
 $out = "$dir/myphp.phar";
 if (is_file($out)) unlink($out);
 $phar = new Phar($out);

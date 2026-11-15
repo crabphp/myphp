@@ -1,0 +1,6 @@
+# static-php-cli recipe for the myphp runtime (see docs/contributing.md).
+php-version: 8.4
+extensions: glfw,opcache,phar,mbstring,ctype,tokenizer,zlib,posix,pcntl
+sapi:
+  - cli
+  - micro

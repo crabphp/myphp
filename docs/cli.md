@@ -113,7 +113,8 @@ folders for screenshots must already exist.
 - `2`: wrong usage, such as an unknown command or missing init name.
 
 Apps can print their own output or explicitly exit with their own code.
-Linux x86-64 only; glibc 2.17+, X11/XWayland, and OpenGL required. No hot reload,
-Composer dependency packing, macOS/Windows binaries, or cross-compilation.
+Linux x86-64 (glibc 2.17+, X11/XWayland, OpenGL) and experimental macOS (arm64,
+x86-64). No hot reload, Composer dependency packing, Windows binaries, or
+cross-compilation: `myphp build` targets the platform it runs on.
 Source CLI runs use `php84 bin/myphp`; source builds also need `MYPHP_SFX` and
 `-d phar.readonly=0`. The standalone binary needs neither.

@@ -5,6 +5,8 @@ toolkit: you do not need to install PHP.
 
 Requires **x86-64 Linux, glibc 2.17+, X11 or XWayland, and OpenGL**. Desktop
 integration uses your session bus and optional tools; see [Desktop](desktop.md).
+macOS (Apple Silicon and Intel) is experimental. A build runs on the platform that
+made it: build Linux apps on Linux and macOS apps on macOS.
 
 ## Install
 

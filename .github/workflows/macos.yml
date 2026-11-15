@@ -1,0 +1,95 @@
+name: macOS binaries
+
+# Builds myphp for macOS (the Linux binary is built locally by build/release.sh).
+# On a published release the binaries are attached to it.
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  push:
+    paths:
+      - .github/workflows/macos.yml
+      - build/craft.yml
+      - build/make-myphp.*
+      - cli/**
+      - install.sh
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-15, arch: arm64, spc: aarch64 }
+          - { runner: macos-15-intel, arch: x86_64, spc: x86_64 }
+    runs-on: ${{ matrix.runner }}
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ASSET: myphp-macos-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore the PHP runtime
+        id: runtime
+        uses: actions/cache@v4
+        with:
+          path: spc/buildroot/bin
+          key: runtime-macos-${{ matrix.arch }}-${{ hashFiles('build/craft.yml') }}
+
+      - name: Build the PHP runtime with static-php-cli
+        if: steps.runtime.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p spc && cd spc
+          cp ../build/craft.yml .
+          curl -fsSL -o spc https://dl.static-php.dev/static-php-cli/spc-bin/nightly/spc-macos-${{ matrix.spc }}
+          chmod +x spc
+          ./spc doctor --auto-fix
+          ./spc craft
+
+      - name: Build myphp
+        run: |
+          VERSION=dev
+          if [ "${{ github.event_name }}" = release ]; then VERSION=${{ github.event.release.tag_name }}; VERSION=${VERSION#v}; fi
+          PHP=$PWD/spc/buildroot/bin/php MYPHP_VERSION=$VERSION build/make-myphp.sh spc/buildroot/bin/micro.sfx
+          file build/myphp
+          build/myphp version
+
+      - name: Smoke test (init, build, install)
+        run: |
+          WORK=$(mktemp -d)
+          cd "$WORK"
+          "$GITHUB_WORKSPACE/build/myphp" init smoke
+          cd smoke
+          "$GITHUB_WORKSPACE/build/myphp" build
+          file build/smoke
+          MYPHP_DOWNLOAD_URL=file://$GITHUB_WORKSPACE/build/myphp MYPHP_INSTALL_DIR=$WORK/bin sh "$GITHUB_WORKSPACE/install.sh"
+          echo "SMOKE=$WORK/smoke" >> "$GITHUB_ENV"
+
+      # Hosted runners may not offer an OpenGL 3.3 context, so a failure here is reported but not fatal.
+      - name: Smoke test (open a window)
+        continue-on-error: true
+        run: |
+          mkdir -p shots
+          PHPUI_SCREENSHOT=$PWD/shots/built-app.png "$SMOKE/build/smoke"
+          PHPUI_SCREENSHOT=$PWD/shots/demo.png build/myphp demo dashboard
+          ls -l shots
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp build/myphp dist/$ASSET
+          (cd dist && shasum -a 256 $ASSET > $ASSET.sha256)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET }}
+          path: |
+            dist/
+            shots/
+
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/$ASSET dist/$ASSET.sha256 --clobber
