@@ -27,6 +27,7 @@ final class App
     private string $cursor = 'default';
     private array $cursors = [];
     private bool $dirty = true;
+    private bool $stale = true;
     private ?\Closure $onKey = null;
 
     public function __construct(string $title, int $width, int $height, callable $render)
@@ -67,7 +68,7 @@ final class App
     /** Ask for a new frame, e.g. after state changed outside an event handler. */
     public function invalidate(): void
     {
-        $this->dirty = true;
+        $this->stale = $this->dirty = true;
     }
 
     /** Handle keys no input took, e.g. Escape to close a dialog. */
@@ -137,6 +138,7 @@ final class App
         $this->tree = ($this->render)($this);
         $this->layout->compute($this->tree, $w, $h);
         $this->markState($this->tree, '0', null);
+        $this->stale = false;
         $this->updateCursor();
 
         glViewport(0, 0, (int) ($w * $ratio), (int) ($h * $ratio));
@@ -157,11 +159,15 @@ final class App
 
     public function press(float $x, float $y): void
     {
+        $this->fresh();
         $this->pointer($x, $y);
         $top = $this->top($x, $y);
         // A press on the menu's anchor (its parent) counts as inside, so the anchor can toggle it.
         foreach ($this->order as [$e]) {
-            if ($e->onClickOutside && !$this->contains($e->parent ?? $e, $top)) ($e->onClickOutside)();
+            if ($e->onClickOutside && !$this->contains($e->parent ?? $e, $top)) {
+                ($e->onClickOutside)();
+                $this->stale = true;
+            }
         }
         $this->pressed = $this->handler($top, fn (Element $e) => $e->onClick !== null);
         $input = $this->handler($top, fn (Element $e) => $e->kind === 'input');
@@ -171,8 +177,12 @@ final class App
 
     public function release(float $x, float $y): void
     {
+        $this->fresh();
         $target = $this->handler($this->top($x, $y), fn (Element $e) => $e->onClick !== null);
-        if ($target && $this->pressed && $target->id === $this->pressed->id) ($target->onClick)($x, $y, $target);
+        if ($target && $this->pressed && $target->id === $this->pressed->id) {
+            ($target->onClick)($x, $y, $target);
+            $this->stale = true;
+        }
         $this->pressed = null;
         $this->dirty = true;
     }
@@ -182,7 +192,7 @@ final class App
     {
         $this->press($x, $y);
         $this->release($x, $y);
-        $this->relayout();
+        $this->fresh();
     }
 
     /** Click the middle of an element, by id. */
@@ -201,22 +211,28 @@ final class App
 
     public function wheel(float $dy): void
     {
+        $this->fresh();
         $box = $this->handler($this->top($this->mouseX, $this->mouseY), fn (Element $e) => !empty($e->style['scroll']));
         if (!$box) return;
         $this->layout->scroll[$box->id] = ($this->layout->scroll[$box->id] ?? 0) - $dy * 48;
-        $this->dirty = true;
+        $this->stale = $this->dirty = true;
     }
 
     /** Type text into the focused input. */
     public function type(string $text): void
     {
+        $this->fresh();
         $input = $this->focused();
-        if ($input?->onInput) ($input->onInput)($input->text . $text);
+        if ($input?->onInput) {
+            ($input->onInput)($input->text . $text);
+            $this->stale = true;
+        }
         $this->dirty = true;
     }
 
     public function key(int $key): void
     {
+        $this->fresh();
         $input = $this->focused();
         if ($input) {
             match ($key) {
@@ -228,12 +244,13 @@ final class App
         } elseif ($this->onKey) {
             ($this->onKey)($key);
         }
-        $this->dirty = true;
+        $this->stale = $this->dirty = true;
     }
 
     /** Find an element by id in the last frame, e.g. to click it in a test. */
     public function find(string $id, ?Element $from = null): ?Element
     {
+        $this->fresh();
         $from ??= $this->tree;
         if (!$from) return null;
         if ($from->id === $id) return $from;
@@ -243,6 +260,11 @@ final class App
 
     // Internals -----------------------------------------------------------
 
+    private function fresh(): void
+    {
+        if ($this->stale) $this->relayout();
+    }
+
     /** Rebuild and lay out without drawing, so the next hit-test sees new state. */
     private function relayout(): void
     {
@@ -251,6 +273,7 @@ final class App
         $this->tree = ($this->render)($this);
         $this->layout->compute($this->tree, ...$size);
         $this->markState($this->tree, '0', null);
+        $this->stale = false;
     }
 
     /** Give every element an id (its path, unless set) and a parent; then list paint order and mark hover. */
@@ -339,6 +362,7 @@ final class App
 
     private function focused(): ?Element
     {
+        $this->fresh();
         return $this->focusId === null ? null : $this->find($this->focusId);
     }
 

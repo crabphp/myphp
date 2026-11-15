@@ -21,3 +21,18 @@ require __DIR__ . '/../examples/dashboard.php';
 $app->frame();
 $app->clickId('quick-create');
 same(true, $state->dialog, 'dashboard quick-create opens dialog');
+$app->clickId('draft-header');
+$app->type('a');
+$app->type('b');
+$app->type('c');
+same('abc', $state->draft['header'], 'typing between frames preserves every character');
+$app->key(GLFW_KEY_BACKSPACE);
+$app->key(GLFW_KEY_BACKSPACE);
+same('a', $state->draft['header'], 'repeated backspace sees the latest text');
+
+$counter = (object) ['value' => 0];
+$counterApp = new PhpUi\App('Counter', 200, 100, fn () => PhpUi\col()->full()->child(
+    PhpUi\button((string) $counter->value, fn () => $counter->value++, 'default')->id('count')));
+$counterApp->clickId('count');
+$counterApp->clickId('count');
+same(2, $counter->value, 'two clicks without a frame both run');
