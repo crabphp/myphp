@@ -67,8 +67,8 @@ final class App
         });
         glfwSetScrollCallback($this->window, fn (float $dx, float $dy) => $this->wheel($dy));
         glfwSetCharCallback($this->window, fn (int $codepoint) => $this->type(mb_chr($codepoint, 'UTF-8')));
-        glfwSetKeyCallback($this->window, function (int $key, int $scancode, int $action) {
-            if ($action !== GLFW_RELEASE) $this->key($key);
+        glfwSetKeyCallback($this->window, function (int $key, int $scancode, int $action, int $mods) {
+            if ($action !== GLFW_RELEASE) $this->key($key, $mods);
         });
         glfwSetWindowRefreshCallback($this->window, fn () => $this->dirty = true);
     }
@@ -288,20 +288,23 @@ final class App
         $this->dirty = true;
     }
 
-    public function key(int $key): void
+    public function key(int $key, int $mods = 0): void
     {
         $this->fresh();
         $input = $this->focused();
+        $used = false;
         if ($input) {
-            match ($key) {
-                GLFW_KEY_BACKSPACE => $input->onInput && ($input->onInput)(mb_substr($input->text, 0, -1)),
-                GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER => $input->onSubmit && ($input->onSubmit)($input->text),
-                GLFW_KEY_ESCAPE => $this->focusId = null,
-                default => null,
-            };
-        } elseif ($this->onKey) {
-            ($this->onKey)($key);
+            if ($key === GLFW_KEY_BACKSPACE && $input->onInput) {
+                ($input->onInput)(mb_substr($input->text, 0, -1));
+                $used = true;
+            } elseif (in_array($key, [GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER], true) && $input->onSubmit) {
+                ($input->onSubmit)($input->text);
+                $used = true;
+            } elseif ($key === GLFW_KEY_ESCAPE) {
+                $this->focusId = null;
+            }
         }
+        if (!$used && $this->onKey) ($this->onKey)($key, $mods);
         $this->stale = $this->dirty = true;
     }
 

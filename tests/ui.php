@@ -29,6 +29,15 @@ same('abc', $state->draft['header'], 'typing between frames preserves every char
 $app->key(GLFW_KEY_BACKSPACE);
 $app->key(GLFW_KEY_BACKSPACE);
 same('a', $state->draft['header'], 'repeated backspace sees the latest text');
+$app->key(GLFW_KEY_ESCAPE);
+same(false, $state->dialog, 'Escape closes the dashboard dialog with its input focused');
+$keys = [];
+$app->onKey(function (int $key, int $mods) use (&$keys) { $keys[] = [$key, $mods]; });
+$app->key(GLFW_KEY_V, GLFW_MOD_CONTROL);
+same([[GLFW_KEY_V, GLFW_MOD_CONTROL]], $keys, 'unhandled keys preserve modifiers');
+$app->clickId('search');
+$app->key(GLFW_KEY_F1, GLFW_MOD_SHIFT);
+same([GLFW_KEY_F1, GLFW_MOD_SHIFT], end($keys), 'input forwards keys it does not use');
 
 $counter = (object) ['value' => 0];
 $counterApp = new PhpUi\App('Counter', 200, 100, fn () => PhpUi\col()->full()->child(

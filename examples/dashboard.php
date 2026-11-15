@@ -274,7 +274,7 @@ $render = function () use ($state, $sidebar, $siteHeader, $statCard, $chartCard,
 };
 
 $app = new App('Acme Inc. — Dashboard', 1440, 900, $render);
-$app->onKey(function (int $key) use ($state) {
+$app->onKey(function (int $key, int $mods) use ($state) {
     if ($key === GLFW_KEY_ESCAPE) [$state->dialog, $state->menu] = [false, null];
 });
 
