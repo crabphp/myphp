@@ -84,6 +84,8 @@ final class DBus
     }
 
     public function pending(): int { return count($this->calls); }
+    /** @internal Lets services abandon signal-only requests when the bus goes away. */
+    public function connected(): bool { return is_resource($this->socket); }
 
     public function poll(): bool
     {

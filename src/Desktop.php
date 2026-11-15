@@ -12,6 +12,11 @@ final class Desktop
     private static ?DBus $bus = null;
     private static array $jobs = [], $programs = [], $deferred = [];
     private static bool $registered = false;
+    private const PORTAL = 'org.freedesktop.portal.Desktop';
+    private const PORTAL_PATH = '/org/freedesktop/portal/desktop';
+    private static ?array $dialog = null;
+    private static int $token = 0;
+    private static ?DBus $chooserBus = null;
 
     public static function lastError(): ?string { return self::$error; }
 
@@ -76,6 +81,11 @@ final class Desktop
         $ran = false;
         try { if (self::$bus) $ran = self::$bus->poll(); }
         catch (\Throwable $e) { self::$error = $e->getMessage(); }
+        if (self::$bus && !self::$bus->connected() && self::$dialog && self::$dialog['path'] !== null) {
+            self::$error = 'disconnected';
+            self::finishFile(null);
+            $ran = true;
+        }
         foreach (array_keys(self::$jobs) as $id) {
             $job = &self::$jobs[$id];
             if (is_resource($job['pipe'])) $job['out'] .= stream_get_contents($job['pipe'], 65536);
@@ -99,7 +109,96 @@ final class Desktop
 
     public static function waitHint(): float
     {
-        return self::$jobs || self::$deferred || self::$bus?->pending() ? 1 / 60 : 0.5;
+        return self::$dialog || self::$jobs || self::$deferred || self::$bus?->pending() ? 1 / 60 : 0.5;
+    }
+
+    public static function openFile(callable $done, string $title = 'Open', array $filters = [], bool $multiple = false, ?string $folder = null): void
+    {
+        self::choose($done, 'OpenFile', $title, $filters, $multiple, false, $folder, null);
+    }
+
+    public static function saveFile(callable $done, string $title = 'Save', ?string $name = null, ?string $folder = null, array $filters = []): void
+    {
+        self::choose(fn ($paths) => $done($paths[0] ?? null), 'SaveFile', $title, $filters, false, false, $folder, $name);
+    }
+
+    public static function pickFolder(callable $done, string $title = 'Select Folder', ?string $folder = null): void
+    {
+        self::choose(fn ($paths) => $done($paths[0] ?? null), 'OpenFile', $title, [], false, true, $folder, null);
+    }
+
+    private static function choose(callable $done, string $method, string $title, array $filters, bool $multiple, bool $directory, ?string $folder, ?string $name): void
+    {
+        if (self::$dialog) {
+            self::$error = 'A file dialog is already open';
+            self::defer(fn () => self::deliver($done, null));
+            return;
+        }
+        self::$error = null;
+        $token = 'phpui' . ++self::$token;
+        $options = ['handle_token' => ['s', $token], 'multiple' => ['b', $multiple]];
+        if ($directory) $options['directory'] = ['b', true];
+        if ($folder !== null) $options['current_folder'] = ['ay', array_values(unpack('C*', $folder . "\0"))];
+        if ($name !== null) $options['current_name'] = ['s', $name];
+        if ($filters) {
+            $list = [];
+            foreach ($filters as $label => $extensions) $list[] = [$label, array_map(fn ($ext) => [0, $ext === '*' ? '*' : '*.' . ltrim($ext, '.')], $extensions)];
+            $options['filters'] = ['a(sa(us))', $list];
+        }
+        self::$dialog = compact('done', 'method', 'title', 'options', 'multiple', 'directory', 'folder', 'name', 'filters', 'token') + ['path' => null, 'early' => [], 'replied' => false];
+        $bus = self::connection();
+        if (!$bus) { self::defer(self::fileFallback(...)); return; }
+        if (self::$chooserBus !== $bus) {
+            self::$chooserBus = $bus;
+            $bus->on('org.freedesktop.portal.Request', 'Response', function ($args, $path) {
+                if (!self::$dialog) return;
+                if ($path === self::$dialog['path']) self::fileResponse($args);
+                elseif (!self::$dialog['replied']) self::$dialog['early'][$path] = $args;
+            });
+        }
+        self::$dialog['path'] = self::PORTAL_PATH . '/request/' . str_replace('.', '_', ltrim($bus->name, ':')) . '/' . $token;
+        $send = function () use ($bus, $token) {
+            if ((self::$dialog['token'] ?? null) !== $token) return;
+            $d = self::$dialog;
+            $bus->call(self::PORTAL, self::PORTAL_PATH, 'org.freedesktop.portal.FileChooser', $d['method'], 'ssa{sv}', ['', $d['title'], $d['options']], function ($result, $error) use ($token) {
+                if ((self::$dialog['token'] ?? null) !== $token) return;
+                if ($error) { self::$error = $error; self::fileFallback(); return; }
+                self::$dialog['path'] = $result[0];
+                self::$dialog['replied'] = true;
+                if (isset(self::$dialog['early'][$result[0]])) self::fileResponse(self::$dialog['early'][$result[0]]);
+                if (self::$dialog) self::$dialog['early'] = [];
+            });
+        };
+        if (!$directory) { $send(); return; }
+        $bus->call(self::PORTAL, self::PORTAL_PATH, 'org.freedesktop.DBus.Properties', 'Get', 'ss', ['org.freedesktop.portal.FileChooser', 'version'], function ($result, $error) use ($send, $token) {
+            if ((self::$dialog['token'] ?? null) !== $token) return;
+            if ($error || ($result[0][1] ?? 0) < 3) { self::$error = $error ?? 'Folder selection needs FileChooser version 3'; self::fileFallback(); }
+            else $send();
+        });
+    }
+
+    private static function fileResponse(array $args): void
+    {
+        if (($args[0] ?? 2) !== 0) { self::finishFile(null); return; }
+        $paths = [];
+        foreach ($args[1]['uris'][1] ?? [] as $uri) {
+            if (parse_url($uri, PHP_URL_SCHEME) !== 'file') { self::$error = 'File dialog returned a non-file URI'; self::finishFile(null); return; }
+            $paths[] = rawurldecode(parse_url($uri, PHP_URL_PATH) ?? '');
+        }
+        self::finishFile($paths ?: null);
+    }
+
+    private static function finishFile(?array $paths): void
+    {
+        $done = self::$dialog['done'] ?? null;
+        self::$dialog = null;
+        self::deliver($done, $paths);
+    }
+
+    private static function fileFallback(): void
+    {
+        self::$error ??= 'No file dialog available: install xdg-desktop-portal or zenity';
+        self::finishFile(null);
     }
 
     public static function shutdown(): void
@@ -115,6 +214,8 @@ final class Desktop
         }
         unset($job);
         self::$deferred = [];
+        self::$dialog = null;
+        self::$chooserBus = null;
         self::$bus?->close();
         self::$bus = null;
     }

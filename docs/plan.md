@@ -406,13 +406,16 @@ Tests:
   (URI decoding). The log line shows the title, `multiple`, the filters and the token.
 - Fake, `cancel`: callback gets `null`. `hold`: after 1 s no callback, the loop turned
   at least 50 times, and a second `openFile` is refused.
-- Fake, `error`: falls back (B4's fake zenity is called).
+- Fake, `error`: exercise fallback when B4 adds fake zenity. B3 alone can only
+  report failure with null; testing the not-yet-implemented fallback here was an
+  ordering mistake.
 - Real-portal smoke: `openFile`; within 3 s there is a method reply with a handle and
   **no** Response (the GTK dialog is up on `:99`); `import -window root` differs from a
   shot taken before; then call `org.freedesktop.portal.Request.Close` on the handle and
   check the root window returns to the first shot.
 
-Accept: tests pass in both modes. The user confirms on his desktop: open with filters,
+Accept: tests pass in both modes. Manual desktop checks are deferred to B11 (this
+machine has no interactive desktop). The user confirms: open with filters,
 multiple, save with a suggested name, pick folder, and cancel each.
 
 ### B4. File dialogs through zenity (fallback)

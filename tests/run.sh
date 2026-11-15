@@ -24,6 +24,8 @@ if ! xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
 fi
 export PHPUI_TEST_TMP=$logs
 export FAKE_LOG="$logs/fake.jsonl"
+export XDG_CONFIG_HOME="$logs/config" XDG_CACHE_HOME="$logs/cache" XDG_DATA_HOME="$logs/data"
+export GSETTINGS_BACKEND=memory GIO_USE_VFS=local GIO_USE_VOLUME_MONITOR=unix
 if (( $# == 0 )); then set -- tests/*.php examples/bench*.php; fi
 export PHPUI_BENCH_RUNS=2 PHPUI_BENCH_SMALL=1
 status=0
@@ -39,6 +41,14 @@ for file in "$@"; do
                 sleep .02
             done
             test -f "$PHPUI_TEST_TMP/ready"
+        elif [[ $PHPUI_TEST_MODE == real-portal ]]; then
+            export GDK_BACKEND=x11 XDG_CURRENT_DESKTOP=gnome
+            export XDG_CONFIG_HOME="$PHPUI_TEST_TMP/config"
+            mkdir -p "$XDG_CONFIG_HOME/xdg-desktop-portal"
+            printf "[preferred]\ndefault=gtk\n" >"$XDG_CONFIG_HOME/xdg-desktop-portal/portals.conf"
+            /usr/libexec/xdg-desktop-portal-gtk >"$PHPUI_TEST_TMP/gtk.log" 2>&1 &
+            /usr/libexec/xdg-desktop-portal >"$PHPUI_TEST_TMP/portal.log" 2>&1 &
+            sleep 3
         fi
         # A pipe also avoids PHP child descriptors reopening a shared log at offset 0.
         if [[ $1 == examples/bench.php ]]; then "$PHP" "$1" 10; else "$PHP" "$1"; fi 2>&1 | tee /dev/null
