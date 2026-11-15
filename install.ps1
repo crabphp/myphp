@@ -35,8 +35,9 @@ try {
 } finally {
     Remove-Item -LiteralPath $temp, $sum -Force -ErrorAction SilentlyContinue
 }
-& (Join-Path $dir 'myphp.exe') version
-if ($LASTEXITCODE -ne 0) { Fail 'the installed binary does not run' }
+$version = & (Join-Path $dir 'myphp.exe') version
+if ($LASTEXITCODE -ne 0 -or "$version" -notmatch '^myphp \S+ \(PHP [0-9.]+\)$') { Fail 'the installed binary does not run' }
+Write-Host $version
 
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if (-not $env:MYPHP_NO_PATH -and (($userPath -split ';') -notcontains $dir)) {
