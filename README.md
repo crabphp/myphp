@@ -178,3 +178,17 @@ Fonts: Geist and Geist Mono (OFL, `assets/fonts`). Icons: Lucide (ISC, `assets/i
 
 General layout-driven text wrapping (fixed-width `paragraph()` is available), text
 selection and cursor movement, IME, accessibility, animation.
+
+## Try the demo
+
+Prebuilt for x86-64 Linux (X11 or XWayland, OpenGL), no PHP needed:
+
+```sh
+git clone git@github.com:crabphp/myphp.git && cd myphp
+demo/desktop                                  # desktop APIs: dialogs, notifications, clipboard, drop, theme
+PHPUI_DESKTOP=fallback demo/desktop           # same, through zenity / notify-send
+PHPUI_EXAMPLE=dashboard demo/myphp-demo       # the shadcn dashboard
+```
+
+What to check is listed in `docs/handover.md`, "Still needs the user's desktop".
+`demo/myphp-demo` is a copy of `build/dashboard`; refresh it after `build/make-binary.sh`.
