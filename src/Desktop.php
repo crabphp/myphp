@@ -112,6 +112,21 @@ final class Desktop
         return self::$dialog || self::$jobs || self::$deferred || self::$bus?->pending() ? 1 / 60 : 0.5;
     }
 
+    public static function clipboard(): string
+    {
+        $app = App::current();
+        if (!$app) return '';
+        try { return glfwGetClipboardString($app->window) ?? ''; }
+        catch (\Throwable) { return ''; }
+    }
+
+    public static function setClipboard(string $text): void
+    {
+        $app = App::current();
+        if (!$app) { self::$error = 'Clipboard needs an App'; return; }
+        glfwSetClipboardString($app->window, $text);
+    }
+
     public static function message(string $title, string $message, array $buttons = ['OK'], ?callable $done = null,
         string $type = 'info', ?int $default = null, ?int $cancel = null, array $destructive = []): void
     {

@@ -520,7 +520,8 @@ Tests (both directions were tried on `:99` and work):
   `Desktop::spawn`** and keep calling `glfwPollEvents()` until it exits: output `y`.
   (A blocking `shell_exec('xsel -b -o')` deadlocks: we are the owner and must answer.)
 - `key(GLFW_KEY_V, GLFW_MOD_CONTROL)` in a focused input inserts the text.
-- `pkill xsel` at the end.
+- Start test xsel with `--nodetach` and stop only its owned PID at the end.
+  A blanket `pkill xsel` would kill unrelated user clipboard owners.
 
 Accept: tests pass.
 

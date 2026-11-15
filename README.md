@@ -46,6 +46,13 @@ Renderer: `PHPUI_RENDERER=quads` (default), `nanovg-fast` or `nanovg`. Compare t
 
 Tests: `tests/run.sh` (or `PHP=/path/to/php-with-glfw tests/run.sh`). The runner uses Xvfb and a private D-Bus session, never the user's session bus.
 
+## Clipboard
+
+`PhpUi\Desktop::clipboard()` reads text; `Desktop::setClipboard($text)` writes it.
+Inputs support Ctrl+V (line breaks become spaces), Ctrl+C and Ctrl+X. There is no
+selection yet: copy and cut take the **whole input**. On X11 the app owns its
+clipboard, so the contents disappear when it quits unless a clipboard manager saves them.
+
 ## One binary
 
 `build/make-binary.sh` makes `build/dashboard` (12 MB): PHP, the glfw extension, the code and the assets in one file. It runs on any x86-64 Linux with glibc 2.17+ that has X11 and an OpenGL driver; no PHP needed.

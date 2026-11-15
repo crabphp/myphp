@@ -333,7 +333,14 @@ final class App
         $input = $this->focused();
         $used = false;
         if ($input) {
-            if ($key === GLFW_KEY_BACKSPACE && $input->onInput) {
+            if (($mods & GLFW_MOD_CONTROL) && in_array($key, [GLFW_KEY_V, GLFW_KEY_C, GLFW_KEY_X], true)) {
+                if ($key === GLFW_KEY_V) $this->type(preg_replace('/\r\n|[\r\n]/', ' ', Desktop::clipboard()));
+                else {
+                    Desktop::setClipboard($input->text);
+                    if ($key === GLFW_KEY_X && $input->onInput) ($input->onInput)('');
+                }
+                $used = true;
+            } elseif ($key === GLFW_KEY_BACKSPACE && $input->onInput) {
                 ($input->onInput)(mb_substr($input->text, 0, -1));
                 $used = true;
             } elseif (in_array($key, [GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER], true) && $input->onSubmit) {
