@@ -82,10 +82,9 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p shots mesa
-          gh release download --repo pal1000/mesa-dist-win --pattern '*release-msvc.7z' --dir mesa
-          7z x -omesa/out mesa/*.7z > /dev/null
-          MESA=$(dirname "$(find mesa/out -ipath '*x64*' -name opengl32.dll | head -n 1)")
-          for dir in build "$SMOKE/build"; do cp "$MESA"/*.dll "$dir/"; done
+          gh release download --repo pal1000/mesa-dist-win --pattern '*release-mingw.7z' --dir mesa
+          7z x -omesa/out mesa/*.7z x64/opengl32.dll x64/libgallium_wgl.dll > /dev/null
+          for dir in build "$SMOKE/build"; do cp mesa/out/x64/*.dll "$dir/"; done
           PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/built-app.png") "$SMOKE/build/smoke.exe"
           PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/demo.png") build/myphp.exe demo dashboard
           ls -l shots
