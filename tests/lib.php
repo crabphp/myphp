@@ -33,6 +33,13 @@ function fakeSet(string $key, string $value): void
     $bus->call('org.myphp.Test', '/org/myphp/Test', 'org.myphp.Test', 'Set', 'ss', [$key, $value], function ($result, $error) use (&$done) { $done = true; same(null, $error, 'configure fake'); });
     check(until(function () use (&$done) { return $done; }, poll: $bus->poll(...)), 'fake configured');
 }
+function pixel(string $file, int $x, int $y): string
+{
+    $process = proc_open(['magick', $file, '-format', "%[hex:p{{$x},{$y}}]", 'info:'], [1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
+    $value = stream_get_contents($pipes[1]); fclose($pipes[1]);
+    if (proc_close($process) !== 0) throw new RuntimeException('Pixel probe failed');
+    return '#' . strtolower(substr($value, 0, 6));
+}
 function fakeCalls(string $method): array
 {
     return array_values(array_filter(array_map(fn ($line) => json_decode($line, true), file(getenv('FAKE_LOG'), FILE_IGNORE_NEW_LINES) ?: []), fn ($call) => ($call['method'] ?? '') === $method));

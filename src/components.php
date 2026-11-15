@@ -252,6 +252,25 @@ function dialog(string $title, string $description, Element $body, Element $foot
             ->child($footer->justifyEnd()));
 }
 
+/** A pure message overlay; callbacks and queue ownership belong to the caller. */
+function messageBox(string $title, string $message, array $buttons, callable $onButton, string $type = 'info', int $default = 0, array $destructive = []): Element
+{
+    $ico = match ($type) { 'warning', 'error' => 'circle-alert', 'question' => 'circle-help', default => 'info' };
+    $footer = row()->gap(8)->justifyEnd();
+    foreach ($buttons as $i => $label) {
+        $variant = in_array($i, $destructive, true) ? 'destructive' : ($i === $default ? 'default' : 'outline');
+        $footer->child(button($label, fn () => $onButton($i), $variant)->id("message-button-$i"));
+    }
+    $box = div()->absolute()->inset(0)->bg(t('overlay'))->center()->stopClicks()->id('message-overlay')
+        ->child(col()->w(448)->gap(16)->p(24)->rounded(10)->bg(t('background'))->textColor(t('foreground'))
+            ->border(1, t('border'))->shadow('lg')->stopClicks()->id('message-panel')
+            ->child(row()->itemsCenter()->gap(10)->child(icon($ico, 20))->child(text($title)->textSize(18)->semibold()))
+            ->child(paragraph($message, 400)->textColor(t('muted-foreground'))->id('message-text'))
+            ->child($footer));
+    $box->style['modalDefault'] = $default;
+    return $box;
+}
+
 /** A tooltip shown while the pointer is over the parent: bg-foreground, text-xs. */
 function tooltip(string $text, string $side = 'bottom'): Element
 {

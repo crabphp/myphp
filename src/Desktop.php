@@ -112,6 +112,42 @@ final class Desktop
         return self::$dialog || self::$jobs || self::$deferred || self::$bus?->pending() ? 1 / 60 : 0.5;
     }
 
+    public static function message(string $title, string $message, array $buttons = ['OK'], ?callable $done = null,
+        string $type = 'info', ?int $default = null, ?int $cancel = null, array $destructive = []): void
+    {
+        $app = App::current();
+        if (!$app || !$buttons) {
+            self::$error = $app ? 'Message needs at least one button' : 'Message needs an App';
+            self::defer(fn () => self::deliver($done, null));
+            return;
+        }
+        $buttons = array_values($buttons);
+        $default ??= 0;
+        if ($cancel === null) {
+            $cancel = 0;
+            foreach ($buttons as $i => $label) if (in_array(strtolower($label), ['cancel', 'no'], true)) { $cancel = $i; break; }
+        }
+        if (!isset($buttons[$default], $buttons[$cancel])) throw new \InvalidArgumentException('Invalid message button index');
+        $app->modal(function () use ($app, $title, $message, $buttons, $done, $type, $default, $cancel, $destructive) {
+            $box = messageBox($title, $message, $buttons, function ($i) use ($app, $done) {
+                $app->closeModal();
+                self::deliver($done, $i);
+            }, $type, $default, $destructive);
+            $box->style['modalCancel'] = $cancel;
+            return $box;
+        });
+    }
+
+    public static function confirm(string $title, string $message, callable $done, string $ok = 'OK', string $cancel = 'Cancel', bool $destructive = false): void
+    {
+        self::message($title, $message, [$cancel, $ok], fn ($i) => $done($i === 1), 'question', 1, 0, $destructive ? [1] : []);
+    }
+
+    public static function error(string $title, string $message, ?callable $done = null): void
+    {
+        self::message($title, $message, done: $done, type: 'error');
+    }
+
     /** Open a safe URL or existing path in the user's default application. */
     public static function open(string $target, ?callable $done = null): bool
     {

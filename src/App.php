@@ -31,6 +31,8 @@ final class App
     private ?\Closure $onKey = null;
     private static ?self $current = null;
     private array $pollers = [], $waitHints = [], $shutdownHandlers = [];
+    private array $modals = [];
+    private ?Element $modalTree = null;
 
     public function __construct(string $title, int $width, int $height, callable $render)
     {
@@ -87,6 +89,31 @@ final class App
     {
         $this->onKey = $fn(...);
         return $this;
+    }
+
+    /** Queue a modal overlay; a builder keeps its colors and state fresh. */
+    public function modal(Element|callable $box): void
+    {
+        $this->modals[] = $box instanceof Element ? $box : $box(...);
+        $this->focusId = null;
+        $this->pressed = null;
+        $this->invalidate();
+    }
+
+    public function closeModal(): void
+    {
+        array_shift($this->modals);
+        $this->pressed = null;
+        $this->invalidate();
+    }
+
+    private function build(): Element
+    {
+        $tree = ($this->render)($this);
+        $box = $this->modals[0] ?? null;
+        $this->modalTree = $box instanceof \Closure ? $box() : $box;
+        if ($this->modalTree) $tree->child($this->modalTree);
+        return $tree;
     }
 
     public static function current(): ?App
@@ -196,7 +223,7 @@ final class App
     private function draw(float $w, float $h, float $ratio, bool $caretOn): void
     {
         // Build twice when hover changed what the tree looks like is not needed: hover is paint-only.
-        $this->tree = ($this->render)($this);
+        $this->tree = $this->build();
         $this->layout->compute($this->tree, $w, $h);
         $this->markState($this->tree, '0', null);
         $this->stale = false;
@@ -225,7 +252,7 @@ final class App
         $top = $this->top($x, $y);
         // A press on the menu's anchor (its parent) counts as inside, so the anchor can toggle it.
         foreach ($this->order as [$e]) {
-            if ($e->onClickOutside && !$this->contains($e->parent ?? $e, $top)) {
+            if (!$this->modals && $e->onClickOutside && !$this->contains($e->parent ?? $e, $top)) {
                 ($e->onClickOutside)();
                 $this->stale = true;
             }
@@ -294,6 +321,15 @@ final class App
     public function key(int $key, int $mods = 0): void
     {
         $this->fresh();
+        if ($this->modalTree) {
+            $index = match ($key) {
+                GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER => $this->modalTree->get('modalDefault'),
+                GLFW_KEY_ESCAPE => $this->modalTree->get('modalCancel'),
+                default => null,
+            };
+            if ($index !== null) $this->clickId('message-button-' . $index);
+            return;
+        }
         $input = $this->focused();
         $used = false;
         if ($input) {
@@ -334,7 +370,7 @@ final class App
     {
         glfwGetWindowSize($this->window, $w, $h);
         $size = $this->tree ? [$this->tree->w, $this->tree->h] : [$w, $h];
-        $this->tree = ($this->render)($this);
+        $this->tree = $this->build();
         $this->layout->compute($this->tree, ...$size);
         $this->markState($this->tree, '0', null);
         $this->stale = false;
@@ -390,6 +426,7 @@ final class App
     {
         for ($i = count($this->order) - 1; $i >= 0; $i--) {
             [$e, $clip] = $this->order[$i];
+            if ($this->modalTree && !$this->contains($this->modalTree, $e)) continue;
             if ($this->inside([$e->x, $e->y, $e->w, $e->h], $x, $y) && (!$clip || $this->inside($clip, $x, $y))) return $e;
         }
         return null;
