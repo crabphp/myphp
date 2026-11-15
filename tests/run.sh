@@ -19,7 +19,7 @@ cleanup() {
 }
 trap cleanup EXIT
 if ! xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
-    Xvfb :99 -screen 0 1600x1000x24 >"$logs/xvfb.log" 2>&1 & xvfb=$!
+    env -u DISPLAY Xvfb :99 -screen 0 1600x1000x24 >"$logs/xvfb.log" 2>&1 & xvfb=$!
     for i in {1..100}; do xdpyinfo -display "$DISPLAY" >/dev/null 2>&1 && break; sleep .02; done
 fi
 export PHPUI_TEST_TMP=$logs
