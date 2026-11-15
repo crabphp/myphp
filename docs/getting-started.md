@@ -16,10 +16,6 @@ export PATH="$HOME/.local/bin:$PATH"
 The installer downloads the latest release into `~/.local/bin`, verifies its
 checksum when available, and prints the version. See [CLI](cli.md) for overrides.
 
-**Before the first public release:** the download above is not available. Build
-`build/myphp` from the repository instead; see [Develop](../README.md#develop).
-Put that binary on your PATH. The rest of this guide is the same.
-
 ## Create and run
 
 ```sh
@@ -68,9 +64,7 @@ composer install
 
 This installs toolkit sources and GLFW stubs for your editor only. Running and
 building still use the toolkit inside `myphp`, not `vendor/`. Composer requires a
-separate PHP installation; it is never needed to run the app. Until the package is
-published on Packagist, use a local Composer path repository for `crabphp/myphp`
-instead (see [Develop](../README.md#develop)).
+separate PHP installation; it is never needed to run the app.
 
 ## Explore
 
