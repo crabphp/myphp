@@ -31,7 +31,7 @@ for file in "$@"; do
     [[ $file == tests/lib.php ]] && continue
     echo "== $file ($mode) =="
     setsid dbus-run-session -- bash -c '
-        set -e
+        set -eo pipefail
         if [[ $PHPUI_TEST_MODE == fake && -f tests/fakes/desktop.py ]]; then
             python3 tests/fakes/desktop.py >"$PHPUI_TEST_TMP/service.log" 2>&1 &
             for i in {1..100}; do
@@ -40,7 +40,8 @@ for file in "$@"; do
             done
             test -f "$PHPUI_TEST_TMP/ready"
         fi
-        if [[ $1 == examples/bench.php ]]; then "$PHP" "$1" 10; else "$PHP" "$1"; fi
+        # A pipe also avoids PHP child descriptors reopening a shared log at offset 0.
+        if [[ $1 == examples/bench.php ]]; then "$PHP" "$1" 10; else "$PHP" "$1"; fi 2>&1 | tee /dev/null
     ' bash "$file" >"$logs/$(basename "$file").log" 2>&1 & group=$!
     wait "$group" || status=1
     kill -- -"$group" 2>/dev/null || true
