@@ -3,3 +3,5 @@ build/*.phar
 build/myphp
 build/release/
 screenshots/
+/vendor/
+/composer.lock

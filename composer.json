@@ -1,0 +1,9 @@
+{
+    "name": "crabphp/myphp",
+    "description": "Native GPU desktop apps in plain PHP",
+    "type": "library",
+    "require": { "php": ">=8.2" },
+    "require-dev": { "phpgl/ide-stubs": "^1.0" },
+    "suggest": { "ext-glfw": "Needed to run without the myphp binary" },
+    "autoload": { "files": ["src/autoload.php"] }
+}
