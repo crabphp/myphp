@@ -117,7 +117,7 @@ Linux x86-64 (glibc 2.17+, X11/XWayland, OpenGL), experimental macOS (arm64,
 x86-64) and experimental Windows (x86-64). No hot reload, Composer dependency
 packing, or cross-compilation: `myphp build` targets the platform it runs on (on
 Windows it writes `build/<name>.exe`). Windows limits: built apps also open a
-console window, and a binary started through an 8.3 short path (`C:\\Users\\LONGNA~1\\...`)
+console window, and a binary started through an 8.3 short path (`C:\Users\LONGNA~1\...`)
 does not work; use the full path.
 Source CLI runs use `php84 bin/myphp`; source builds also need `MYPHP_SFX` and
 `-d phar.readonly=0`. The standalone binary needs neither.
