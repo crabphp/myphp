@@ -170,9 +170,12 @@ Files: `build/make-myphp.php`, `build/make-myphp.sh` (new), `.gitignore`, `tests
   3. Write `build/myphp` = sfx bytes + INI block for `"phar.readonly=0\n"` (fact 2) +
      phar bytes; `chmod 0755`.
 - `.gitignore`: add `build/myphp` and `build/release/` (`build/*.phar` is already there).
-- `tests/cli.php`: at the top, run `build/make-myphp.sh` (fail the test with its output
-  if it fails) and set `MYPHP_BIN` to `build/myphp` unless already set. All CLI tests
-  now run against the real binary.
+- `tests/cli.php`: run `build/make-myphp.sh` (fail the test with its output
+  if it fails) and set `MYPHP_BIN` to the resulting binary unless already set.
+  All CLI tests now run against the real binary. The scripts support
+  `MYPHP_BUILD_DIR` (default `build/`); tests set it under `PHPUI_TEST_TMP`.
+  Correction in C4: writing test builds into the repo contradicted the task rules.
+  A separate temp versioned build tests `9.9.9` without replacing the dev binary.
 
 Tests: C3's tests pass against `build/myphp`. Also: `build/myphp version` prints
 `myphp dev (PHP 8.4.27)`; with `MYPHP_VERSION=9.9.9 build/make-myphp.sh` it prints

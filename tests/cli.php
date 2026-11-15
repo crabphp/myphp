@@ -34,6 +34,27 @@ function cli(array $args, ?string $cwd = null, array $env = []): array
     return cliProcess([...$command, ...$args], $cwd, $env);
 }
 
+$buildDir = getenv('PHPUI_TEST_TMP') . '/cli-build';
+if (!getenv('MYPHP_BIN')) {
+    [$code, $out, $err] = cliProcess([__DIR__ . '/../build/make-myphp.sh'], env: [
+        'MYPHP_BUILD_DIR' => $buildDir, 'MYPHP_VERSION' => 'dev', 'PHP' => PHP_BINARY,
+    ]);
+    check($code === 0, "build CLI: $out$err");
+    if ($code !== 0) exit(1);
+    putenv("MYPHP_BIN=$buildDir/myphp");
+    $sfx = file_get_contents(getenv('HOME') . '/.cache/spc/buildroot/bin/micro.sfx');
+    same(hash('sha256', $sfx), hash('sha256', file_get_contents(getenv('MYPHP_BIN'), length: strlen($sfx))),
+        'CLI starts with the clean sfx');
+    [$code, $out, $err] = cliProcess([__DIR__ . '/../build/make-myphp.sh'], env: [
+        'MYPHP_BUILD_DIR' => "$buildDir/versioned", 'MYPHP_VERSION' => '9.9.9', 'PHP' => PHP_BINARY,
+    ]);
+    same(0, $code, "versioned build: $err");
+    [$code, $out] = cliProcess(["$buildDir/versioned/myphp", 'version']);
+    check($code === 0 && str_starts_with($out, 'myphp 9.9.9 '), 'version is embedded at build time');
+}
+[$code, $out, $err] = cliProcess(['/usr/bin/env', '-i', getenv('MYPHP_BIN'), 'help']);
+same(0, $code, "binary runs with an empty environment: $err");
+
 foreach ([[], ['help'], ['-h'], ['--help']] as $args) {
     [$code, $out, $err] = cli($args);
     same(0, $code, 'help succeeds');

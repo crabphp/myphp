@@ -1,3 +1,5 @@
 build/dashboard
 build/*.phar
+build/myphp
+build/release/
 screenshots/
