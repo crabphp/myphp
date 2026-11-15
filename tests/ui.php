@@ -34,6 +34,14 @@ same(3, count($result['todos']), 'todo flow leaves three todos');
 same('open', $result['filter'], 'todo flow selects open filter');
 same(1, $result['shown'], 'todo flow shows one open todo');
 
+$copy = getenv('PHPUI_TEST_TMP') . '/src-copy';
+mkdir($copy);
+foreach (glob(__DIR__ . '/../src/*.php') as $file) copy($file, $copy . '/' . basename($file));
+require __DIR__ . '/../src/autoload.php';
+require $copy . '/autoload.php';
+same(realpath(__DIR__ . '/../src/App.php'), (new ReflectionClass(PhpUi\App::class))->getFileName(),
+    'loading another toolkit copy keeps the original class');
+
 putenv('PHPUI_NO_RUN=1');
 require __DIR__ . '/../examples/dashboard.php';
 $app->frame();

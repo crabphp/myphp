@@ -6,6 +6,7 @@ if (!extension_loaded('glfw')) {
     fwrite(STDERR, "PHP UI needs the glfw extension (PHP-GLFW): https://phpgl.net\n");
     exit(1);
 }
+if (class_exists(\PhpUi\App::class, false)) return;
 
 require __DIR__ . '/DBus.php';
 require __DIR__ . '/Desktop.php';
