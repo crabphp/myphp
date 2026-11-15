@@ -634,7 +634,10 @@ Accept: tests pass; on the user's desktop a click on the notification focuses th
 
 ### B11. Example and docs
 
-Files: `examples/desktop.php`, `README.md`, `docs/handover.md`, `build/make-phar.php`.
+Files: `examples/desktop.php`, `README.md`, `docs/handover.md`, `build/make-phar.php`,
+`build/make-binary.sh`, `tests/example.php`. Final integration checks may fix earlier
+API edge cases in the same commit: B11 found that a well-known D-Bus sender filter
+must resolve its unique owner, and malformed headers need required-field/type checks.
 
 - `examples/desktop.php`: one card with a button per API (open file, open many with an
   Images filter, save, pick folder, message, confirm, error, notify with click, copy,
@@ -651,8 +654,13 @@ Files: `examples/desktop.php`, `README.md`, `docs/handover.md`, `build/make-phar
   the example packed in, click "confirm" in screenshot mode. `proc_open` and
   `stream_socket_client` must exist in `micro.sfx` (`posix` is in the craft list).
 
-Accept: `tests/run.sh` (fake) and `tests/run.sh real-portal` exit 0; the example's
-screenshot run prints its JSON; the user has gone through the manual list:
+Automated acceptance: `tests/run.sh` (fake) and `tests/run.sh real-portal` exit 0;
+the example and single-file binary screenshot runs print their JSON. The build
+script also needs A1's PHP selection: using bare `php` there was an omitted file.
+
+Manual acceptance is a separate, pending user check, not something the headless
+implementation worker can honestly claim to have run. Keep this checklist in the
+handover and report it as pending until the user has gone through it:
 
 1. Each file dialog: pick, pick many, cancel; save with a name; folder.
 2. `PHPUI_DESKTOP=fallback`: the same through zenity.

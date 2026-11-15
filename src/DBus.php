@@ -16,6 +16,7 @@ final class DBus
     private string $in = '', $out = '';
     private int $serial = 0, $subscription = 0;
     private array $calls = [], $listeners = [];
+    private array $owners = [];
 
     public static function session(): ?DBus
     {
@@ -68,7 +69,16 @@ final class DBus
     {
         $rule = "type='signal',interface='$iface',member='$member'";
         if ($path !== null) $rule .= ",path='$path'";
-        if ($sender !== null) $rule .= ",sender='$sender'";
+        if ($sender !== null) {
+            $rule .= ",sender='$sender'";
+            if (!str_starts_with($sender, ':') && !array_key_exists($sender, $this->owners)) {
+                $this->owners[$sender] = null;
+                $this->call(self::BUS, self::PATH, self::BUS, 'AddMatch', 's', ["type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='$sender'"]);
+                $this->call(self::BUS, self::PATH, self::BUS, 'GetNameOwner', 's', [$sender], function ($result) use ($sender) {
+                    $this->owners[$sender] = $result[0] ?? null;
+                });
+            }
+        }
         $id = ++$this->subscription;
         $this->listeners[$id] = [$iface, $member, $fn, $path, $sender, $rule];
         $this->call(self::BUS, self::PATH, self::BUS, 'AddMatch', 's', [$rule]);
@@ -113,8 +123,13 @@ final class DBus
                 $data = pack('V', $fixed['headers']) . "\0\0\0\0" . substr($this->in, 16, $fixed['headers']);
                 foreach (self::unpack('a(yv)', $data)[0] as [$field, $variant]) {
                     if (isset($headers[$field])) throw new \UnexpectedValueException('Duplicate header');
+                    $expected = [1 => 'o', 2 => 's', 3 => 's', 4 => 's', 5 => 'u', 6 => 's', 7 => 's', 8 => 'g', 9 => 'u'];
+                    if (isset($expected[$field]) && $variant[0] !== $expected[$field]) throw new \UnexpectedValueException('Invalid header type');
                     $headers[$field] = $variant[1];
                 }
+                $required = match ($fixed['type']) { 1 => [1, 3], 2 => [5], 3 => [4, 5], 4 => [1, 2, 3] };
+                foreach ($required as $field) if (!isset($headers[$field])) throw new \UnexpectedValueException('Missing header field');
+                if (!empty($headers[9])) throw new \UnexpectedValueException('Unix FD transport is not supported');
                 $args = self::unpack($headers[8] ?? '', substr($this->in, $bodyAt, $fixed['body']));
                 $messages[] = [$fixed, $headers, $args];
                 $this->in = substr($this->in, $length);
@@ -130,10 +145,14 @@ final class DBus
                     if ($done) { $ran = true; $done($type === 2 ? $args : null, $type === 3 ? ($headers[4] ?? 'error') . ': ' . ($args[0] ?? '') : null); }
                 }
             } elseif ($type === 4) {
+                if (($headers[7] ?? '') === self::BUS && ($headers[2] ?? '') === self::BUS
+                    && ($headers[3] ?? '') === 'NameOwnerChanged' && array_key_exists($args[0] ?? '', $this->owners)) {
+                    $this->owners[$args[0]] = $args[2] ?: null;
+                }
                 foreach ($this->listeners as [$iface, $member, $fn, $path, $sender]) {
                     if (($headers[2] ?? '') === $iface && ($headers[3] ?? '') === $member
                         && ($path === null || ($headers[1] ?? '') === $path)
-                        && ($sender === null || ($headers[7] ?? '') === $sender)) {
+                        && ($sender === null || ($headers[7] ?? '') === $sender || ($headers[7] ?? '') === ($this->owners[$sender] ?? null))) {
                         $ran = true;
                         $fn($args, $headers[1] ?? '');
                     }

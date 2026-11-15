@@ -43,6 +43,12 @@ if (getenv('PHPUI_TEST_MODE') === 'fake') {
     $wait(function () use (&$signals) { return count($signals) === 2; });
     same(['unicast', 'broadcast'], $signals, 'unicast and broadcast signals reach the same connection');
     $bus->off($id);
+    $filtered = [];
+    $id = $bus->on('org.myphp.Test', 'Ping', function ($args) use (&$filtered) { $filtered[] = $args[0]; }, sender: 'org.myphp.Test');
+    $bus->call('org.myphp.Test', '/org/myphp/Test', 'org.myphp.Test', 'EmitTo', 's', [$bus->name]);
+    $wait(function () use (&$filtered) { return count($filtered) === 2; });
+    same(['unicast', 'broadcast'], $filtered, 'well-known sender filter resolves the unique bus owner');
+    $bus->off($id);
     $error = null;
     $bus->call('org.myphp.Test', '/org/myphp/Test', 'org.myphp.Test', 'Hang', done: function ($value, $why) use (&$error) { $error = $why; });
     $start = microtime(true); $turns = 0; $max = 0;
@@ -60,11 +66,33 @@ $bus->call('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBu
 $wait(function () use (&$pid) { return $pid !== null; });
 check(is_int($pid), 'private bus PID obtained');
 $error = null;
+// Stop this private daemon before queueing: in real mode there is no Test service,
+// so otherwise ServiceUnknown can race SIGTERM and is not a disconnect failure.
+if ($pid) {
+    posix_kill($pid, SIGSTOP);
+    check(until(fn () => str_contains(file_get_contents("/proc/$pid/status"), "State:\tT"), poll: fn () => null), 'private daemon is stopped before disconnect test');
+}
 $bus->call('org.myphp.Test', '/org/myphp/Test', 'org.myphp.Test', 'Hang', done: function ($value, $why) use (&$error) { $error = $why; });
-if ($pid) posix_kill($pid, SIGTERM);
-$wait(function () use (&$error) { return $error !== null; });
+$bus->poll();
+if ($pid) posix_kill($pid, SIGKILL);
+$wait(fn () => !$bus->connected());
 same('disconnected', $error, 'bus death fails pending calls without throwing');
 putenv('DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent');
 $start = microtime(true);
 same(null, DBus::session(), 'missing bus returns null');
 check(microtime(true) - $start < 1, 'missing bus fails within one second');
+
+foreach ([
+    pack('CCCCVVV', 108, 4, 0, 1, 0, 1, 0), // signal missing required fields
+    pack('CCCCVVV', 108, 2, 0, 1, 16777216, 1, 0), // exceeds full message cap
+    pack('CCCCVVV', 108, 2, 0, 2, 0, 1, 0), // bad protocol version
+] as $malformed) {
+    [$client, $peer] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+    stream_set_blocking($client, false);
+    $testBus = (new ReflectionClass(DBus::class))->newInstanceWithoutConstructor();
+    (new ReflectionProperty(DBus::class, 'socket'))->setValue($testBus, $client);
+    fwrite($peer, $malformed);
+    $testBus->poll();
+    check(!$testBus->connected(), 'malformed or oversized header drops connection');
+    fclose($peer);
+}

@@ -9,7 +9,8 @@
 set -e
 cd "$(dirname "$0")"
 SFX=${1:-$HOME/.cache/spc/buildroot/bin/micro.sfx}
-php -d phar.readonly=0 make-phar.php
+PHP=${PHP:-$(command -v php84 || command -v php)}
+"$PHP" -d phar.readonly=0 make-phar.php
 cat "$SFX" dashboard.phar > dashboard
 chmod +x dashboard
 ls -lh dashboard

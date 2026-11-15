@@ -1,59 +1,104 @@
-# Handover: proof of concept so far
+# Handover: native PHP UI and Linux desktop APIs
 
-MyPHP: native GPU desktop apps in plain PHP, like MyGo (github.com/egoist/mygo,
-a clone is at ~/.cache/mygo; its desktop API docs are docs/native.md, docs/menus.md,
-docs/app.md, and its Linux code is internal/linux).
+MyPHP draws native GPU desktop apps in plain PHP. Reference: MyGo
+(github.com/egoist/mygo), cloned at `~/.cache/mygo`; its API docs are
+`docs/native.md`, `docs/menus.md`, `docs/app.md`, and Linux code is `internal/linux`.
 
 ## What exists
 
-- PHP 8.4 (Remi, `php84`) with the PHP-GLFW extension (glfw.so) and JIT on.
-  The system `php` is 8.5 without glfw; use `php84` in the commands below.
-- `src/`: Element tree, flexbox `Layout`, `Painter` (NanoVG text/icons + `QuadRenderer`,
-  our own instanced SDF shader for boxes, borders, gradients, shadows), `App` (window loop,
-  input, hit-testing, `screenshot()`, scripted `click()`/`type()`/`key()` for tests),
-  shadcn-style components, charts, light/dark theme.
-- `examples/dashboard.php` (shadcn dashboard-01), `examples/todo.php`, benchmarks
-  (`bench-renderers.php` compares `PHPUI_RENDERER=quads|nanovg-fast|nanovg`).
-- Speed: ~70 fps on the dashboard on llvmpipe (CPU rendering) at 1440x900, up from 6.
-  The big win was caching icons as textures: `drawSVG` costs two full-screen stencil
-  passes per call.
-- One-file binary: `build/make-binary.sh` -> `build/dashboard` (12 MB, PHP + glfw + code +
-  assets). Needs micro.sfx from static-php-cli at ~/.cache/spc (see README "One binary").
-  Runs on glibc 2.17+ Linux with X11 + OpenGL; tested in a clean ubuntu:22.04 container.
+- PHP 8.4.27 (Remi, `php84`) with PHP-GLFW 2.2 and JIT. System `php` is 8.5
+  without glfw. Use `php84` or another PHP with glfw for examples/tests.
+- Element tree, flexbox layout, NanoVG text/icons, instanced SDF quads for boxes,
+  borders, gradients and shadows, shadcn-style components, charts and themes.
+  Fixed-width `paragraph()` wraps measured text; general wrapping is not a layout feature.
+- App input is refreshed between events (fast typing no longer drops characters),
+  key modifiers are preserved, Escape reaches the app, and pollers/wake hints
+  advance outside work. The loop tears down its window even after exceptions.
+- Linux `Desktop`: portal file open/multiple/save/folder with zenity fallback;
+  queued in-app messages/confirm/error; notifications with body/named click actions
+  and notify-send fallback; clipboard with whole-input Ctrl+C/X/V; URL/file open
+  via xdg-open/gio; portal system-theme read/watch with one-shot gsettings fallback.
+- Drops are routed to the nearest element handler, then the window. `App::focus()`
+  supports notification clicks. `Theme::$source` separates explicit and system modes.
+- `src/DBus.php`: persistent pure-PHP session-bus client (streams + posix), bounded
+  non-blocking polling, marshaling, method deadlines, signals and disconnect cleanup.
+  One-shot gdbus cannot implement portal dialogs: Response is unicast to the same
+  connection that made the request and that connection must stay alive.
+- `examples/desktop.php`: buttons, editable clipboard/open target, result log and
+  whole-window drop target. `examples/dashboard.php`, `examples/todo.php`, and
+  four repaired benchmarks remain available.
+- `build/make-binary.sh` builds `build/dashboard` (~12 MB) from micro.sfx at
+  `~/.cache/spc/buildroot/bin/micro.sfx`. It packs the code/assets and all three
+  examples. `PHPUI_EXAMPLE=desktop` selects the desktop example (dashboard default).
+  Requires x86-64 Linux, glibc 2.17+, X11 and OpenGL; no installed PHP needed.
 
-## Traps learned
+## Verification
 
-- No desktop session on this machine: render headless with Xvfb, e.g.
-  `DISPLAY=:99 PHPUI_SCREENSHOTS=/tmp/shots php84 examples/dashboard.php`
-  (start `Xvfb :99 -screen 0 1600x1000x24 &` if :99 is not running). Check images
-  with pixel probes / `magick compare`, not by eye.
-- micro.sfx crashes or prints nothing with `opcache.enable_cli=1` in its embedded ini:
-  the binary runs without OPcache (same fps).
-- NanoVG `createFont` cannot read `phar://`: `Painter::realFile()` copies fonts to
-  `~/.cache/phpui` first. Anything else handed to C by path needs the same.
-- static-php-cli's glfw recipe looks for X11 in Debian's lib path; on Fedora pass
+The ordered A1–A7 and B1–B11 work is described in `docs/plan.md`. Each task is a
+separate commit. Test commands:
+
+```sh
+tests/run.sh
+tests/run.sh real-portal
+DISPLAY=:99 PHPUI_SCREENSHOTS=/tmp/desktop php84 examples/desktop.php
+build/make-binary.sh
+DISPLAY=:99 PHPUI_EXAMPLE=desktop PHPUI_SCREENSHOTS=/tmp/desktop-binary build/dashboard
+```
+
+The runner picks `$PHP`, then php84, then php, and diagnoses missing glfw before
+running anything. Each test has a private D-Bus session; test config/cache/data
+are isolated. Fakes use dbus-python + GLib and argv-logging executable scripts.
+Tests assert protocol bytes against an independent libdbus fixture, timing and
+callback results, UI state, clipboard interoperability with xsel, and screenshot
+pixels. Real smoke opens a GTK chooser, checks changed root pixels, closes its
+request, checks identical root pixels, terminates real zenity, and reads portal
+Settings. Screenshots are checked with pixel probes, not by eye.
+
+## Traps and limits
+
+- There is no interactive desktop session on this machine. Xvfb `:99` supplies
+  X11. The user's bus at `/run/user/1000/bus` exists, but its portal cannot start
+  without a graphical session and Notifications is not activatable. Use the
+  private-bus test runner, not that session bus, for verification.
+- The real portal test needs GTK preference in `xdg-desktop-portal/portals.conf`;
+  otherwise GNOME's backend may be chosen and file dialogs fail. The runner sets it.
+- PHP-GLFW's drop callback receives **(int count, array paths)**, not just paths;
+  verified in `phpglfw_callback_dropcallback_handler` in the cached extension C.
+  Actual file-manager XDND remains a manual test.
+- Calling `glfwTerminate()` before NanoVG destructors run causes a native shutdown
+  crash. App destroys its window but leaves global GLFW termination to process exit.
+- `micro.sfx` crashes with embedded `opcache.enable_cli=1`; the binary runs without
+  OPcache/JIT. Its desktop screenshot JSON verifies proc_open, stream_socket_client
+  and posix_geteuid are present. Fonts/icons passed to C or child programs are
+  exported from phar to the asset cache with `PhpUi\realFile()`.
+- Static-php-cli's glfw recipe expects Debian X11 paths. On Fedora build with
   `SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS=-L$HOME/.cache/spc/x11libs`.
-- PHP-GLFW's FloatBuffer only takes floats (ints throw); no FFI extension in the system PHP.
+- Portal dialogs have no parent X11 handle (PHP-GLFW does not expose one), so they
+  may appear behind the app. Only one file chooser can be open at once.
+- Clipboard text is owned by the process on X11; a clipboard manager is needed to
+  retain it after quit. No text selection yet: Ctrl+C/X copies the entire input.
+- Gsettings fallback reads once, with no live theme updates. Delivered desktop
+  notifications intentionally survive app shutdown; waiting helper processes do not.
+- `PHPUI_DESKTOP=auto|portal|fallback` chooses bus-first, bus-only or tools-only.
+  Fallback tools must be installed on the user's desktop. `Desktop::lastError()`
+  records unavailable services and failed commands.
 
-## Next task: desktop APIs, batch 1 (Linux first)
+## Still needs the user's desktop
 
-One file, `src/Desktop.php`, plus buttons in an example to try each:
+Headless checks cannot confirm interactive usability. Run `php84 examples/desktop.php`
+(or `PHPUI_EXAMPLE=desktop build/dashboard`) and check:
 
-- File dialogs: open (filters, multiple), save, pick folder. Use the desktop portal
-  (`org.freedesktop.portal.FileChooser` over D-Bus via `gdbus`), fall back to `zenity`.
-- Message and confirm boxes: our own components (a dialog component exists).
-- Notifications with click handling: `org.freedesktop.Notifications` via `gdbus`
-  (`notify-send` as fallback).
-- Clipboard (GLFW has it), files dropped on the window (`glfwSetDropCallback`),
-  open URL/file in the default app (`xdg-open`/`gio open`), follow the system dark mode
-  (portal Settings `org.freedesktop.appearance color-scheme`).
-- Never block the frame loop: dialogs and portal replies run as child processes
-  (`proc_open`, non-blocking pipes) polled each frame, with a callback when done.
-- The session bus exists here (`/run/user/1000/bus`), but the portal cannot start
-  without a graphical session and Notifications is not activatable. Tests use a
-  private bus (`dbus-run-session`), with fakes or the GTK portal backend on Xvfb.
-  The user checks the real dialogs on his desktop. See `docs/plan.md` for the
-  corrected transport design: file chooser responses need a persistent connection.
+1. Open one file, open multiple Images-filtered files, cancel, save with a suggested
+   name, choose a folder; cancel each chooser too.
+2. Repeat with `PHPUI_DESKTOP=fallback` to exercise zenity.
+3. Notification appears; clicking the body focuses the window; named action logs
+   its key; Close notification removes it.
+4. Copy in this app and paste in another, then back. Try Ctrl+C/X/V in the input.
+5. Drop two files from a file manager (including a path with a space).
+6. Open a URL and a PDF using the target field.
+7. System theme button, then switch GNOME's style: the app follows. Toggle theme
+   in the app: it stops following until System theme is selected again.
 
-Later (not now): single instance, deep links, start at login, tray and menus,
-global shortcuts, multiple windows. Skip webview/cookies/PDF/printing.
+These manual checks are pending, not claimed as completed. Not in this batch:
+single instance, deep links, start at login, tray/menus, global shortcuts, multiple
+windows, kdialog, macOS/Windows desktop backends, webview/cookies/PDF/printing.
