@@ -84,10 +84,16 @@ jobs:
           mkdir -p shots mesa
           gh release download --repo pal1000/mesa-dist-win --pattern '*release-mingw.7z' --dir mesa
           7z x -omesa/out mesa/*.7z x64/opengl32.dll x64/libgallium_wgl.dll > /dev/null
+          set +e
+          echo "--- without Mesa"; (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/build/myphp.exe" demo todo; echo "exit $?")
           for dir in build "$SMOKE/build"; do cp mesa/out/x64/*.dll "$dir/"; done
-          PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/built-app.png") "$SMOKE/build/smoke.exe"
-          PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/demo.png") build/myphp.exe demo dashboard
+          echo "--- version with Mesa DLLs present"; build/myphp.exe version; echo "exit $?"
+          echo "--- built app"; PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/built-app.png") "$SMOKE/build/smoke.exe"; echo "exit $?"
+          echo "--- demo"; PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/demo.png") build/myphp.exe demo dashboard; echo "exit $?"
+          echo "--- demo, software renderer forced"; GALLIUM_DRIVER=llvmpipe PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/demo2.png") build/myphp.exe demo dashboard; echo "exit $?"
+          set -e
           ls -l shots
+          test -s shots/demo.png
           rm -f build/*.dll
 
       - name: Package
