@@ -6,7 +6,8 @@ docs/app.md, and its Linux code is internal/linux).
 
 ## What exists
 
-- PHP 8.4 (Remi, `php` on PATH runs it) with the PHP-GLFW extension (glfw.so) and JIT on.
+- PHP 8.4 (Remi, `php84`) with the PHP-GLFW extension (glfw.so) and JIT on.
+  The system `php` is 8.5 without glfw; use `php84` in the commands below.
 - `src/`: Element tree, flexbox `Layout`, `Painter` (NanoVG text/icons + `QuadRenderer`,
   our own instanced SDF shader for boxes, borders, gradients, shadows), `App` (window loop,
   input, hit-testing, `screenshot()`, scripted `click()`/`type()`/`key()` for tests),
@@ -23,7 +24,7 @@ docs/app.md, and its Linux code is internal/linux).
 ## Traps learned
 
 - No desktop session on this machine: render headless with Xvfb, e.g.
-  `DISPLAY=:99 PHPUI_SCREENSHOTS=/tmp/shots php examples/dashboard.php`
+  `DISPLAY=:99 PHPUI_SCREENSHOTS=/tmp/shots php84 examples/dashboard.php`
   (start `Xvfb :99 -screen 0 1600x1000x24 &` if :99 is not running). Check images
   with pixel probes / `magick compare`, not by eye.
 - micro.sfx crashes or prints nothing with `opcache.enable_cli=1` in its embedded ini:
@@ -48,9 +49,11 @@ One file, `src/Desktop.php`, plus buttons in an example to try each:
   (portal Settings `org.freedesktop.appearance color-scheme`).
 - Never block the frame loop: dialogs and portal replies run as child processes
   (`proc_open`, non-blocking pipes) polled each frame, with a callback when done.
-- The session bus exists here (`/run/user/1000/bus`) and the portal and notification
-  services are activatable, but nothing shows on screen: verify calls at the D-Bus
-  level and in tests; the user checks the real dialogs on his desktop.
+- The session bus exists here (`/run/user/1000/bus`), but the portal cannot start
+  without a graphical session and Notifications is not activatable. Tests use a
+  private bus (`dbus-run-session`), with fakes or the GTK portal backend on Xvfb.
+  The user checks the real dialogs on his desktop. See `docs/plan.md` for the
+  corrected transport design: file chooser responses need a persistent connection.
 
 Later (not now): single instance, deep links, start at login, tray and menus,
 global shortcuts, multiple windows. Skip webview/cookies/PDF/printing.

@@ -26,23 +26,25 @@ Each frame, `render()` builds a fresh tree of `Element`s, `Layout` (a small flex
 
 ## Run
 
-Needs PHP 8.2+ with the `glfw` extension.
+Needs PHP 8.2+ with the `glfw` extension. On this machine use `php84` (Remi PHP 8.4); the system `php` has no glfw.
 
 ```sh
-php examples/todo.php
+php84 examples/todo.php
 ```
 
 ```sh
-php examples/dashboard.php   # shadcn dashboard-01
+php84 examples/dashboard.php   # shadcn dashboard-01
 ```
 
 Headless check (renders, clicks, types, saves PNGs at 2x):
 
 ```sh
-Xvfb :99 & DISPLAY=:99 PHPUI_SCREENSHOTS=/tmp/shots php examples/dashboard.php
+Xvfb :99 & DISPLAY=:99 PHPUI_SCREENSHOTS=/tmp/shots php84 examples/dashboard.php
 ```
 
-Renderer: `PHPUI_RENDERER=quads` (default), `nanovg-fast` or `nanovg`. Compare them with `php examples/bench-renderers.php`.
+Renderer: `PHPUI_RENDERER=quads` (default), `nanovg-fast` or `nanovg`. Compare them with `php84 examples/bench-renderers.php`.
+
+Tests: `tests/run.sh` (or `PHP=/path/to/php-with-glfw tests/run.sh`). The runner uses Xvfb and a private D-Bus session, never the user's session bus.
 
 ## One binary
 
