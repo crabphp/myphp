@@ -5,8 +5,11 @@ toolkit: you do not need to install PHP.
 
 Requires **x86-64 Linux, glibc 2.17+, X11 or XWayland, and OpenGL**. Desktop
 integration uses your session bus and optional tools; see [Desktop](desktop.md).
-macOS (Apple Silicon and Intel) is experimental. A build runs on the platform that
-made it: build Linux apps on Linux and macOS apps on macOS.
+macOS (Apple Silicon and Intel) and Windows x86-64 are experimental. A build runs on
+the platform that made it: build Linux apps on Linux, macOS apps on macOS and
+Windows apps on Windows. On Windows install with
+`irm https://raw.githubusercontent.com/crabphp/myphp/main/install.ps1 | iex`; apps
+need OpenGL 3.3 from the graphics driver.
 
 ## Install
 

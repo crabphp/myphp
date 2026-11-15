@@ -15,6 +15,12 @@ Linux x86-64 (X11 or XWayland, OpenGL), or macOS on Apple Silicon or Intel (expe
 curl -fsSL https://raw.githubusercontent.com/crabphp/myphp/main/install.sh | sh
 ```
 
+Windows x86-64 (experimental), in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/crabphp/myphp/main/install.ps1 | iex
+```
+
 ## Create an app
 
 ```sh
@@ -89,8 +95,8 @@ myphp demo todo
 
 ## Status
 
-Early. Linux is the main platform; macOS is experimental (built by CI, not yet
-tested on real hardware); Windows later. Not yet: tray icons, menus,
+Early. Linux is the main platform; macOS and Windows are experimental (built and
+smoke-tested by CI, not yet tested on real hardware). Not yet: tray icons, menus,
 multiple windows, global shortcuts.
 
 ## License

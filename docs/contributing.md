@@ -58,3 +58,12 @@ and attaches the binaries to a release when it is published (`build/release.sh` 
 uploads the Linux binary). Run it by hand from the Actions tab to get test binaries
 as artifacts. Nobody has run these on a real Mac yet: `src/Desktop.php` uses
 `osascript`, `defaults` and `open` there instead of D-Bus.
+
+## Windows binary
+
+`.github/workflows/windows.yml` builds `myphp-windows-x86_64.exe` with
+`build/craft-windows.yml` (no `posix`/`pcntl`), smoke-tests `init`, `build` and
+`install.ps1`, renders screenshots of a built app and two demos with Mesa's software
+OpenGL (`GALLIUM_DRIVER=llvmpipe`, the runners have no GPU), and attaches the binary
+to a published release. `src/Desktop.php` uses `powershell`, `reg` and `rundll32`
+there; those paths have not run on a real Windows desktop yet.

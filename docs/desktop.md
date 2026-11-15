@@ -57,14 +57,14 @@ Theme::set('dark');   // mode only, preserves source
 Theme::toggle();      // changes mode and switches source to explicit light/dark
 ```
 
-| API | Linux first choice | Linux fallback | macOS (experimental) |
-|---|---|---|---|
-| File chooser | Desktop portal FileChooser | `zenity` | `osascript` (`choose file`) |
-| Notifications | `org.freedesktop.Notifications` | `notify-send` (0.8+ for actions) | `osascript`; no icon, click or actions |
-| System theme | Portal Settings read + signals | `gsettings get` (one read, no live updates) | `defaults read` (one read, no live updates) |
-| Open URL/file | `xdg-open` | `gio open` | `open` |
-| Clipboard/drop | GLFW | — | GLFW |
-| Message/confirm | In-app components | — | In-app components |
+| API | Linux first choice | Linux fallback | macOS (experimental) | Windows (experimental) |
+|---|---|---|---|---|
+| File chooser | Desktop portal FileChooser | `zenity` | `osascript` (`choose file`) | `powershell` (Windows Forms dialogs) |
+| Notifications | `org.freedesktop.Notifications` | `notify-send` (0.8+ for actions) | `osascript`; no icon, click or actions | `powershell` tray balloon; no icon, click or actions |
+| System theme | Portal Settings read + signals | `gsettings get` (one read, no live updates) | `defaults read` (one read, no live updates) | `reg query` (one read, no live updates) |
+| Open URL/file | `xdg-open` | `gio open` | `open` | `rundll32 url.dll` |
+| Clipboard/drop | GLFW | — | GLFW | GLFW |
+| Message/confirm | In-app components | — | In-app components | In-app components |
 
 `PHPUI_DESKTOP=auto` is the default (bus first, then tools). `portal` disables the
 file/notification/theme tool fallbacks; `fallback` skips D-Bus. D-Bus needs `posix`
@@ -85,7 +85,7 @@ Known limits:
 - `open()` accepts `http:`, `https:`, `mailto:`, `file:` and existing local paths;
   it rejects other schemes and targets starting with `-`.
 - One window. On macOS, notifications are shown as coming from Script Editor and
-  file-type filters are a flat list of extensions. Windows desktop backends, tray,
+  file-type filters are a flat list of extensions. Tray,
   menus, global shortcuts, single instance and deep links are not implemented.
 
 Tests: `tests/run.sh` uses deterministic private-bus fakes;
