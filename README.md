@@ -80,8 +80,7 @@ runtime: `~/.cache/spc/buildroot/bin/micro.sfx`. Build artifacts are ignored.
 
 Release preparation needs `gh` on PATH, a clean pushed `main`, and a new version.
 Only a maintainer should run `build/release.sh X.Y.Z` without `--dry-run`: it tags,
-pushes, and creates the GitHub release. Public downloads, a project license, and
-Packagist publication are still [maintainer steps](docs/plan-cli.md#user-steps-not-for-the-implementer).
+pushes, and creates the GitHub release.
 
 For editor testing before Packagist, run `composer config repositories.myphp path
 /path/to/myphp` in a generated app, then `composer install`. The PHP used by Composer
@@ -106,3 +105,7 @@ reuse the clean runtime prefix, with no INI block or OPcache/JIT (micro crashes 
 `PhpUi\realFile()`.
 
 Fonts: Geist and Geist Mono (OFL, `assets/fonts`). Icons: Lucide (ISC, `assets/icons`).
+
+## License
+
+MIT. Fonts: SIL OFL. Icons: see `assets/icons/LICENSE`.
