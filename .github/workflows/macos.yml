@@ -41,6 +41,10 @@ jobs:
 
       - name: Build the PHP runtime with static-php-cli
         if: steps.runtime.outputs.cache-hit != 'true'
+        env:
+          # PHP-GLFW contains C++ (voxel parser); the static link needs the C++ runtime.
+          SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS: -lc++
+          SPC_EXTRA_LIBS: -lc++
         run: |
           mkdir -p spc && cd spc
           cp ../build/craft.yml .
