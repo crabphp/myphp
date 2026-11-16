@@ -128,6 +128,15 @@ check(str_contains($err, 'myphp: RuntimeException: app broke') && str_contains($
 same(0, $code, "an example runs from the repository: $err");
 check(is_file("$project/shots/todo-1-start.png"), 'example screenshot');
 same(2, cli(['demo', 'todo'])[0], 'there is no demo command');
+// A file inside a myphp checkout runs with that checkout's toolkit, even when the binary's is older.
+$checkout = getenv('PHPUI_TEST_TMP') . '/checkout';
+foreach (['src', 'cli', 'examples'] as $dir) mkdir("$checkout/$dir", 0777, true);
+foreach (glob(__DIR__ . '/../src/*.php') as $source) copy($source, "$checkout/src/" . basename($source));
+file_put_contents("$checkout/src/functions.php", file_get_contents("$checkout/src/functions.php") . "\nfunction checkoutOnly(): string { return 'from the checkout'; }\n");
+touch("$checkout/cli/main.php");
+file_put_contents("$checkout/examples/probe.php", "<?php require __DIR__ . '/../src/autoload.php'; echo PhpUi\\checkoutOnly();");
+[$code, $out, $err] = cli(['run', "$checkout/examples/probe.php"]);
+same([0, 'from the checkout'], [$code, $out], "examples in a checkout use its toolkit: $err");
 
 $workspace = getenv('PHPUI_TEST_TMP') . '/init';
 mkdir($workspace);

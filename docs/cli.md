@@ -25,7 +25,8 @@ myphp run --watch
 
 Defaults to `app.php` in the current directory. The toolkit is already loaded.
 `$argv` and `$_SERVER['argv']` contain `[file, ...args]`; `argc` is updated too.
-The working directory does not change. Exceptions print their class, message,
+A file inside a myphp checkout (such as `examples/`) runs with that checkout's
+`src/` instead of the toolkit in the binary. The working directory does not change. Exceptions print their class, message,
 and trace to stderr.
 
 `--watch` (or `-w`, before the file) restarts the app whenever you save a PHP,

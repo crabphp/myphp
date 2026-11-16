@@ -84,6 +84,6 @@ cd myphp/examples
 myphp run gallery.php
 ```
 
-Run any of them the same way. They use the toolkit built into your `myphp`, so keep
-it current with `myphp upgrade`. See [Desktop APIs](desktop.md), [CLI reference](cli.md), and the
+Run any of them the same way. Inside the repository, `myphp run` uses the
+repository's own toolkit, so the examples always match the code beside them. See [Desktop APIs](desktop.md), [CLI reference](cli.md), and the
 [manual desktop checklist](handover.md#still-needs-the-users-desktop).

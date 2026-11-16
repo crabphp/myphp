@@ -2,9 +2,22 @@
 
 declare(strict_types=1);
 
+/**
+ * The toolkit of a myphp checkout that contains $file (src/ beside cli/ and examples/),
+ * so the repository's examples run with the code next to them, not the binary's copy.
+ */
+function myphpCheckoutToolkit(string $file): ?string
+{
+    if (str_starts_with($file, 'phar://') || !($dir = realpath(dirname($file)))) return null;
+    for ($i = 0; $i < 4 && $dir !== dirname($dir); $i++, $dir = dirname($dir)) {
+        if (is_file("$dir/src/autoload.php") && is_file("$dir/src/App.php") && is_file("$dir/cli/main.php")) return "$dir/src/autoload.php";
+    }
+    return null;
+}
+
 function myphpRun(string $file, array $args): int
 {
-    require MYPHP_ROOT . '/src/autoload.php';
+    require myphpCheckoutToolkit($file) ?? MYPHP_ROOT . '/src/autoload.php';
     $GLOBALS['argv'] = $_SERVER['argv'] = [$file, ...$args];
     $GLOBALS['argc'] = $_SERVER['argc'] = count($GLOBALS['argv']);
     (static function (): void {
