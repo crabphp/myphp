@@ -30,10 +30,9 @@ $save = function () use ($state, $file) {
     $state->dirty = false;
     $state->saved = 'Saved ' . date('H:i:s');
 };
-$edit = function (string $key, string $value) use ($state) {
-    $note = &$state->notes[$state->selected];
-    $note[$key] = $value;
-    $note['updated'] = time();
+/** After an edit: the inputs already wrote the text through bind(). */
+$touch = function () use ($state) {
+    $state->notes[$state->selected]['updated'] = time();
     $state->dirty = true;
 };
 $create = function () use ($state) {
@@ -49,7 +48,7 @@ $delete = function () use ($state) {
     $state->dirty = true;
 };
 
-$render = function () use ($state, $edit, $create, $delete) {
+$render = function () use ($state, $touch, $create, $delete) {
     $query = mb_strtolower(trim($state->search));
     $list = col()->gap(2)->scroll('note-list')->grow();
     foreach ($state->notes as $i => $note) {
@@ -66,9 +65,10 @@ $render = function () use ($state, $edit, $create, $delete) {
     $note = $state->notes[$state->selected] ?? null;
     $editor = $note === null ? col() : col()->flex1()->gap(12)->p(20)
         ->child(row()->itemsCenter()->gap(8)
-            ->child(textInput('title', $note['title'], fn ($v) => $edit('title', $v), 'Title')->flex1()->textSize(18))
-            ->child(button('', $delete, 'ghost', 'icon', 'trash-2')->id('delete')->label('Delete note')))
-        ->child(textarea('body', $note['body'], fn ($v) => $edit('body', $v), 'Write something…', 14)->flex1())
+            // bind() reads and writes the note inside the state array directly.
+            ->child(textInput('title')->placeholder('Title')->bind($state->notes[$state->selected]['title'])->afterStateUpdated($touch)->flex1()->textSize(18))
+            ->child(button()->color('ghost')->size('icon')->icon('trash-2')->label('Delete note')->onClick($delete)->id('delete')))
+        ->child(textarea('body')->rows(14)->placeholder('Write something…')->bind($state->notes[$state->selected]['body'])->afterStateUpdated($touch)->flex1())
         ->child(row()->textSize(12)->textColor(t('muted-foreground'))
             ->child(text(mb_strlen($note['body']) . ' characters'))
             ->child(spacer())
@@ -79,7 +79,7 @@ $render = function () use ($state, $edit, $create, $delete) {
             ->child(row()->itemsCenter()
                 ->child(text('Notes')->textSize(16)->semibold())->child(spacer())
                 ->child(button('', $create, 'ghost', 'icon-sm', 'plus')->id('new')->label('New note')))
-            ->child(textInput('search', $state->search, fn ($v) => $state->search = $v, 'Search', 'search'))
+            ->child(textInput('search')->placeholder('Search')->prefixIcon('search')->bind($state->search))
             ->child($list))
         ->child($editor);
 };

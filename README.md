@@ -33,25 +33,30 @@ cd hello
 myphp run --watch    # reloads when you save
 ```
 
-`app.php`:
+A small app:
 
 ```php
 <?php
 use PhpUi\App;
-use function PhpUi\{button, col, state, text};
+use function PhpUi\{button, col, state, text, textInput};
 
 $state = state(new class {
     public int $count = 0;
+    public string $name = '';
 });
 
-$render = fn () => col()->full()->p(24)->gap(12)
-    ->child(text('Count: ' . $state->count)->textSize(26)->bold())
-    ->child(button('Add', fn () => $state->count++));
+$render = fn () => col()->full()->p(24)->gap(12)->schema([
+    text('Count: ' . $state->count)->textSize(26)->bold(),
+    button('Add')->icon('plus')->onClick(fn () => $state->count++),
+    textInput('name')->label('Your name')->bind($state->name),
+    text($state->name === '' ? 'Type your name' : "Hello, {$state->name}"),
+]);
 
-(new App('Hello', 480, 320, $render))->run();
+(new App('Hello', 480, 360, $render))->run();
 ```
 
 The UI is a function of state: change `$state`, and the next frame shows it.
+`->bind($state->name)` connects an input to a property both ways.
 
 ## Ship it
 
@@ -77,6 +82,8 @@ This only feeds your editor. Apps never need `vendor/`.
   align, scrolling, wrapping text and images.
 - **Text editing:** inputs and textareas with a caret, mouse selection, word jumps,
   copy/paste, undo/redo and Tab between fields.
+- **Filament-style API:** chain settings (`card()->heading(...)->schema([...])`), and
+  `->bind($state->email)` connects inputs to state both ways.
 - **Components:** shadcn/ui style buttons, inputs, select, tabs, table, dialog,
   dropdown menu, tooltip, toast, switch, slider, charts and more, with smooth
   hover and focus transitions.

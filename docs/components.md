@@ -1,70 +1,166 @@
 # Components
 
-All functions are in `PhpUi` and return chainable `Element` objects. Import with
-`use function PhpUi\{button, card, text};`. State belongs to your app (see `state()` in
-[Layout](layout.md#state)); callbacks update it and the next render builds a new tree. Theme colors come from `t()`.
+Components are functions in `PhpUi` (`use function PhpUi\{button, card, textInput};`)
+that you configure by chaining, in the style of Filament:
 
-Signatures below match `src/components.php` and `src/charts.php`.
+```php
+grid(2)->gap(16)->schema([
+    card()
+        ->heading('Team plan')
+        ->description('For small teams.')
+        ->headerAction(badge('Popular'))
+        ->schema([text('$29')->textSize(30)->bold()])
+        ->footer([button('Choose plan')->icon('check')->onClick($choose)]),
 
-Run `myphp run examples/gallery.php` from the repository to try every component live, in light and dark, with the
-code for each example next to it (select it, or press Copy).
+    col()->gap(12)->schema([
+        textInput('email')->label('Email')->placeholder('you@example.com')->bind($state->email),
+        checkbox()->label('Accept the terms')->bind($state->agree),
+        select('plan')->options(['free' => 'Free', 'pro' => 'Pro'])->bind($state->plan),
+    ]),
+]);
+```
+
+Conventions:
+
+- **Only the essential argument goes in the call**: a button's label, a field's name,
+  a grid's column count. Everything else is a chained method, in any order.
+- **`schema([...])`** sets the children of anything: `row()`, `col()`, `grid()`, and the
+  content of `card()` and `dialog()`. (`child()` and `children()` still work.)
+- **`bind($state->property)`** connects a value component to your state both ways: it
+  shows the property and writes changes back, converted to the property's type (int,
+  float, bool or string). It works with `state(new class {...})` objects, array
+  `state([...])`, and array items such as `$state->notes[$i]['title']`.
+- **`afterStateUpdated(fn ($value) => ...)`** runs after a bound value changes, e.g. to save.
+- Every component is also an element: `->w()`, `->id()`, `->grow()`, `->textColor()` and the
+  rest of the [Layout](layout.md) API apply, and win over the component's own styling.
+
+The older positional forms (`button('Save', $save, 'outline')`,
+`textInput('email', $value, $onInput)`, `card(cardHeader(...), cardContent(...))`) keep
+working.
+
+Run `myphp run examples/gallery.php` from the repository to try every component live, in
+light and dark, with the code for each example next to it (select it, or press Copy).
 
 ![Component gallery](images/gallery.webp)
 
-## Controls
+## Buttons and badges
 
-- `button(string $label, ?callable $onClick = null, string $variant = 'default', string $size = 'default', ?string $icon = null): Element` — Variants: default, secondary, outline, ghost, destructive, link; sizes: default, sm, lg, icon, icon-sm.
-- `badge(string $label, string $variant = 'default', ?string $icon = null): Element` — Small label; variants: default, secondary, destructive, outline.
-- `textInput(string $id, string $value, callable $onInput, string $placeholder = '', ?string $icon = null): Element` — Controlled one-line input; `onInput(string $value)` updates your state.
-- `textarea(string $id, string $value, callable $onInput, string $placeholder = '', int $rows = 4): Element` — Multi-line input; text wraps and scrolls; Ctrl/Cmd+Enter calls `onSubmit`.
-- `label(string $text): Element` — Medium-weight field label.
-- `checkbox(bool $checked, callable $onToggle): Element` — Click to toggle your boolean state.
-- `switchToggle(bool $on, callable $onToggle): Element` — Compact boolean switch.
-- `select(string $id, string $value, array $options, callable $onChange, string $placeholder = 'Select…', string $size = 'default'): Element` — A complete dropdown: `[value => label]` options; opens and closes on its own and marks the chosen option.
-- `selectTrigger(string $value, callable $onClick, string $size = 'default'): Element` — Value and chevron; pair with `dropdownMenu()`; size also accepts `sm`.
-- `tabs(array $items, string $active, callable $onChange, string $idPrefix = 'tab'): Element` — `[value => label]` choices; callback receives the selected value.
-- `toggleGroup(array $items, string $active, callable $onChange, string $idPrefix = 'toggle'): Element` — Connected outlined buttons with the same choice/callback format as tabs.
-- `slider(float $value, ?callable $onChange = null): Element` — Value 0–100; click or drag to report a new value.
+`button(string $label = '')`
 
-## Containers and table
+| Method | |
+|---|---|
+| `->onClick(fn () => ...)` | What a click (or Enter/Space) does |
+| `->color('primary' \| 'secondary' \| 'gray' \| 'danger' \| 'ghost' \| 'link' \| 'outline')` | Look; `->outlined()` is `color('outline')` |
+| `->size('default' \| 'sm' \| 'lg' \| 'icon' \| 'icon-sm')` | A number still sets width and height |
+| `->icon('mail')`, `->iconPosition('after')` | Lucide icon before (or after) the label |
+| `->label('Settings')` | The text; for an icon-only button, its accessible name |
+| `->tooltip('Saves the file')` | Shown on hover |
+| `->disabled()` | Faded, no clicks, skipped by Tab |
 
-- `card(Element ...$sections): Element` — Rounded panel containing card sections.
-- `cardHeader(string|Element $title, string|Element|null $description = null, ?Element $action = null): Element` — Title, optional description, and right-hand action.
-- `cardContent(Element ...$children): Element` — Padded vertical card content.
-- `cardFooter(Element ...$children): Element` — Padded horizontal card footer.
-- `table(array $columns, array $rows, ?callable $rowId = null, ?string $headBg = null, ?callable $rowStyle = null): Element` — Columns: `[key => [label, width|null, align]]`; rows: `[key => string|Element]`; null widths share space.
+`badge(string $label = '')->color('secondary' | 'danger' | 'outline')->icon('sparkles')`
 
-`rowId($index)` returns an ID; `rowStyle($element, $index)` styles each table row.
+## Card
+
+`card()->heading(string|Element)->description(string|Element)->headerAction(Element)`
+`->headerActions([...])->schema([...])->footer([...])`
+
+The positional form takes sections: `card(cardHeader($title, $description, $action), cardContent(...), cardFooter(...))`.
+
+## Fields
+
+`textInput(string $name)` and `textarea(string $name)`; `$name` is the input's id.
+
+| Method | |
+|---|---|
+| `->bind($state->email)` | Value and updates in one |
+| `->label('Email')`, `->helperText('...')` | Text above and below the field |
+| `->placeholder('you@example.com')` | Shown while empty |
+| `->prefixIcon('mail')` | Icon inside the input (one-line inputs) |
+| `->rows(4)` | Height of a textarea, in lines |
+| `->onInput(fn ($value) => ...)` | Each change (instead of, or with, `bind()`) |
+| `->onSubmit(fn ($value) => ...)` | Enter; Ctrl/Cmd+Enter in a textarea |
+| `->afterStateUpdated(fn ($value) => ...)` | After a bound value changed |
+
+Both are full editors: selection, word jumps, copy and paste, undo, and Tab between
+fields (see [Layout](layout.md#text)).
+
+## Choices
+
+| Component | Methods |
+|---|---|
+| `checkbox()` | `->label('Accept the terms')->bind($state->agree)`; or `->checked(bool)->onToggle($fn)` |
+| `switchToggle()` | `->label('Email me')->bind($state->emails)`; or `->on(bool)->onToggle($fn)` |
+| `select(string $name)` | `->options([value => label])->placeholder('Choose…')->label('Plan')->size('sm')->bind($state->plan)` |
+| `slider()` | `->min(0)->max(100)->step(5)->bind($state->volume)`; or `->onChange($fn)` |
+| `tabs()` | `->options([value => label])->bind($state->tab)->idPrefix('tab')` |
+| `toggleGroup()` | Same as tabs, drawn as connected buttons |
+
+A select, tab or toggle item has the id `"$name-trigger"`, `"$prefix-$value"`. Labels on
+checkboxes and switches are part of the control: clicking the text toggles it too.
 
 ## Overlays
 
-- `dropdownMenu(array $items, callable $onClose, float $width = 192): Element` — Items are `[label, onClick, icon?, shortcut?]` (add `'checked' => bool` for a check column), `'separator'`, or `['label' => text]`; position the panel with absolute insets.
-- `dialog(string $title, string $description, Element $body, Element $footer, callable $onClose): Element` — Full-parent modal overlay with a close button and outside-click dismissal.
-- `messageBox(string $title, string $message, array $buttons, callable $onButton, string $type = 'info', int $default = 0, array $destructive = []): Element` — Pure message overlay; caller owns its queue and callbacks; `Desktop::message()` manages those for you.
-- `tooltip(string $text, string $side = 'bottom'): Element` — Child overlay visible while its parent is hovered; side may be `top`.
-- `toast(string $title, string $description, ?string $icon = 'circle-check'): Element` — Bottom-right notice; your state controls its lifetime.
+- `dialog()->heading('Rename')->description('...')->schema([...])->footer([...])->onClose($fn)->width(448)`:
+  a modal panel over its parent with a close button. A click outside and Escape call
+  `onClose`; Tab stays inside while it is open.
+- `toast('Saved')->description('Your changes are safe.')->icon('circle-check')`: a bottom-right
+  notice; your state decides how long it shows (for example with `$app->after(3, ...)`).
+- `tooltip(string $text, string $side = 'bottom')`: a child shown while its parent is
+  hovered; side may be `top`. Buttons have `->tooltip()`.
+- `dropdownMenu(array $items, callable $onClose, float $width = 192)`: items are
+  `[label, onClick, icon?, shortcut?]` (add `'checked' => bool` for a check column),
+  `'separator'`, or `['label' => text]`; place it with absolute insets.
+- `messageBox(...)`: the overlay behind `Desktop::message()`, which manages it for you.
 
 ## Display
 
-- `paragraph(string $text, ?float $width = null, float $size = 14): Element` — Wrapped text; without a width it fills the space its parent gives it.
-- `separator(bool $vertical = false): Element` — One-pixel theme-colored divider.
-- `avatar(string $initials, float $size = 32, string $radius = 'full'): Element` — Initials in a circle; a radius value other than `full` gives rounded corners.
-- `progress(float $value): Element` — Progress bar clamped to 0–100.
-- `skeleton(float|string $w, float $h): Element` — Static rounded placeholder.
-- `alert(string $title, string $description, string $icon = 'circle-alert', string $variant = 'default'): Element` — Notice panel; variant also accepts `destructive`.
-- `kbd(string $keys): Element` — Keyboard shortcut label.
+- `alert('Heads up')->description('...')->icon('info')->color('danger')`: a notice panel
+  whose text can be selected and copied.
+- `paragraph(string $text, ?float $width = null, float $size = 14)`: wrapped text; without a
+  width it fills its parent.
+- `table(array $columns, array $rows, ?callable $rowId = null, ?string $headBg = null, ?callable $rowStyle = null)`:
+  columns are `[key => [label, width|null, align]]`, rows `[key => string|Element]`; null
+  widths share the space. `rowId($index)` returns an id, `rowStyle($element, $index)` styles a row.
+- `avatar(string $initials, float $size = 32, string $radius = 'full')`, `progress(float $value)`
+  (0–100), `skeleton(float|string $w, float $h)`, `separator(bool $vertical = false)`,
+  `kbd(string $keys)`.
 
 ## Charts
 
-Give each chart a width and height with the layout API. Use nonempty series with
-one value per label; sparklines need at least two values.
+Give each chart a width and height. Use nonempty series with one value per label;
+sparklines need at least two values.
 
-- `areaChart(array $labels, array $series, int $ticks = 6): Element` — Stacked areas; series: `[name => [color, values[]]]`, bottom series first.
-- `barChart(array $labels, array $series): Element` — Grouped bars using the same series format.
-- `sparkline(array $values, string $color): Element` — Small smooth line and shaded area.
+- `areaChart(array $labels, array $series, int $ticks = 6)`: stacked areas; series are
+  `[name => [color, values[]]]`, bottom series first.
+- `barChart(array $labels, array $series)`: grouped bars, same series format.
+- `sparkline(array $values, string $color)`: a small smooth line with a shaded area.
 
-`smoothPath(GL\VectorGraphics\VGContext $vg, array $pts, bool $move): void` is an
-internal chart drawing helper, not a component.
+## Your own components
 
-See [Layout](layout.md) for primitives, sizing, and styling; [Desktop](desktop.md)
-for managed messages, file choosers, and notifications.
+Extend `PhpUi\Component` and return the look from `build()`; settings are chained methods,
+and `BindsState` adds `bind()` and `afterStateUpdated()`:
+
+```php
+final class Rating extends PhpUi\Component
+{
+    use PhpUi\BindsState;
+    private int $stars = 5;
+
+    public function stars(int $count): static { $this->stars = $count; return $this; }
+
+    protected function build(): PhpUi\Element
+    {
+        $value = (int) $this->current(0);
+        return PhpUi\row()->gap(4)->schema(array_map(
+            fn ($i) => PhpUi\icon('sparkles', 20, $i <= $value ? PhpUi\t('chart-4') : PhpUi\t('muted'))
+                ->onClick(fn () => $this->write($i))->label("$i stars"),
+            range(1, $this->stars),
+        ));
+    }
+}
+
+// (new Rating())->stars(5)->bind($state->rating)
+```
+
+See [Layout](layout.md) for primitives, sizing and styling, and [Desktop](desktop.md) for
+messages, file choosers and notifications.

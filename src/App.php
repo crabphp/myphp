@@ -166,11 +166,20 @@ final class App
             $tree = ($this->render)($this);
             $box = $this->modals[0] ?? null;
             $this->modalTree = $box instanceof \Closure ? $box() : $box;
+            $this->composeTree($tree);
+            if ($this->modalTree) $this->composeTree($this->modalTree);
         } finally {
             $this->building = false;
         }
         if ($this->modalTree) $tree->child($this->modalTree);
         return $tree;
+    }
+
+    /** Let components build their elements from their settings, parents first. */
+    private function composeTree(Element $e): void
+    {
+        if ($e instanceof Component) $e->compose();
+        foreach ($e->children as $c) $this->composeTree($c);
     }
 
     public static function current(): ?App
