@@ -99,7 +99,7 @@ Settings. Screenshots are checked with pixel probes, not by eye.
 
 ## Still needs the user's desktop
 
-Headless checks cannot confirm interactive usability. Run `myphp demo desktop`
+Headless checks cannot confirm interactive usability. Run `myphp run examples/desktop.php`
 and check:
 
 1. Open one file, open multiple Images-filtered files, cancel, save with a suggested

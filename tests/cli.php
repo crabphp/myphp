@@ -123,10 +123,11 @@ file_put_contents("$project/throws.php", '<?php throw new RuntimeException("app 
 [$code, $out, $err] = cli(['run', 'throws.php'], $project);
 same(1, $code, 'app exception fails');
 check(str_contains($err, 'myphp: RuntimeException: app broke') && str_contains($err, '#0'), 'app exception and trace');
-[$code, $out, $err] = cli(['demo', 'todo'], env: ['PHPUI_SCREENSHOTS' => "$project/shots"]);
-same(0, $code, "bundled todo runs: $err");
-check(is_file("$project/shots/todo-1-start.png"), 'bundled todo screenshot');
-same(2, cli(['demo', 'nope'])[0], 'unknown demo is usage error');
+// Examples are not inside the binary: they run from the repository like any app.
+[$code, $out, $err] = cli(['run', __DIR__ . '/../examples/todo.php'], env: ['PHPUI_SCREENSHOTS' => "$project/shots"]);
+same(0, $code, "an example runs from the repository: $err");
+check(is_file("$project/shots/todo-1-start.png"), 'example screenshot');
+same(2, cli(['demo', 'todo'])[0], 'there is no demo command');
 
 $workspace = getenv('PHPUI_TEST_TMP') . '/init';
 mkdir($workspace);

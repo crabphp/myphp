@@ -86,15 +86,13 @@ This only feeds your editor. Apps never need `vendor/`.
   follow system dark mode.
 - **Fast:** one GPU draw for all boxes and shadows; the app sleeps when idle.
 
-Try the built-in demos:
+Try the examples in [`examples/`](examples): a dashboard, a component gallery,
+notes, a music player, a todo list and desktop APIs.
 
 ```sh
-myphp demo dashboard
-myphp demo desktop
-myphp demo gallery
-myphp demo notes
-myphp demo player
-myphp demo todo
+git clone https://github.com/crabphp/myphp
+cd myphp/examples
+myphp run gallery.php     # also: dashboard, desktop, notes, player, todo
 ```
 
 ![Desktop APIs demo](docs/images/desktop.webp)

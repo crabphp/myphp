@@ -88,7 +88,7 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/shots"
           xvfb-run -a -s '-screen 0 1600x1000x24' sh -c "
             PHPUI_SCREENSHOT=$GITHUB_WORKSPACE/shots/built-app.png ./build/smoke &&
-            PHPUI_SCREENSHOT=$GITHUB_WORKSPACE/shots/gallery.png $GITHUB_WORKSPACE/build/myphp demo gallery"
+            PHPUI_SCREENSHOT=$GITHUB_WORKSPACE/shots/gallery.png $GITHUB_WORKSPACE/build/myphp run $GITHUB_WORKSPACE/examples/gallery.php"
           ls -l "$GITHUB_WORKSPACE/shots"
           test -s "$GITHUB_WORKSPACE/shots/gallery.png"
 

@@ -6,7 +6,7 @@ All functions are in `PhpUi` and return chainable `Element` objects. Import with
 
 Signatures below match `src/components.php` and `src/charts.php`.
 
-Run `myphp demo gallery` to try every component live, in light and dark, with the
+Run `myphp run examples/gallery.php` from the repository to try every component live, in light and dark, with the
 code for each example next to it (select it, or press Copy).
 
 ![Component gallery](images/gallery.webp)

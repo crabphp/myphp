@@ -18,10 +18,6 @@ $phar->startBuffering();
 foreach (['src', 'assets', 'cli'] as $folder) {
     $phar->buildFromDirectory($root, '#^' . preg_quote($root, '#') . "/$folder/#");
 }
-foreach (['dashboard', 'desktop', 'gallery', 'notes', 'player', 'todo'] as $example) {
-    $phar->addFile("$root/examples/$example.php", "examples/$example.php");
-}
-$phar->addFile("$root/examples/gallery.jpg", 'examples/gallery.jpg');
 $phar->addFromString('version', getenv('MYPHP_VERSION') ?: 'dev');
 $phar->addFromString('sfx-size', (string) strlen($bytes));
 $phar->setStub("<?php Phar::mapPhar('myphp.phar'); require 'phar://myphp.phar/cli/main.php'; __HALT_COMPILER();");

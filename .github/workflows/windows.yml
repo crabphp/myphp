@@ -92,8 +92,8 @@ jobs:
           for dir in build "$SMOKE/build"; do cp mesa/out/x64/*.dll "$dir/"; done
           export GALLIUM_DRIVER=llvmpipe
           PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/built-app.png") "$SMOKE/build/smoke.exe"
-          PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/demo.png") build/myphp.exe demo dashboard
-          PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/desktop.png") build/myphp.exe demo desktop
+          PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/demo.png") build/myphp.exe run examples/dashboard.php
+          PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/desktop.png") build/myphp.exe run examples/desktop.php
           ls -l shots
           test -s shots/built-app.png && test -s shots/demo.png && test -s shots/desktop.png
           rm -f build/*.dll

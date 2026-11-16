@@ -12,7 +12,7 @@ php84 bin/myphp version
 php84 examples/todo.php
 tests/run.sh
 build/make-myphp.sh
-build/myphp demo desktop
+build/myphp run examples/desktop.php
 build/release.sh --dry-run 0.1.0
 ```
 

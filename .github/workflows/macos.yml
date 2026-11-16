@@ -85,7 +85,7 @@ jobs:
         run: |
           mkdir -p shots
           PHPUI_SCREENSHOT=$PWD/shots/built-app.png "$SMOKE/build/smoke"
-          PHPUI_SCREENSHOT=$PWD/shots/demo.png build/myphp demo dashboard
+          PHPUI_SCREENSHOT=$PWD/shots/demo.png build/myphp run examples/dashboard.php
           ls -l shots
 
       - name: Package

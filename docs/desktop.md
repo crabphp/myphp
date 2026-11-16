@@ -1,8 +1,8 @@
 # Desktop
 
 ```sh
-myphp demo desktop
-PHPUI_DESKTOP=fallback myphp demo desktop  # force the command-line tools
+myphp run examples/desktop.php
+PHPUI_DESKTOP=fallback myphp run examples/desktop.php  # force the command-line tools
 ```
 
 Create an `App`, then call `PhpUi\Desktop` from your handlers. `App` polls desktop
@@ -108,5 +108,5 @@ $song->setVolume(0.8);
 ```
 
 `readFrames()` returns decoded samples, e.g. to draw a waveform. Redraw while
-playing with `$app->every(1 / 30, ...)`. `myphp demo player` is a complete example.
+playing with `$app->every(1 / 30, ...)`. `examples/player.php` is a complete example.
 

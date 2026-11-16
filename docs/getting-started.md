@@ -75,12 +75,15 @@ separate PHP installation; it is never needed to run the app.
 
 ## Explore
 
+The [`examples/`](../examples) folder of the repository has complete apps: a
+dashboard, a component gallery, notes, a music player, a todo list and desktop APIs.
+
 ```sh
-myphp demo
-myphp demo todo
-myphp demo desktop
+git clone https://github.com/crabphp/myphp
+cd myphp/examples
+myphp run gallery.php
 ```
 
-Each command opens one window; close it before the next. `demo` defaults to the
-dashboard. See [Desktop APIs](desktop.md), [CLI reference](cli.md), and the
+Run any of them the same way. They use the toolkit built into your `myphp`, so keep
+it current with `myphp upgrade`. See [Desktop APIs](desktop.md), [CLI reference](cli.md), and the
 [manual desktop checklist](handover.md#still-needs-the-users-desktop).

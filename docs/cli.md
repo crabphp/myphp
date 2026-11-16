@@ -65,21 +65,6 @@ Supply `data.txt` beside `app.php`. `realFile()` exports bundled data to a
 content-addressed cache under `$XDG_CACHE_HOME/phpui` or `~/.cache/phpui`; regular
 filesystem paths pass through unchanged. Fonts and toolkit icons do this for you.
 
-## demo
-
-```sh
-myphp demo
-myphp demo dashboard
-myphp demo desktop
-myphp demo gallery
-myphp demo notes
-myphp demo player
-myphp demo todo
-```
-
-Runs one of the bundled examples. Default: `dashboard`. These are inside the
-binary, so no checkout is needed. Close each window before running the next.
-
 ## version
 
 ```sh
