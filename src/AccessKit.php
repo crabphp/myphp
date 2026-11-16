@@ -178,7 +178,7 @@ final class AccessKit
     {
         if (!$this->adapter) return;
         // Polled rather than a GLFW focus callback (that callback breaks later layout in PHP-GLFW).
-        $focused = (bool) glfwGetWindowAttrib($this->app->window, GLFW_FOCUSED);
+        $focused = $this->app->window->focused();
         if ($focused !== $this->windowFocused) $this->windowFocus($this->windowFocused = $focused);
         $signature = serialize([$this->app->accessibilityTree(), $this->app->zoom(), $this->app->title]);
         if ($signature === $this->published) return;

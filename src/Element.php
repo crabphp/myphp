@@ -58,6 +58,9 @@ class Element
     public ?array $painted = null;
     /** Input editing: caret and selection anchor as character offsets. */
     public int $caret = 0, $anchor = 0;
+    /** Text an input method is composing at the caret, not yet typed, and the caret within it. */
+    public string $composing = '';
+    public int $composingCaret = 0;
 
     public function __construct(public readonly string $kind = 'div', public string $text = '') {}
 

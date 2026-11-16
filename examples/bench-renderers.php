@@ -16,9 +16,9 @@ glfwSwapInterval(0);
 
 $median = function (array $t): float { sort($t); return $t[intdiv(count($t), 2)]; };
 [$w, $h] = getenv('PHPUI_BENCH_SMALL') ? [360, 225] : [1440, 900];
-glfwSetWindowSize($app->window, $w, $h);
+$app->window->setSize($w, $h);
 glfwPollEvents();
-glfwGetFramebufferSize($app->window, $fbw, $fbh);
+[$fbw, $fbh] = $app->window->framebufferSize();
 
 $tree = $render();
 $layout->compute($tree, $w, $h);
@@ -42,7 +42,7 @@ foreach (['nanovg', 'nanovg-fast', 'quads'] as $mode) {
         $s = hrtime(true);
         glFinish();
         $gpu[] = (hrtime(true) - $s) / 1e6;
-        glfwSwapBuffers($app->window);
+        $app->window->swap();
     }
     if ($i > 5) [$cpu, $gpu] = [array_slice($cpu, 5), array_slice($gpu, 5)];
     [$c, $g] = [$median($cpu), $median($gpu)];

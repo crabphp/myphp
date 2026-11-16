@@ -14,7 +14,7 @@ use GL\Texture\Texture2D;
  */
 final class App
 {
-    public readonly \GLFWwindow $window;
+    public readonly Window $window;
     private Painter $painter;
     private Layout $layout;
     private \Closure $render;
@@ -25,7 +25,6 @@ final class App
     private ?Element $pressed = null;
     private ?string $focusId = null;
     private string $cursor = 'default';
-    private array $cursors = [];
     private bool $dirty = true;
     private bool $stale = true;
     private ?\Closure $onKey = null;
@@ -54,50 +53,33 @@ final class App
     private ?array $textSelection = null;
     private bool $selectingText = false;
     private array $lastPress = [0.0, null, 0.0, 0.0];
+    /** Input-method composition in the focused input: text and caret within it. */
+    private string $composing = '';
+    private int $composingCaret = 0;
+    private ?string $composingIn = null;
 
     public function __construct(string $title, int $width, int $height, callable $render)
     {
-        if (!glfwInit()) throw new \RuntimeException('GLFW could not start');
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-        glfwWindowHint(GLFW_SCALE_TO_MONITOR, GL_TRUE);
-        glfwWindowHint(GLFW_STENCIL_BITS, 8);
         $this->title = $title;
-        $window = glfwCreateWindow($width, $height, $title);
-        if (!$window) {
-            glfwTerminate();
-            throw new \RuntimeException('GLFW could not create the window');
-        }
-        $this->window = $window;
+        $this->window = Window::open($title, $width, $height);
         self::$current = $this;
-        glfwMakeContextCurrent($this->window);
-        glfwSwapInterval(1);
 
         $this->render = $render(...);
         $this->painter = new Painter();
         $this->layout = new Layout($this->painter);
-        $this->cursors = [
-            'default' => glfwCreateStandardCursor(GLFW_ARROW_CURSOR),
-            'pointer' => glfwCreateStandardCursor(GLFW_HAND_CURSOR),
-            'text' => glfwCreateStandardCursor(GLFW_IBEAM_CURSOR),
-        ];
-
-        glfwSetCursorPosCallback($this->window, fn (float $x, float $y) => $this->pointer($x / $this->zoom, $y / $this->zoom));
-        glfwSetMouseButtonCallback($this->window, function (int $button, int $action) {
-            if ($button === GLFW_MOUSE_BUTTON_RIGHT && $action === GLFW_PRESS) $this->rightClick($this->mouseX, $this->mouseY);
-            if ($button !== GLFW_MOUSE_BUTTON_LEFT) return;
-            $action === GLFW_PRESS ? $this->press($this->mouseX, $this->mouseY) : $this->release($this->mouseX, $this->mouseY);
-        });
-        glfwSetScrollCallback($this->window, fn (float $dx, float $dy) => $this->wheel($dy));
-        // PHP-GLFW 2.2 passes (count, paths), without the native window argument.
-        glfwSetDropCallback($this->window, fn (int $count, array $paths) => $this->drop($paths));
-        glfwSetCharCallback($this->window, fn (int $codepoint) => $this->type(mb_chr($codepoint, 'UTF-8')));
-        glfwSetKeyCallback($this->window, function (int $key, int $scancode, int $action, int $mods) {
-            if ($action !== GLFW_RELEASE) $this->key($key, $mods);
-        });
-        glfwSetWindowRefreshCallback($this->window, fn () => $this->dirty = true);
+        $this->window
+            ->on('pointer', fn (float $x, float $y) => $this->pointer($x / $this->zoom, $y / $this->zoom))
+            ->on('button', function (int $button, bool $pressed) {
+                if ($button === GLFW_MOUSE_BUTTON_RIGHT && $pressed) $this->rightClick($this->mouseX, $this->mouseY);
+                if ($button !== GLFW_MOUSE_BUTTON_LEFT) return;
+                $pressed ? $this->press($this->mouseX, $this->mouseY) : $this->release($this->mouseX, $this->mouseY);
+            })
+            ->on('scroll', fn (float $dy) => $this->wheel($dy))
+            ->on('drop', fn (array $paths) => $this->drop($paths))
+            ->on('text', fn (string $text) => $this->type($text))
+            ->on('preedit', fn (string $text, int $caret) => $this->preedit($text, $caret))
+            ->on('key', fn (int $key, int $mods) => $this->key($key, $mods))
+            ->on('refresh', function () { $this->dirty = true; });
         // Keep drawing at display rate while something is animating.
         $this->waitHint(fn () => $this->painter->animating ? 1 / 120 : 0.5);
         $this->waitHint(fn () => $this->nextTimer());
@@ -124,7 +106,7 @@ final class App
 
     public function focus(): void
     {
-        glfwFocusWindow($this->window);
+        $this->window->focus();
     }
 
     public function onDrop(callable $fn): self
@@ -210,14 +192,14 @@ final class App
         try {
             $path = getenv('PHPUI_SCREENSHOT');
             if ($path !== false && $path !== '') {
-                glfwGetWindowSize($this->window, $w, $h);
+                [$w, $h] = $this->window->size();
                 $this->screenshot($path, $w, $h, 1);
                 return;
             }
-            while (!glfwWindowShouldClose($this->window)) {
+            while (!$this->window->shouldClose()) {
                 $wait = 0.5;
                 foreach ($this->waitHints as $hint) $wait = min($wait, max(0.0001, $hint()));
-                glfwWaitEventsTimeout($wait);
+                $this->window->waitEvents($wait);
                 $this->step();
             }
         } finally {
@@ -229,9 +211,7 @@ final class App
                 }
                 if ($error) throw $error;
             } finally {
-                // Keep GLFW's GL entry points loaded until PHP releases GPU objects.
-                // Terminating here makes NanoVG destructors crash at script shutdown.
-                glfwDestroyWindow($this->window);
+                $this->window->close();
                 if (self::$current === $this) self::$current = null;
             }
         }
@@ -256,10 +236,13 @@ final class App
     /** Build, lay out and draw one frame to the window. */
     public function frame(): void
     {
-        glfwGetWindowSize($this->window, $w, $h);
-        glfwGetFramebufferSize($this->window, $fbw, $fbh);
-        $this->draw($w, $h, $w > 0 ? $fbw / $w : 1, fmod(glfwGetTime(), 1.0) < 0.5);
-        glfwSwapBuffers($this->window);
+        [$w, $h] = $this->window->size();
+        [$fbw] = $this->window->framebufferSize();
+        $this->draw($w, $h, $w > 0 ? $fbw / $w : 1, fmod($this->window->time(), 1.0) < 0.5);
+        $this->window->swap();
+        // Input methods compose and list candidates at the caret.
+        $rect = $this->focused()?->kind === 'input' ? $this->painter->caretRect : null;
+        $this->window->textInput($rect ? array_map(fn ($v) => $v * $this->zoom, $rect) : null);
         $this->dirty = $this->painter->animating;
         // Screen readers: attach once the window is on screen, then publish changes.
         if (!$this->accessKitTried) {
@@ -473,7 +456,7 @@ final class App
     public function title(string $title): self
     {
         $this->title = $title;
-        glfwSetWindowTitle($this->window, $title);
+        $this->window->setTitle($title);
         return $this;
     }
 
@@ -521,12 +504,25 @@ final class App
     public function type(string $text): void
     {
         $this->fresh();
+        // Typed text ends a composition: the input method sends what it composed.
+        [$this->composing, $this->composingCaret] = ['', 0];
         $input = $this->focused();
         if ($input) {
             [$from, $to] = $this->selection($input);
             $this->replace($input, $from, $to, $text);
         }
         $this->dirty = true;
+    }
+
+    /** An input method's text in progress, shown at the caret until it is typed; '' ends it. */
+    public function preedit(string $text, int $caret = -1): void
+    {
+        $this->fresh();
+        $input = $this->focused();
+        $this->composingIn = $input?->id;
+        [$this->composing, $this->composingCaret] = $input?->kind === 'input' && $text !== ''
+            ? [$text, $caret < 0 ? mb_strlen($text) : min($caret, mb_strlen($text))] : ['', 0];
+        $this->stale = $this->dirty = true;
     }
 
     public function key(int $key, int $mods = 0): void
@@ -591,7 +587,7 @@ final class App
     /** Rebuild and lay out without drawing, so the next hit-test sees new state. */
     private function relayout(): void
     {
-        glfwGetWindowSize($this->window, $w, $h);
+        [$w, $h] = $this->window->size();
         $size = $this->tree ? [$this->tree->w, $this->tree->h] : [$w / $this->zoom, $h / $this->zoom];
         $this->tree = $this->build();
         $this->layout->compute($this->tree, ...$size);
@@ -605,6 +601,7 @@ final class App
         $e->id ??= $path;
         $e->parent = $parent;
         $e->focused = $e->id === $this->focusId;
+        [$e->composing, $e->composingCaret] = $e->focused && $e->id === $this->composingIn ? [$this->composing, $this->composingCaret] : ['', 0];
         $e->focusVisible = $e->focused && $this->keyboardFocus && $e->kind !== 'input';
         $e->selection = null;
         if ($e->kind === 'text' && $this->textSelection && $this->textSelection[0] === $e->id && $this->textSelection[1] !== $this->textSelection[2]) {
@@ -855,8 +852,8 @@ final class App
     /** Window pixels per layout unit: the display's scale (2 on Retina) times zoom. */
     public function scale(): float
     {
-        glfwGetWindowSize($this->window, $w, $h);
-        glfwGetFramebufferSize($this->window, $fw, $fh);
+        [$w] = $this->window->size();
+        [$fw] = $this->window->framebufferSize();
         return ($w > 0 ? $fw / $w : 1.0) * $this->zoom;
     }
 
@@ -1191,6 +1188,6 @@ final class App
         $cursor = $over ? ($over->style['cursor'] ?? 'text') : 'default';
         if ($cursor === $this->cursor) return;
         $this->cursor = $cursor;
-        glfwSetCursor($this->window, $this->cursors[$cursor] ?? $this->cursors['default']);
+        $this->window->setCursor($cursor);
     }
 }

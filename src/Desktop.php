@@ -343,15 +343,14 @@ final class Desktop
     {
         $app = App::current();
         if (!$app) return '';
-        try { return glfwGetClipboardString($app->window) ?? ''; }
-        catch (\Throwable) { return ''; }
+        return $app->window->clipboard();
     }
 
     public static function setClipboard(string $text): void
     {
         $app = App::current();
         if (!$app) { self::$error = 'Clipboard needs an App'; return; }
-        glfwSetClipboardString($app->window, $text);
+        $app->window->setClipboard($text);
     }
 
     public static function message(string $title, string $message, array $buttons = ['OK'], ?callable $done = null,

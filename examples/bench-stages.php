@@ -24,7 +24,7 @@ printf("PHP %s, JIT %s, GL: %s\n\n", PHP_VERSION,
 printf("%-10s %8s %8s %10s %9s %8s\n", 'size', 'tree', 'layout', 'render', 'GPU', 'total');
 
 foreach (getenv('PHPUI_BENCH_SMALL') ? [[360, 225]] : [[1440, 900], [720, 450], [360, 225]] as [$w, $h]) {
-    glfwSetWindowSize($app->window, $w, $h);
+    $app->window->setSize($w, $h);
     glfwPollEvents();
     $t = ['tree' => [], 'layout' => [], 'render' => [], 'gpu' => []];
     for ($i = 0; $i < max(1, (int) (getenv('PHPUI_BENCH_RUNS') ?: 25)); $i++) {
@@ -38,7 +38,7 @@ foreach (getenv('PHPUI_BENCH_SMALL') ? [[360, 225]] : [[1440, 900], [720, 450], 
         $painter->render($tree, 1440, 900, $w / 1440, true);
         $t['render'][] = $ms($s);
         $s = hrtime(true); glFinish(); $t['gpu'][] = $ms($s);
-        glfwSwapBuffers($app->window);
+        $app->window->swap();
     }
     $m = array_map($median, $t);
     printf("%-10s %6.2fms %6.2fms %8.2fms %7.2fms %6.2fms\n", "{$w}x{$h}",

@@ -58,6 +58,8 @@ final class Painter
     /** Current clip rectangle and opacity, for the quad pass. */
     private array $clip = [];
     private float $alpha = 1.0;
+    /** The focused input's caret in the last frame, [x, y, w, h] in layout units: input methods compose there. */
+    public ?array $caretRect = null;
 
     /** Tailwind shadows as [offsetY, blur, spread, alpha] layers. */
     private const SHADOWS = [
@@ -208,13 +210,14 @@ final class Painter
     public function render(Element $root, float $w, float $h, float $ratio, bool $caretOn): void
     {
         $this->caretOn = $caretOn;
-        $this->now = $this->clock ? ($this->clock)() : glfwGetTime();
+        $this->now = $this->clock ? ($this->clock)() : (App::current()?->window->time() ?? microtime(true));
         $this->animating = false;
         // Elements painted in the last frame; one missing there is appearing now.
         $this->seen = $this->seenNow;
         $this->seenNow = [];
         $this->anim = array_intersect_key($this->anim, $this->seen);
         $this->overlays = [];
+        $this->caretRect = null;
         $this->ratio = $ratio;
         if ($this->mode !== 'nanovg') $this->rasterizeIcons($root, $ratio, $w, $h);
 
@@ -608,6 +611,21 @@ final class Painter
 
     private function input(Element $e, array $s): void
     {
+        // An input method's composition shows in the text at the caret, underlined.
+        if ($e->composing === '') { $this->inputText($e, $s); return; }
+        [$text, $caret, $anchor] = [$e->text, $e->caret, $e->anchor];
+        $at = min($e->caret, $e->anchor);
+        $e->text = mb_substr($text, 0, $at) . $e->composing . mb_substr($text, max($e->caret, $e->anchor));
+        $e->caret = $e->anchor = $at + $e->composingCaret;
+        try {
+            $this->inputText($e, $s, [$at, $at + mb_strlen($e->composing)]);
+        } finally {
+            [$e->text, $e->caret, $e->anchor] = [$text, $caret, $anchor];
+        }
+    }
+
+    private function inputText(Element $e, array $s, ?array $composing = null): void
+    {
         $vg = $this->vg;
         [$pl, $pr, $pt] = [$s['pl'] ?? 0, $s['pr'] ?? 0, $s['pt'] ?? 0];
         $ix = $e->x + $pl;
@@ -626,7 +644,15 @@ final class Painter
             $vg->fillColor($this->color(t('ring', 0.45)));
             $vg->fill();
         };
+        $underline = function (float $x, float $cy, float $w) use ($vg, $ch, $color) {
+            $vg->beginPath();
+            $vg->rect($x, $cy + $ch / 2, max(1, $w), 1);
+            $vg->fillColor($this->color($color));
+            $vg->fill();
+        };
         $caret = function (float $x, float $cy) use ($vg, $ch, $color) {
+            $this->caretRect = [round($x), $cy - $ch / 2, 1, $ch];
+            if (!$this->caretOn) return;
             $vg->beginPath();
             $vg->rect(round($x), $cy - $ch / 2, 1, $ch);
             $vg->fillColor($this->color($color));
@@ -647,7 +673,11 @@ final class Painter
                 }
                 $this->text($e, $e->text, $tx, $iw, $color, $plain);
             }
-            if ($e->focused && $this->caretOn) $caret($tx + $width(mb_substr($e->text, 0, $e->caret)), $cy);
+            if ($composing) {
+                $x1 = $width(mb_substr($e->text, 0, $composing[0]));
+                $underline($tx + $x1, $cy, $width(mb_substr($e->text, 0, $composing[1])) - $x1);
+            }
+            if ($e->focused) $caret($tx + $width(mb_substr($e->text, 0, $e->caret)), $cy);
         } else {
             $top = $e->y + $pt - $e->scrollY;
             if ($e->text === '' && $e->placeholder !== '') {
@@ -668,7 +698,16 @@ final class Painter
                 }
                 if ($line !== '') $this->text($e, $line, $ix, $iw, $color, $plain, $cy);
             }
-            if ($e->focused && $this->caretOn) {
+            if ($composing) {
+                foreach ($lines as $i => [$start, $len]) {
+                    $from = max($composing[0], $start);
+                    $to = min($composing[1], $start + $len);
+                    if ($from >= $to) continue;
+                    $x1 = $width(mb_substr($e->text, $start, $from - $start));
+                    $underline($ix + $x1, $top + $i * $lh + $lh / 2, $width(mb_substr($e->text, $start, $to - $start)) - $x1);
+                }
+            }
+            if ($e->focused) {
                 $i = self::lineOf($lines, $e->caret);
                 [$start] = $lines[$i];
                 $caret($ix + $width(mb_substr($e->text, $start, $e->caret - $start)), $top + $i * $lh + $lh / 2);

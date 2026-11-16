@@ -17,7 +17,7 @@ $painter = $get('painter');
 $layout = $get('layout');
 glfwSwapInterval(0);
 [$w, $h] = getenv('PHPUI_BENCH_SMALL') ? [360, 225] : [1440, 900];
-glfwSetWindowSize($app->window, $w, $h);
+$app->window->setSize($w, $h);
 
 $time = function (callable $fn, int $runs = 200): array {
     $runs = max(1, (int) (getenv('PHPUI_BENCH_RUNS') ?: $runs));
