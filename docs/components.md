@@ -52,7 +52,7 @@ light and dark, with the code for each example next to it (select it, or press C
 | `->onClick(fn () => ...)` | What a click (or Enter/Space) does |
 | `->color('primary' \| 'secondary' \| 'gray' \| 'danger' \| 'ghost' \| 'link' \| 'outline')` | Look; `->outlined()` is `color('outline')` |
 | `->size('default' \| 'sm' \| 'lg' \| 'icon' \| 'icon-sm')` | A number still sets width and height |
-| `->icon('mail')`, `->iconPosition('after')` | Lucide icon before (or after) the label |
+| `->icon('mail')`, `->iconPosition('after')`, `->iconColor($hex)` | Lucide icon before (or after) the label |
 | `->label('Settings')` | The text; for an icon-only button, its accessible name |
 | `->tooltip('Saves the file')` | Shown on hover |
 | `->disabled()` | Faded, no clicks, skipped by Tab |

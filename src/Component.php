@@ -102,6 +102,7 @@ class Button extends Component
     private string $buttonSize = 'default';
     private ?string $iconName = null;
     private bool $iconAfter = false;
+    private ?string $iconTint = null;
     private bool $disabled = false;
     private ?string $tip = null;
 
@@ -129,6 +130,7 @@ class Button extends Component
     /** A Lucide icon before the label (or after, with iconPosition('after')). */
     public function icon(string $name, ?string $color = null, float $size = 16): static { $this->iconName = $name; return $this; }
     public function iconPosition(string $position): static { $this->iconAfter = $position === 'after'; return $this; }
+    public function iconColor(string $color): static { $this->iconTint = $color; return $this; }
     public function disabled(bool $on = true): static { $this->disabled = $on; return $this; }
     public function tooltip(string $text): static { $this->tip = $text; return $this; }
 
@@ -146,16 +148,18 @@ class Button extends Component
             'sm' => [32, 12], 'lg' => [40, 24], 'icon' => [36, 0], 'icon-sm' => [32, 0], default => [36, 16],
         };
         $iconOnly = str_starts_with($this->buttonSize, 'icon');
-        $ico = $this->iconName === null ? null : icon($this->iconName, 16, $fg);
+        // On an icon-only button the label names it for screen readers but is not drawn.
+        $shown = $iconOnly ? '' : $this->caption;
+        $ico = $this->iconName === null ? null : icon($this->iconName, 16, $this->iconTint ?? $fg);
         return row()->center()->gap(8)->h($h)
-            ->when($iconOnly, fn ($e) => $e->w($h), fn ($e) => $e->px($this->iconName && $this->caption !== '' ? $px - 4 : $px))
+            ->when($iconOnly, fn ($e) => $e->w($h), fn ($e) => $e->px($this->iconName && $shown !== '' ? $px - 4 : $px))
             ->rounded(8)->textColor($fg)->medium()->textSize(14)->transition()
             ->when($bg !== null, fn ($e) => $e->bg($bg))
             ->when($hover !== null && !$this->disabled, fn ($e) => $e->hover(fn ($s) => $s->bg($hover)))
             ->when($border !== null, fn ($e) => $e->border(1, $border))
             ->when(in_array($this->variant, ['default', 'outline', 'destructive', 'secondary'], true), fn ($e) => $e->shadow('xs'))
             ->when($ico !== null && !$this->iconAfter, fn ($e) => $e->child($ico))
-            ->when($this->caption !== '', fn ($e) => $e->child($this->caption))
+            ->when($shown !== '', fn ($e) => $e->child($shown))
             ->when($ico !== null && $this->iconAfter, fn ($e) => $e->child($ico))
             ->when($this->tip !== null, fn ($e) => $e->child(tooltip($this->tip)))
             ->role('button', $this->disabled ? ['disabled' => true] : [])

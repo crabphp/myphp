@@ -97,12 +97,12 @@ gives your editor autocompletion for the toolkit. HTTPS, SQLite and XML are buil
 - **Fast:** one GPU draw for all boxes and shadows; the app sleeps when idle.
 
 Try the examples in [`examples/`](examples): a dashboard, a component gallery,
-notes, a music player, a log viewer, a todo list and desktop APIs.
+notes, a mail client, a music player, a log viewer, a todo list and desktop APIs.
 
 ```sh
 git clone https://github.com/crabphp/myphp
 cd myphp/examples
-myphp run gallery.php     # also: dashboard, desktop, logs, notes, player, todo
+myphp run gallery.php     # also: dashboard, desktop, logs, mail, notes, player, todo
 ```
 
 ![Desktop APIs demo](docs/images/desktop.webp)

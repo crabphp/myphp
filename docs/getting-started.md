@@ -83,7 +83,7 @@ list where there is none (Windows).
 ## Explore
 
 The [`examples/`](../examples) folder of the repository has complete apps: a
-dashboard, a component gallery, notes, a music player, a log viewer, a todo list
+dashboard, a component gallery, notes, a mail client, a music player, a log viewer, a todo list
 and desktop APIs.
 
 ```sh
