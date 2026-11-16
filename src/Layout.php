@@ -24,7 +24,7 @@ final class Layout
         // found, and lay out again until the widths stop changing.
         for ($pass = 0; $pass < 4; $pass++) {
             $this->wraps = [];
-            $this->measure($root, ['color' => t('foreground'), 'size' => 14, 'font' => 'regular', 'tracking' => 0.0]);
+            $this->measure($root, ['color' => t('foreground'), 'size' => 14, 'font' => 'regular', 'tracking' => 0.0, 'selectable' => false]);
             $this->place($root, 0, 0, $width, $height);
             $changed = false;
             foreach ($this->wraps as $e) {
@@ -45,11 +45,14 @@ final class Layout
         $e->font = $e->get('font', $inherited['font']);
         $tracking = $e->get('tracking', $inherited['tracking']);
         $e->style['tracking'] = $tracking;
-        $text = ['color' => $e->color, 'size' => $e->size, 'font' => $e->font, 'tracking' => $tracking];
+        $e->selectable = (bool) $e->get('selectable', $inherited['selectable']);
+        $text = ['color' => $e->color, 'size' => $e->size, 'font' => $e->font, 'tracking' => $tracking, 'selectable' => $e->selectable];
 
         if ($e->kind === 'text' && $e->get('wrap')) {
             $this->wraps[] = $e;
-            $e->lines = $e->wrapAt === null ? [$e->text] : $this->painter->wrap($e->text, $e->wrapAt, $e->font, $e->size);
+            // Ranges keep every character, so selection maps back to the text; lines are what is drawn.
+            $e->ranges = $this->painter->breakLines($e->text, $e->wrapAt ?? 0, $e->font, $e->size, $tracking);
+            $e->lines = array_map(fn ($r) => rtrim(mb_substr($e->text, $r[0], $r[1]), ' '), $e->ranges);
             $e->mw = ceil(max(array_map(fn ($line) => $this->painter->textWidth($line, $e->font, $e->size, $tracking), $e->lines ?: [''])));
             $e->mh = $this->painter->lineHeight($e->size) * max(1, count($e->lines));
         } elseif ($e->kind === 'image') {

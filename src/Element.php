@@ -36,6 +36,10 @@ final class Element
     /** Wrapped text lines, and for multi-line inputs [start, length] character ranges. */
     public array $lines = [];
     public ?float $wrapAt = null;
+    /** Character ranges [start, length] of wrapped lines, and the selected range of selectable text. */
+    public array $ranges = [];
+    public ?array $selection = null;
+    public bool $selectable = false;
     public float $scrollX = 0;
     /** Pixel size of an image element's file. */
     public array $imageSize = [0.0, 0.0];
@@ -216,6 +220,8 @@ final class Element
     public function tracking(float $px): self { return $this->set('tracking', $px); }
     public function textCenter(): self { return $this->set('textAlign', 'center'); }
     public function textRight(): self { return $this->set('textAlign', 'right'); }
+    /** Let the user select this text (or all text inside) with the mouse and copy it. */
+    public function selectable(bool $on = true): self { return $this->set('selectable', $on); }
     /** Wrap text onto as many lines as its width needs; it may also shrink in a row. */
     public function wrap(): self { return $this->set('wrap', true)->shrink(); }
     /** A multi-line input showing $rows lines; Enter adds a line, Ctrl/Cmd+Enter submits. */

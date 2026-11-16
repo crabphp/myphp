@@ -295,7 +295,7 @@ function messageBox(string $title, string $message, array $buttons, callable $on
         ->child(col()->w(448)->gap(16)->p(24)->rounded(10)->bg(t('background'))->textColor(t('foreground'))
             ->border(1, t('border'))->shadow('lg')->stopClicks()->id('message-panel')
             ->child(row()->itemsCenter()->gap(10)->child(icon($ico, 20))->child(text($title)->textSize(18)->semibold()))
-            ->child(paragraph($message, 400)->textColor(t('muted-foreground'))->id('message-text'))
+            ->child(paragraph($message, 400)->textColor(t('muted-foreground'))->selectable()->id('message-text'))
             ->child($footer));
     $box->style['modalDefault'] = $default;
     return $box;

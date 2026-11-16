@@ -274,6 +274,7 @@ final class Painter
         } else {
             if ($pass === 'all') $this->boxVg($e, $s);
             if (isset($s['icon'])) $this->icon($e, ...$s['icon']);
+            if ($e->kind === 'text' && $e->selection) $this->textSelection($e, $s);
             if ($e->kind === 'text' && !empty($s['wrap'])) {
                 $this->lines($e, $s);
             } elseif ($e->kind === 'text') {
@@ -550,6 +551,39 @@ final class Painter
             : $this->shape($x, $y, $w, $h, $s['radius'] ?? 0);
         $vg->fillPaint($image->makePaint($dx, $dy, $dw, $dh, 0, 1));
         $vg->fill();
+    }
+
+    /** Where a line of text starts, given its box and alignment. */
+    public function lineStart(Element $e, string $line, float $x, float $w, ?string $align = null): float
+    {
+        $align ??= $e->get('textAlign', 'left');
+        if ($align === 'left') return $x;
+        $width = $this->textWidth($line, $e->font, $e->size, $e->get('tracking', 0));
+        return $align === 'center' ? $x + ($w - $width) / 2 : $x + $w - $width;
+    }
+
+    /** The selection of selectable text: one highlight per line it covers. */
+    private function textSelection(Element $e, array $s): void
+    {
+        [$from, $to] = $e->selection;
+        $wrapped = !empty($s['wrap']);
+        $ranges = $wrapped ? $e->ranges : [[0, mb_strlen($e->text)]];
+        [$pl, $pr, $pt] = $wrapped ? [$s['pl'] ?? 0, $s['pr'] ?? 0, $s['pt'] ?? 0] : [0, 0, 0];
+        $lh = $this->lineHeight($e->size);
+        $width = fn (string $t) => $this->textWidth($t, $e->font, $e->size, $s['tracking'] ?? 0);
+        foreach ($ranges as $i => [$start, $len]) {
+            if ($to <= $start || $from > $start + $len) continue;
+            $line = mb_substr($e->text, $start, $len);
+            $x = $this->lineStart($e, $wrapped ? rtrim($line, ' ') : $line, $e->x + $pl, $e->w - $pl - $pr, $s['textAlign'] ?? 'left');
+            $a = max($from, $start) - $start;
+            $b = min($to, $start + $len) - $start;
+            $x1 = $width(mb_substr($line, 0, $a));
+            $cy = $wrapped ? $e->y + $pt + $i * $lh + $lh / 2 : $e->y + $e->h / 2;
+            $this->vg->beginPath();
+            $this->vg->rect($x + $x1, $cy - $lh / 2, max(2, $width(mb_substr($line, 0, $b)) - $x1 + ($to > $start + $len ? 4 : 0)), $lh);
+            $this->vg->fillColor($this->color(t('ring', 0.45)));
+            $this->vg->fill();
+        }
     }
 
     /** Wrapped text: the lines Layout measured, from the top of the content box. */

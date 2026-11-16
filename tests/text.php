@@ -171,3 +171,37 @@ $shot = getenv('PHPUI_TEST_TMP') . '/text.png';
 $app->screenshot($shot, 420, 520, 1);
 check(filesize($shot) > 1000, 'text screen renders');
 
+
+// Selectable text ------------------------------------------------------------
+
+$copy = 'Copy this sentence, then paste it somewhere else.';
+$selApp = new App('Select', 400, 200, fn () => col()->full()->p(10)->gap(10)
+    ->child(text('Plain text is not selectable')->id('plain'))
+    ->child(text($copy)->wrap()->selectable()->w(200)->id('sel'))
+    ->child(col()->selectable()->child(text('inherited')->id('inherited'))));
+$selApp->frame();
+$sel = $selApp->find('sel');
+check(count($sel->ranges) > 1, 'selectable wrapped text keeps character ranges');
+$y0 = $sel->y + 10;
+$selApp->press($sel->x + 1, $y0);
+$selApp->pointer($sel->x + $painter->textWidth('Copy this', 'regular', 14) + 1, $y0);
+$selApp->release($sel->x + $painter->textWidth('Copy this', 'regular', 14) + 1, $y0);
+same('Copy this', $selApp->selectedText(), 'dragging over selectable text selects it');
+$selApp->key(GLFW_KEY_C, $mod);
+same('Copy this', PhpUi\Desktop::clipboard(), 'Ctrl/Cmd+C copies the selected text');
+$selApp->key(GLFW_KEY_A, $mod);
+same($copy, $selApp->selectedText(), 'Ctrl/Cmd+A selects the whole text');
+$wordX = $sel->x + $painter->textWidth('Copy th', 'regular', 14);
+$selApp->click($wordX, $y0);
+$selApp->click($wordX, $y0);
+same('this', $selApp->selectedText(), 'double-click selects a word');
+$selApp->press($sel->x + 1, $y0);
+$selApp->pointer($sel->x + 150, $sel->y + $sel->h - 5);
+$selApp->release($sel->x + 150, $sel->y + $sel->h - 5);
+check(mb_strlen($selApp->selectedText()) > 25, 'a selection can span wrapped lines');
+$plain = $selApp->find('plain');
+$selApp->press($plain->x + 2, $plain->y + 8);
+$selApp->pointer($plain->x + 80, $plain->y + 8);
+$selApp->release($plain->x + 80, $plain->y + 8);
+same('', $selApp->selectedText(), 'plain text is not selectable');
+check($selApp->find('inherited')->selectable, 'selectable() on a container applies to the text inside');

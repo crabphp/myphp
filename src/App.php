@@ -44,6 +44,9 @@ final class App
     private int $timerId = 0;
     /** Undo and redo stacks of each input by id. */
     private array $history = [];
+    /** Selection in selectable text: [id, anchor, caret] character offsets. */
+    private ?array $textSelection = null;
+    private bool $selectingText = false;
     private array $lastPress = [0.0, null, 0.0, 0.0];
 
     public function __construct(string $title, int $width, int $height, callable $render)
@@ -303,6 +306,9 @@ final class App
         if ($this->dragId !== null && ($input = $this->find($this->dragId))) {
             $this->moveCaret($input, $this->offsetAt($input, $x, $y), true);
         }
+        if ($this->selectingText && $this->textSelection && ($text = $this->find($this->textSelection[0]))) {
+            $this->textSelection[2] = $this->textOffsetAt($text, $x, $y);
+        }
         if ($this->dragging !== null && ($target = $this->find($this->dragging)) && $target->onDrag) {
             ($target->onDrag)($x, $y, $target);
             $this->stale = true;
@@ -331,6 +337,21 @@ final class App
         }
         $input = $this->handler($top, fn (Element $e) => $e->kind === 'input');
         $this->focusId = $input?->id;
+        $selectable = $input ? null : $this->handler($top, fn (Element $e) => $e->kind === 'text' && $e->selectable);
+        $this->textSelection = null;
+        if ($selectable) {
+            $offset = $this->textOffsetAt($selectable, $x, $y);
+            [$time, $id, $px, $py] = $this->lastPress;
+            $double = $id === $selectable->id && microtime(true) - $time < 0.4 && abs($x - $px) < 4 && abs($y - $py) < 4;
+            $this->lastPress = [$double ? 0.0 : microtime(true), $selectable->id, $x, $y];
+            if ($double) {
+                [$from, $to] = $this->wordAt($selectable->text, $offset);
+                $this->textSelection = [$selectable->id, $from, $to];
+            } else {
+                $this->textSelection = [$selectable->id, $offset, $offset];
+                $this->selectingText = true;
+            }
+        }
         if ($input) {
             $offset = $this->offsetAt($input, $x, $y);
             [$time, $id, $px, $py] = $this->lastPress;
@@ -358,6 +379,7 @@ final class App
         }
         $this->pressed = null;
         $this->dragId = $this->dragging = null;
+        $this->selectingText = false;
         $this->dirty = true;
     }
 
@@ -493,6 +515,9 @@ final class App
         }
         $input = $this->focused();
         $used = $input !== null && $this->editKey($input, $key, $mods);
+        if (!$used && $this->textSelection && ($mods & (PHP_OS_FAMILY === 'Darwin' ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL))) {
+            $used = $this->textKey($key);
+        }
         if (!$used && $this->onKey) ($this->onKey)($key, $mods);
         $this->stale = $this->dirty = true;
     }
@@ -532,6 +557,10 @@ final class App
         $e->id ??= $path;
         $e->parent = $parent;
         $e->focused = $e->kind === 'input' && $e->id === $this->focusId;
+        $e->selection = null;
+        if ($e->kind === 'text' && $this->textSelection && $this->textSelection[0] === $e->id && $this->textSelection[1] !== $this->textSelection[2]) {
+            $e->selection = [min($this->textSelection[1], $this->textSelection[2]), max($this->textSelection[1], $this->textSelection[2])];
+        }
         if ($e->kind === 'input') $this->syncEdit($e);
         foreach ($e->children as $i => $c) $this->markState($c, "$path.$i", $e);
         if ($parent === null) $this->markHover();
@@ -636,6 +665,47 @@ final class App
         $this->moveCaret($next, 0, false);
         $this->moveCaret($next, mb_strlen($next->text), true);
         return true;
+    }
+
+    // Selectable text -----------------------------------------------------
+
+    /** The selected text, or '' when nothing is selected. */
+    public function selectedText(): string
+    {
+        if (!$this->textSelection || !($e = $this->find($this->textSelection[0]))) return '';
+        [, $a, $b] = $this->textSelection;
+        return mb_substr($e->text, min($a, $b), abs($b - $a));
+    }
+
+    /** Ctrl/Cmd+C copies selected text; Ctrl/Cmd+A selects all of it. */
+    private function textKey(int $key): bool
+    {
+        if ($key === GLFW_KEY_C && ($text = $this->selectedText()) !== '') {
+            Desktop::setClipboard($text);
+            return true;
+        }
+        if ($key === GLFW_KEY_A && ($e = $this->find($this->textSelection[0]))) {
+            $this->textSelection = [$e->id, 0, mb_strlen($e->text)];
+            return true;
+        }
+        return false;
+    }
+
+    /** The character offset under a point in selectable text. */
+    private function textOffsetAt(Element $e, float $x, float $y): int
+    {
+        $font = [$e->font, $e->size, $e->get('tracking', 0)];
+        if ($e->get('wrap') && $e->ranges) {
+            [$pl, $pr, $pt] = [$e->get('pl', 0), $e->get('pr', 0), $e->get('pt', 0)];
+            $lh = $this->painter->lineHeight($e->size);
+            $i = (int) max(0, min(count($e->ranges) - 1, floor(($y - $e->y - $pt) / $lh)));
+            [$start, $len] = $e->ranges[$i];
+            $line = mb_substr($e->text, $start, $len);
+            $left = $this->painter->lineStart($e, rtrim($line, ' '), $e->x + $pl, $e->w - $pl - $pr);
+            return $start + $this->painter->offsetAt($line, $x - $left, ...$font);
+        }
+        $left = $this->painter->lineStart($e, $e->text, $e->x, $e->w);
+        return $this->painter->offsetAt($e->text, $x - $left, ...$font);
     }
 
     // Text editing ---------------------------------------------------------
@@ -914,7 +984,7 @@ final class App
 
     private function updateCursor(): void
     {
-        $over = $this->handler($this->top($this->mouseX, $this->mouseY), fn (Element $e) => isset($e->style['cursor']) || $e->kind === 'input');
+        $over = $this->handler($this->top($this->mouseX, $this->mouseY), fn (Element $e) => isset($e->style['cursor']) || $e->kind === 'input' || ($e->kind === 'text' && $e->selectable));
         $cursor = $over ? ($over->style['cursor'] ?? 'text') : 'default';
         if ($cursor === $this->cursor) return;
         $this->cursor = $cursor;
