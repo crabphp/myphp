@@ -69,9 +69,16 @@ This only feeds your editor. Apps never need `vendor/`.
 
 ## What's inside
 
-- **Layout:** flexbox rows and columns, gap, padding, grow, align.
+- **Layout:** flexbox rows and columns, grids, wrapping rows, gap, padding, grow,
+  align, scrolling, wrapping text and images.
+- **Text editing:** inputs and textareas with a caret, mouse selection, word jumps,
+  copy/paste, undo/redo and Tab between fields.
 - **Components:** shadcn/ui style buttons, inputs, select, tabs, table, dialog,
-  dropdown menu, tooltip, toast, switch, slider, charts and more.
+  dropdown menu, tooltip, toast, switch, slider, charts and more, with smooth
+  hover and focus transitions.
+- **State:** `state()` with a typed object your editor autocompletes; timers;
+  a data folder per app.
+- **Live reload:** `myphp run --watch` restarts the window when you save.
 - **Desktop:** file dialogs, notifications, clipboard, file drop, open links,
   follow system dark mode.
 - **Fast:** one GPU draw for all boxes and shadows; the app sleeps when idle.
