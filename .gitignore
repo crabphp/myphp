@@ -1,6 +1,7 @@
 build/dashboard
 build/*.phar
 build/myphp
+build/myphp-full
 build/release/
 screenshots/
 /vendor/
