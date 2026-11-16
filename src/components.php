@@ -40,6 +40,7 @@ function button(string $label, ?callable $onClick = null, string $variant = 'def
         ->when(in_array($variant, ['default', 'outline', 'destructive', 'secondary'], true), fn ($e) => $e->shadow('xs'))
         ->when($icon !== null, fn ($e) => $e->child(icon($icon, 16, $fg)))
         ->when($label !== '', fn ($e) => $e->child($label))
+        ->role('button')->when($label !== '', fn ($e) => $e->label($label))
         ->when($onClick !== null, fn ($e) => $e->onClick($onClick), fn ($e) => $e->cursor('pointer'));
 }
 
@@ -126,7 +127,7 @@ function checkbox(bool $checked, callable $onToggle): Element
         ->when($checked,
             fn ($e) => $e->bg(t('primary'))->border(1, t('primary'))->icon('check', t('primary-foreground'), 14),
             fn ($e) => $e->bg(Theme::dark() ? t('input', 0.3) : '#00000000')->border(1, t('input')))
-        ->onClick($onToggle);
+        ->role('checkbox', ['checked' => $checked])->onClick($onToggle);
 }
 
 /** h-[1.15rem] w-8 track, size-4 thumb. */
@@ -137,7 +138,7 @@ function switchToggle(bool $on, callable $onToggle): Element
     return row()->itemsCenter()->w(32)->h(18)->rounded(9)->bg($track)->px(1)->shadow('xs')->transition()
         ->when($on, fn ($e) => $e->justifyEnd())
         ->child(div()->size(16)->rounded(8)->bg($thumb))
-        ->onClick($onToggle);
+        ->role('switch', ['checked' => $on])->onClick($onToggle);
 }
 
 /** A select trigger: shows the value and a chevron. Pair with dropdownMenu() for the options. */
@@ -148,7 +149,7 @@ function selectTrigger(string $value, callable $onClick, string $size = 'default
         ->transition()->hover(fn ($s) => $s->bg(Theme::dark() ? t('input', 0.5) : '#00000000'))
         ->child(text($value))
         ->child(icon('chevron-down', 16, t('muted-foreground'))->opacity(0.5))
-        ->onClick($onClick);
+        ->role('combobox')->label($value)->onClick($onClick);
 }
 
 /**
@@ -165,9 +166,18 @@ function select(string $id, string $value, array $options, callable $onChange, s
     }
     return div()->id($id)
         ->child(selectTrigger($label, fn () => $menu->open = !$menu->open, $size)->id("$id-trigger")
+            ->role('combobox', ['expanded' => $menu->open, 'value' => $label])
+            // Down opens the menu and moves into it, as in native selects.
+            ->onKeyDown(function (int $key) use ($menu, $id) {
+                if ($key !== GLFW_KEY_DOWN) return false;
+                $menu->open = true;
+                App::current()?->focusElement("$id-menu-0");
+                return true;
+            })
             ->when(!isset($options[$value]), fn ($e) => $e->textColor(t('muted-foreground'))))
         ->when($menu->open, fn ($e) => $e->child(
-            dropdownMenu($items, fn () => $menu->open = false, 0)->w('100%')->absolute()->top(($size === 'sm' ? 32 : 36) + 4)->left(0)->id("$id-menu")));
+            dropdownMenu($items, function () use ($menu, $id) { $menu->open = false; App::current()?->focusElement("$id-trigger"); }, 0, "$id-menu")
+                ->w('100%')->absolute()->top(($size === 'sm' ? 32 : 36) + 4)->left(0)->id("$id-menu")));
 }
 
 // Tabs ----------------------------------------------------------------------
@@ -175,7 +185,7 @@ function select(string $id, string $value, array $options, callable $onChange, s
 /** bg-muted rounded-lg p-[3px] h-9; the active trigger is bg-background with shadow-sm. */
 function tabs(array $items, string $active, callable $onChange, string $idPrefix = 'tab'): Element
 {
-    $list = row()->h(36)->p(3)->rounded(10)->bg(t('muted'))->textColor(t('muted-foreground'))->self('start');
+    $list = row()->h(36)->p(3)->rounded(10)->bg(t('muted'))->textColor(t('muted-foreground'))->self('start')->role('tablist');
     foreach ($items as $value => $label) {
         $on = $value === $active;
         $list->child(row()->center()->gap(6)->px(8)->rounded(7)->textSize(14)->medium()->id("$idPrefix-$value")->transition()
@@ -183,7 +193,7 @@ function tabs(array $items, string $active, callable $onChange, string $idPrefix
             ->when($on,
                 fn ($e) => $e->bg(Theme::dark() ? t('input', 0.3) : t('background'))->textColor(t('foreground'))->shadow('sm'),
                 fn ($e) => $e->hover(fn ($s) => $s->textColor(t('foreground'))))
-            ->onClick(fn () => $onChange($value))
+            ->role('tab', ['selected' => $on])->tabStop($on)->onClick(fn () => $onChange($value))
             ->child($label));
     }
     return $list;
@@ -192,13 +202,14 @@ function tabs(array $items, string $active, callable $onChange, string $idPrefix
 /** A row of toggle buttons sharing one border (ToggleGroup variant outline). */
 function toggleGroup(array $items, string $active, callable $onChange, string $idPrefix = 'toggle'): Element
 {
-    $group = row()->h(32)->rounded(8)->border(1, t('input'))->shadow('xs')->self('start')->clip();
+    $group = row()->h(32)->rounded(8)->border(1, t('input'))->shadow('xs')->self('start')->clip()->role('radiogroup');
     $keys = array_keys($items);
     foreach ($items as $value => $label) {
         $on = $value === $active;
         $group->child(row()->center()->px(12)->textSize(14)->medium()->id("$idPrefix-$value")->transition()
             ->when($value !== end($keys), fn ($e) => $e->borderR(1, t('input')))
             ->when($on, fn ($e) => $e->bg(t('accent')), fn ($e) => $e->hover(fn ($s) => $s->bg(t('muted'))))
+            ->role('radio', ['checked' => $on])->tabStop($on)
             ->onClick(fn () => $onChange($value))
             ->child($label));
     }
@@ -239,10 +250,11 @@ function table(array $columns, array $rows, ?callable $rowId = null, ?string $he
 // Overlays ------------------------------------------------------------------
 
 /** A dropdown menu panel. $items: [label, onClick, icon?, shortcut?] or 'separator' or ['label' => text]. */
-function dropdownMenu(array $items, callable $onClose, float $width = 192): Element
+function dropdownMenu(array $items, callable $onClose, float $width = 192, ?string $idPrefix = null): Element
 {
     $menu = col()->w($width)->p(4)->rounded(8)->bg(t('popover'))->textColor(t('popover-foreground'))
-        ->border(1, t('border'))->shadow('md')->stopClicks()->onClickOutside($onClose)->animateIn(120);
+        ->border(1, t('border'))->shadow('md')->stopClicks()->onClickOutside($onClose)->onEscape($onClose)->animateIn(120)->role('menu');
+    $n = 0;
     foreach ($items as $item) {
         if ($item === 'separator') {
             $menu->child(col()->py(4)->child(separator()));
@@ -253,6 +265,7 @@ function dropdownMenu(array $items, callable $onClose, float $width = 192): Elem
             $destructive = ($item['variant'] ?? null) === 'destructive';
             $fg = $destructive ? t('destructive') : t('popover-foreground');
             $menu->child(row()->itemsCenter()->gap(8)->h(32)->px(8)->rounded(4)->textSize(14)->textColor($fg)->transition(100)
+                ->when($idPrefix !== null, fn ($e) => $e->id($idPrefix . '-' . $n))->role('menuitem', isset($item['checked']) ? ['checked' => $item['checked']] : [])->label($label)
                 ->hover(fn ($s) => $s->bg($destructive ? t('destructive', 0.1) : t('accent')))
                 ->when($ico !== null, fn ($e) => $e->child(icon($ico, 16, $destructive ? $fg : t('muted-foreground'))))
                 ->child(text($label)->grow())
@@ -262,6 +275,7 @@ function dropdownMenu(array $items, callable $onClose, float $width = 192): Elem
                     $onClose();
                     if ($onClick) $onClick();
                 }));
+            $n++;
         }
     }
     return $menu;
@@ -271,13 +285,14 @@ function dropdownMenu(array $items, callable $onClose, float $width = 192): Elem
 function dialog(string $title, string $description, Element $body, Element $footer, callable $onClose): Element
 {
     return div()->absolute()->inset(0)->bg(t('overlay'))->center()->onClick($onClose)->cursor('default')->animateIn(150)
+        ->focusable(false)->onEscape($onClose)->trapFocus()
         ->child(col()->w(448)->gap(16)->p(24)->rounded(10)->bg(t('background'))->border(1, t('border'))->shadow('lg')
-            ->stopClicks()
+            ->stopClicks()->role('dialog')->label($title)
             ->child(row()->itemsStart()
                 ->child(col()->gap(8)->flex1()
                     ->child(text($title)->textSize(18)->semibold())
                     ->child(text($description)->textSize(14)->textColor(t('muted-foreground'))))
-                ->child(icon('x', 16, t('muted-foreground'))->opacity(0.7)->hover(fn ($s) => $s->opacity(1))->onClick($onClose)->id('dialog-close')))
+                ->child(icon('x', 16, t('muted-foreground'))->opacity(0.7)->hover(fn ($s) => $s->opacity(1))->onClick($onClose)->id('dialog-close')->role('button')->label('Close')))
             ->child($body)
             ->child($footer->justifyEnd()));
 }
@@ -346,7 +361,7 @@ function avatar(string $initials, float $size = 32, string $radius = 'full'): El
 function progress(float $value): Element
 {
     $v = max(0, min(100, $value));
-    return row()->h(8)->rounded(4)->bg(t('primary', 0.2))->clip()
+    return row()->h(8)->rounded(4)->bg(t('primary', 0.2))->clip()->role('progressbar', ['value' => $v])
         ->child(div()->w("$v%")->rounded(4)->bg(t('primary')));
 }
 
@@ -370,8 +385,18 @@ function slider(float $value, ?callable $onChange = null): Element
         $vg->strokeWidth(1);
         $vg->strokeColor($p->color(t('primary')));
         $vg->stroke();
-    })->h(16)
-        ->when($onChange !== null, fn ($e) => $e->onDrag(fn ($x, $y, $el) => $onChange(round(max(0, min(1, ($x - $el->x - 8) / ($el->w - 16))) * 100))));
+    })->h(16)->role('slider', ['value' => round($v * 100)])
+        ->when($onChange !== null, fn ($e) => $e->onDrag(fn ($x, $y, $el) => $onChange(round(max(0, min(1, ($x - $el->x - 8) / ($el->w - 16))) * 100)))
+            // Arrows move by 5, Page Up/Down by 10, Home/End to the ends.
+            ->onKeyDown(function (int $key) use ($onChange, $v) {
+                $step = match ($key) {
+                    GLFW_KEY_RIGHT, GLFW_KEY_UP => 5, GLFW_KEY_LEFT, GLFW_KEY_DOWN => -5,
+                    GLFW_KEY_PAGE_UP => 10, GLFW_KEY_PAGE_DOWN => -10, GLFW_KEY_HOME => -100, GLFW_KEY_END => 100, default => 0,
+                };
+                if (!$step) return false;
+                $onChange(max(0, min(100, round($v * 100) + $step)));
+                return true;
+            }));
 }
 
 /** Rounded skeleton placeholder: bg-accent rounded-md. */

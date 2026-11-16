@@ -67,7 +67,7 @@ $render = function () use ($state, $edit, $create, $delete) {
     $editor = $note === null ? col() : col()->flex1()->gap(12)->p(20)
         ->child(row()->itemsCenter()->gap(8)
             ->child(textInput('title', $note['title'], fn ($v) => $edit('title', $v), 'Title')->flex1()->textSize(18))
-            ->child(button('', $delete, 'ghost', 'icon', 'trash-2')->id('delete')))
+            ->child(button('', $delete, 'ghost', 'icon', 'trash-2')->id('delete')->label('Delete note')))
         ->child(textarea('body', $note['body'], fn ($v) => $edit('body', $v), 'Write something…', 14)->flex1())
         ->child(row()->textSize(12)->textColor(t('muted-foreground'))
             ->child(text(mb_strlen($note['body']) . ' characters'))
@@ -78,7 +78,7 @@ $render = function () use ($state, $edit, $create, $delete) {
         ->child(col()->w(240)->gap(10)->p(12)->bg(t('muted', 0.4))->borderR(1, t('border'))
             ->child(row()->itemsCenter()
                 ->child(text('Notes')->textSize(16)->semibold())->child(spacer())
-                ->child(button('', $create, 'ghost', 'icon-sm', 'plus')->id('new')))
+                ->child(button('', $create, 'ghost', 'icon-sm', 'plus')->id('new')->label('New note')))
             ->child(textInput('search', $state->search, fn ($v) => $state->search = $v, 'Search', 'search'))
             ->child($list))
         ->child($editor);

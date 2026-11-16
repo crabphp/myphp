@@ -251,6 +251,29 @@ final class Desktop
 
     public static function systemDark(): ?bool { return self::$systemDark; }
 
+    /**
+     * Whether the user asked the system for less motion, read once: GNOME's
+     * enable-animations, macOS Reduce motion, Windows window animations.
+     * PHPUI_REDUCE_MOTION=1 or 0 overrides it.
+     */
+    public static function reducedMotion(callable $done): void
+    {
+        $forced = getenv('PHPUI_REDUCE_MOTION');
+        if ($forced !== false && $forced !== '') {
+            self::defer(fn () => self::deliver($done, (bool) (int) $forced));
+            return;
+        }
+        [$argv, $reduced] = match (PHP_OS_FAMILY) {
+            'Darwin' => [['defaults', 'read', 'com.apple.universalaccess', 'reduceMotion'], fn ($out) => trim($out) === '1'],
+            'Windows' => [['reg', 'query', 'HKCU\\Control Panel\\Desktop\\WindowMetrics', '/v', 'MinAnimate'], fn ($out) => (bool) preg_match('/MinAnimate\s+REG_SZ\s+0\b/', $out)],
+            default => [['gsettings', 'get', 'org.gnome.desktop.interface', 'enable-animations'], fn ($out) => trim($out) === 'false'],
+        };
+        if (!self::has($argv[0])) return;
+        self::spawn($argv, function ($code, $out) use ($done, $reduced) {
+            if ($code === 0) self::deliver($done, $reduced($out));
+        });
+    }
+
     public static function followSystemTheme(?callable $onChange = null): void
     {
         Theme::use('system');

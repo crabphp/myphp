@@ -198,7 +198,7 @@ $render = function () use ($state, $load, $pick, $colors) {
                 ->child(text(dirname($state->file) . ' · ' . number_format($state->size / 1024, 1) . ' KB')->textSize(12)->textColor(t('muted-foreground'))->truncate()))
             ->child(row()->itemsCenter()->gap(8)->child(switchToggle($state->follow, fn () => $state->follow = !$state->follow)->id('follow'))->child(text('Follow')->textSize(13)))
             ->child(button('Open', $pick, 'outline', 'sm', 'folder-open')->id('open'))
-            ->child(button('', fn () => Theme::toggle(), 'ghost', 'icon-sm', Theme::dark() ? 'sun' : 'moon')->id('theme')))
+            ->child(button('', fn () => Theme::toggle(), 'ghost', 'icon-sm', Theme::dark() ? 'sun' : 'moon')->id('theme')->label('Switch theme')))
         ->child(row()->itemsCenter()->gap(12)->px(20)->py(14)
             ->child($chips)->child(spacer())
             ->child(textInput('search', $state->search, fn ($v) => [$state->search, $state->open] = [$v, null], 'Search messages and traces', 'search')->w(280)))

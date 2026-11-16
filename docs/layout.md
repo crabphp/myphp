@@ -81,7 +81,8 @@ IDs also support scripted input through `$app->clickId('add')` and `$app->find('
 - `->onClickOutside(fn () => ...)` closes menus; `->stopClicks()` keeps clicks inside.
 - `->onDrop(fn (array $paths) => ...)` receives files dropped on the element.
 - `$app->onKey(fn ($key, $mods) => ...)` gets keys that no focused input used.
-  Tab and Shift+Tab move between inputs.
+  Tab and Shift+Tab move between all controls; see [Accessibility](accessibility.md) for
+  `onKeyDown()`, `onEscape()`, `label()`, `role()` and zoom.
 - `$app->every(1, fn () => ...)` and `$app->after(0.5, fn () => ...)` run timers on the
   UI loop and redraw afterwards; `$app->cancel($id)` stops one.
 - `$app->title('New title')` renames the window.

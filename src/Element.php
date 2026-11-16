@@ -22,6 +22,10 @@ final class Element
     public ?\Closure $onDrop = null;
     public ?\Closure $onDrag = null;
     public ?\Closure $onRightClick = null;
+    public ?\Closure $onKeyDown = null;
+    public ?\Closure $onEscape = null;
+    /** Accessible name, e.g. for an icon-only button. */
+    public ?string $label = null;
     public ?\Closure $draw = null;
     public ?string $id = null;
     public string $placeholder = '';
@@ -48,6 +52,8 @@ final class Element
     public ?Element $parent = null;
     public bool $hovered = false;
     public bool $focused = false;
+    /** Focused from the keyboard: show the focus ring. */
+    public bool $focusVisible = false;
     /** Paint style for the current frame, animations applied (set by Painter). */
     public ?array $painted = null;
     /** Input editing: caret and selection anchor as character offsets. */
@@ -110,6 +116,20 @@ final class Element
     public function onDrag(callable $fn): self { $this->onDrag = $fn(...); return $this->cursor('pointer'); }
     /** $fn($x, $y, $element) on a right click, e.g. to open a context menu at the pointer. */
     public function onRightClick(callable $fn): self { $this->onRightClick = $fn(...); return $this; }
+    /** $fn($key, $mods, $element) while this element has keyboard focus; return true when it used the key. */
+    public function onKeyDown(callable $fn): self { $this->onKeyDown = $fn(...); return $this; }
+    /** Escape anywhere calls the newest open element's handler: menus and dialogs close themselves. */
+    public function onEscape(callable $fn): self { $this->onEscape = $fn(...); return $this; }
+    /** Whether Tab stops here. Clickable elements and inputs do by default. */
+    public function focusable(bool $on = true): self { return $this->set('focusable', $on); }
+    /** false: Tab skips this control but arrow keys still reach it, as in a tab bar (one stop per group). */
+    public function tabStop(bool $on = true): self { return $this->set('tabStop', $on); }
+    /** Keep Tab inside this element while it is shown, e.g. a dialog. */
+    public function trapFocus(): self { return $this->set('trapFocus', true); }
+    /** What this element is for assistive technology: 'button', 'checkbox', 'slider', ... and its state. */
+    public function role(string $role, array $state = []): self { return $this->set('role', $role)->set('roleState', $state); }
+    /** The accessible name, e.g. 'Play' for an icon-only button. */
+    public function label(string $name): self { $this->label = $name; return $this; }
     /** $fn receives the paths dropped on this element or one of its children. */
     public function onDrop(callable $fn): self { $this->onDrop = $fn(...); return $this; }
 

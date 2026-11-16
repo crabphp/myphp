@@ -84,6 +84,8 @@ This only feeds your editor. Apps never need `vendor/`.
   a data folder per app.
 - **Live reload:** `myphp run --watch` restarts the window when you save.
 - **Audio:** play MP3, FLAC and WAV with `GL\Audio\Engine`, built in; see the player demo.
+- **Keyboard and zoom:** Tab to every control, Enter/Space/arrows/Escape, a focus ring,
+  Ctrl/Cmd +/− zoom, reduced motion and accessible names ([details](docs/accessibility.md)).
 - **Desktop:** file dialogs, notifications, clipboard, file drop, open links,
   follow system dark mode.
 - **Fast:** one GPU draw for all boxes and shadows; the app sleeps when idle.
@@ -106,11 +108,12 @@ myphp run gallery.php     # also: dashboard, desktop, logs, notes, player, todo
 - [Layout](docs/layout.md)
 - [Components](docs/components.md)
 - [Desktop](docs/desktop.md)
+- [Accessibility](docs/accessibility.md)
 - [Contributing](docs/contributing.md)
 
 ## Status
 
-Early. Linux is the main platform; macOS and Windows are experimental (built and
+Early. Screen readers are not supported yet. Linux is the main platform; macOS and Windows are experimental (built and
 smoke-tested by CI, not yet tested on real hardware). Not yet: tray icons, menus,
 multiple windows, global shortcuts.
 

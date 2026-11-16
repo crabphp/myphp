@@ -45,6 +45,8 @@ final class Painter
     public ?\Closure $clock = null;
     /** Skip animations and show final states, e.g. for screenshots. */
     public bool $instant = false;
+    /** The user prefers less motion: no transitions or fade-ins. */
+    public bool $reduceMotion = false;
     /** True while the last frame had an animation in progress. */
     public bool $animating = false;
     /** @var array<string, array<string, array>> Running transitions by element id and property. */
@@ -259,7 +261,7 @@ final class Painter
         if (!empty($e->style['hidden'])) return;
 
         $vg = $this->vg;
-        $s = $e->painted ??= $this->animate($e, $this->inherit($e->paintStyle(), $e, $color));
+        $s = $e->painted ??= $this->focusRing($e, $this->animate($e, $this->inherit($e->paintStyle(), $e, $color)));
         $clips = !empty($s['clip']);
         $save = $this->mode === 'nanovg' || isset($s['opacity']) || $clips;
         [$clip, $alpha] = [$this->clip, $this->alpha];
@@ -301,6 +303,14 @@ final class Painter
         [$this->clip, $this->alpha] = [$clip, $alpha];
     }
 
+    /** Keyboard focus shows a ring around the control, as inputs show while editing. */
+    private function focusRing(Element $e, array $s): array
+    {
+        // Solid ring color: at least 3:1 against the background in both themes.
+        if ($e->focusVisible) $s['ring'] = [2, t('ring')];
+        return $s;
+    }
+
     /** An element without its own text color paints with its parent's painted one. */
     private function inherit(array $s, Element $e, ?string $color): array
     {
@@ -320,7 +330,7 @@ final class Painter
         $this->seenNow[$id] = true;
         $appearing = !isset($this->seen[$id]);
         if ($appearing) unset($this->anim[$id]);
-        if ($this->instant) return $s;
+        if ($this->instant || $this->reduceMotion) return $s;
 
         if ($ms !== null) {
             foreach (['bg', 'color', 'borderColor', 'opacity', 'ring'] as $key) {

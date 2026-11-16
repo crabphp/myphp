@@ -255,6 +255,7 @@ $render = function () use ($state, $audio, $play, $toggle, $step, $seek, $setVol
 
     // Shuffle and repeat light up when on.
     $control = fn (string $ico, callable $fn, string $id, bool $on = false) => row()->size(40)->center()->rounded(20)->id($id)
+        ->label(ucfirst($id))->role('button', $id === 'shuffle' || $id === 'repeat' ? ['pressed' => $on] : [])
         ->transition()->hover(fn ($s) => $s->bg(t('accent')))->onClick($fn)
         ->child(icon($ico, 20, $on ? t('chart-2') : t('foreground')));
     $repeatNext = ['off' => 'all', 'all' => 'one', 'one' => 'off'];
@@ -271,12 +272,12 @@ $render = function () use ($state, $audio, $play, $toggle, $step, $seek, $setVol
             ->child(row()->itemsCenter()->gap(12)
                 ->child($control('shuffle', function () use ($state) { $state->shuffle = !$state->shuffle; }, 'shuffle', $state->shuffle))
                 ->child($control('skip-back', fn () => $step(-1), 'previous'))
-                ->child(button('', $toggle, 'default', 'icon', $state->playing ? 'pause' : 'play')->size(52)->rounded(26)->id('play'))
+                ->child(button('', $toggle, 'default', 'icon', $state->playing ? 'pause' : 'play')->size(52)->rounded(26)->id('play')->label($state->playing ? 'Pause' : 'Play'))
                 ->child($control('skip-forward', fn () => $step(1), 'next'))
                 ->child($control($state->repeat === 'one' ? 'repeat-1' : 'repeat', function () use ($state, $repeatNext) { $state->repeat = $repeatNext[$state->repeat]; }, 'repeat', $state->repeat !== 'off')))
             ->child(row()->itemsCenter()->gap(10)->w(240)
                 ->child(icon($state->volume > 0 ? 'volume-2' : 'volume-x', 16, t('muted-foreground')))
-                ->child(slider($state->volume, $setVolume)->flex1()->id('volume'))));
+                ->child(slider($state->volume, $setVolume)->flex1()->id('volume')->label('Volume'))));
 
     return row()->full()->bg(t('background'))
         ->onDrop(fn (array $paths) => $add($paths))
@@ -284,8 +285,8 @@ $render = function () use ($state, $audio, $play, $toggle, $step, $seek, $setVol
             ->child(row()->itemsCenter()->gap(8)->px(4)
                 ->child(icon('list-music', 18))->child(text('Library')->textSize(16)->semibold())
                 ->child(spacer())
-                ->child(button('', fn () => Desktop::pickFolder(fn ($dir) => $dir && $add([$dir]), 'Add a music folder'), 'ghost', 'icon-sm', 'folder-open')->id('add-folder'))
-                ->child(button('', fn () => Theme::toggle(), 'ghost', 'icon-sm', Theme::dark() ? 'sun' : 'moon')->id('theme')))
+                ->child(button('', fn () => Desktop::pickFolder(fn ($dir) => $dir && $add([$dir]), 'Add a music folder'), 'ghost', 'icon-sm', 'folder-open')->id('add-folder')->label('Add a music folder'))
+                ->child(button('', fn () => Theme::toggle(), 'ghost', 'icon-sm', Theme::dark() ? 'sun' : 'moon')->id('theme')->label('Switch theme')))
             ->child(textInput('search', $state->search, fn ($v) => $state->search = $v, 'Search', 'search'))
             ->child($list)
             ->child(text($state->notice)->wrap()->textSize(12)->textColor(t('muted-foreground'))->id('notice')))

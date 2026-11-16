@@ -29,6 +29,8 @@ export XDG_CONFIG_HOME="$logs/config" XDG_CACHE_HOME="$logs/cache" XDG_DATA_HOME
 export GSETTINGS_BACKEND=memory GIO_USE_VFS=local GIO_USE_VOLUME_MONITOR=unix
 if (( $# == 0 )); then set -- tests/*.php examples/bench*.php; fi
 export PHPUI_BENCH_RUNS=2 PHPUI_BENCH_SMALL=1
+# Animations on, and no system query that would show up in fake call logs.
+export PHPUI_REDUCE_MOTION=0
 status=0
 for file in "$@"; do
     [[ $file == tests/lib.php ]] && continue

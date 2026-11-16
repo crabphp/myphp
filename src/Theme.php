@@ -16,10 +16,10 @@ final class Theme
         'popover' => '#ffffff', 'popover-foreground' => '#0a0a0a',
         'primary' => '#171717', 'primary-foreground' => '#fafafa',
         'secondary' => '#f5f5f5', 'secondary-foreground' => '#171717',
-        'muted' => '#f5f5f5', 'muted-foreground' => '#737373',
+        'muted' => '#f5f5f5', 'muted-foreground' => '#6e6e6e', // darker than shadcn's #737373: 4.5:1 on muted
         'accent' => '#f5f5f5', 'accent-foreground' => '#171717',
         'destructive' => '#e7000b',
-        'border' => '#e5e5e5', 'input' => '#e5e5e5', 'ring' => '#a1a1a1',
+        'border' => '#e5e5e5', 'input' => '#e5e5e5', 'ring' => '#8f8f8f', // shadcn's #a1a1a1 is under 3:1
         'chart-1' => '#f54a00', 'chart-2' => '#009689', 'chart-3' => '#104e64', 'chart-4' => '#ffb900', 'chart-5' => '#fe9a00',
         'sidebar' => '#fafafa', 'sidebar-foreground' => '#0a0a0a', 'sidebar-accent' => '#f5f5f5', 'sidebar-border' => '#e5e5e5',
         'success' => '#16a34a', 'overlay' => '#00000080',

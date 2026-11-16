@@ -35,6 +35,9 @@ final class App
     private array $modals = [];
     private ?Element $modalTree = null;
     private bool $building = false;
+    /** Focus came from the keyboard, so the focused control shows a ring. */
+    private bool $keyboardFocus = false;
+    private float $zoom = 1.0;
     /** Caret, selection and scroll of each input by id, with the text they belong to. */
     private array $edits = [];
     private ?string $dragId = null;
@@ -77,7 +80,7 @@ final class App
             'text' => glfwCreateStandardCursor(GLFW_IBEAM_CURSOR),
         ];
 
-        glfwSetCursorPosCallback($this->window, fn (float $x, float $y) => $this->pointer($x, $y));
+        glfwSetCursorPosCallback($this->window, fn (float $x, float $y) => $this->pointer($x / $this->zoom, $y / $this->zoom));
         glfwSetMouseButtonCallback($this->window, function (int $button, int $action) {
             if ($button === GLFW_MOUSE_BUTTON_RIGHT && $action === GLFW_PRESS) $this->rightClick($this->mouseX, $this->mouseY);
             if ($button !== GLFW_MOUSE_BUTTON_LEFT) return;
@@ -95,6 +98,7 @@ final class App
         $this->waitHint(fn () => $this->painter->animating ? 1 / 120 : 0.5);
         $this->waitHint(fn () => $this->nextTimer());
         $this->poller(Desktop::poll(...));
+        Desktop::reducedMotion(fn (bool $on) => $this->painter->reduceMotion = $on);
         $this->waitHint(Desktop::waitHint(...));
         $this->onShutdown(Desktop::shutdown(...));
     }
@@ -231,7 +235,8 @@ final class App
                 $this->pressed = null;
             }
         }
-        if ($this->dirty || $this->focusId !== null) $this->frame();
+        // Keep drawing only for a blinking caret.
+        if ($this->dirty || ($this->focusId !== null && $this->focused()?->kind === 'input')) $this->frame();
     }
 
     /** Build, lay out and draw one frame to the window. */
@@ -285,12 +290,15 @@ final class App
     {
         // Build twice when hover changed what the tree looks like is not needed: hover is paint-only.
         $this->tree = $this->build();
+        // Zoom lays out a smaller logical window and draws it scaled up.
+        [$vw, $vh] = [$w * $ratio, $h * $ratio];
+        [$w, $h, $ratio] = [$w / $this->zoom, $h / $this->zoom, $ratio * $this->zoom];
         $this->layout->compute($this->tree, $w, $h);
         $this->markState($this->tree, '0', null);
         $this->stale = false;
         $this->updateCursor();
 
-        glViewport(0, 0, (int) ($w * $ratio), (int) ($h * $ratio));
+        glViewport(0, 0, (int) $vw, (int) $vh);
         $bg = $this->painter->color($this->tree->get('bg', t('background')));
         glClearColor($bg->r, $bg->g, $bg->b, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -336,7 +344,10 @@ final class App
             $this->stale = true;
         }
         $input = $this->handler($top, fn (Element $e) => $e->kind === 'input');
+        // A click focuses only text inputs: buttons take focus from Tab, so app shortcuts
+        // like Space still reach the app after clicking one.
         $this->focusId = $input?->id;
+        $this->keyboardFocus = false;
         $selectable = $input ? null : $this->handler($top, fn (Element $e) => $e->kind === 'text' && $e->selectable);
         $this->textSelection = null;
         if ($selectable) {
@@ -509,12 +520,24 @@ final class App
             if ($index !== null) $this->clickId('message-button-' . $index);
             return;
         }
+        $primary = (bool) ($mods & (PHP_OS_FAMILY === 'Darwin' ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL));
+        if ($primary && in_array($key, [GLFW_KEY_EQUAL, GLFW_KEY_KP_ADD, GLFW_KEY_MINUS, GLFW_KEY_KP_SUBTRACT, GLFW_KEY_0, GLFW_KEY_KP_0], true)) {
+            $this->zoom(match ($key) {
+                GLFW_KEY_EQUAL, GLFW_KEY_KP_ADD => $this->zoom * 1.1,
+                GLFW_KEY_MINUS, GLFW_KEY_KP_SUBTRACT => $this->zoom / 1.1,
+                default => 1.0,
+            });
+            return;
+        }
         if ($key === GLFW_KEY_TAB && $this->focusNext(($mods & GLFW_MOD_SHIFT) ? -1 : 1)) {
             $this->stale = $this->dirty = true;
             return;
         }
-        $input = $this->focused();
-        $used = $input !== null && $this->editKey($input, $key, $mods);
+        $focused = $this->focused();
+        $input = $focused?->kind === 'input' ? $focused : null;
+        $used = $input !== null && $key !== GLFW_KEY_ESCAPE && $this->editKey($input, $key, $mods);
+        if (!$used && $focused && !$input) $used = $this->controlKey($focused, $key, $mods);
+        if (!$used && $key === GLFW_KEY_ESCAPE) $used = $this->escape();
         if (!$used && $this->textSelection && ($mods & (PHP_OS_FAMILY === 'Darwin' ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL))) {
             $used = $this->textKey($key);
         }
@@ -544,7 +567,7 @@ final class App
     private function relayout(): void
     {
         glfwGetWindowSize($this->window, $w, $h);
-        $size = $this->tree ? [$this->tree->w, $this->tree->h] : [$w, $h];
+        $size = $this->tree ? [$this->tree->w, $this->tree->h] : [$w / $this->zoom, $h / $this->zoom];
         $this->tree = $this->build();
         $this->layout->compute($this->tree, ...$size);
         $this->markState($this->tree, '0', null);
@@ -556,7 +579,8 @@ final class App
     {
         $e->id ??= $path;
         $e->parent = $parent;
-        $e->focused = $e->kind === 'input' && $e->id === $this->focusId;
+        $e->focused = $e->id === $this->focusId;
+        $e->focusVisible = $e->focused && $this->keyboardFocus && $e->kind !== 'input';
         $e->selection = null;
         if ($e->kind === 'text' && $this->textSelection && $this->textSelection[0] === $e->id && $this->textSelection[1] !== $this->textSelection[2]) {
             $e->selection = [min($this->textSelection[1], $this->textSelection[2]), max($this->textSelection[1], $this->textSelection[2])];
@@ -647,24 +671,169 @@ final class App
         return $this->focusId === null ? null : $this->find($this->focusId);
     }
 
-    /** Move focus to the next (or previous) input in the tree, selecting its text. */
-    private function focusNext(int $direction): bool
+    /** Inputs, and elements that respond to clicks, drags or keys, unless ->focusable(false). */
+    private function isFocusable(Element $e): bool
     {
-        $inputs = [];
-        $collect = function (Element $e) use (&$collect, &$inputs) {
-            if (!empty($e->style['hidden'])) return;
-            if ($e->kind === 'input' && $e->id !== null) $inputs[] = $e;
+        if (isset($e->style['focusable'])) return (bool) $e->style['focusable'];
+        return $e->kind === 'input' || $e->onClick !== null || $e->onDrag !== null || $e->onKeyDown !== null;
+    }
+
+    /** Focusable elements in tree order, within an open dialog or modal when there is one. */
+    private function focusOrder(): array
+    {
+        $scope = $this->modalTree ?? $this->tree;
+        $find = function (Element $e) use (&$find, &$scope) {
+            if (!empty($e->style['trapFocus'])) $scope = $e;
+            foreach ($e->children as $c) $find($c);
+        };
+        if (!$this->modalTree && $this->tree) $find($this->tree);
+        $list = [];
+        $collect = function (Element $e) use (&$collect, &$list) {
+            if (!empty($e->style['hidden']) || !empty($e->style['hoverOnly'])) return;
+            // A group's other members are reached with arrows, unless one of them has focus.
+            if ($e->id !== null && $this->isFocusable($e) && (($e->style['tabStop'] ?? true) || $e->id === $this->focusId)) $list[] = $e;
             foreach ($e->children as $c) $collect($c);
         };
-        $collect($this->modalTree ?? $this->tree);
-        if (!$inputs) return false;
-        $ids = array_map(fn (Element $e) => $e->id, $inputs);
-        $at = array_search($this->focusId, $ids, true);
-        $next = $inputs[$at === false ? ($direction > 0 ? 0 : count($inputs) - 1) : (($at + $direction + count($inputs)) % count($inputs))];
-        $this->focusId = $next->id;
-        $this->moveCaret($next, 0, false);
-        $this->moveCaret($next, mb_strlen($next->text), true);
+        if ($scope) $collect($scope);
+        return $list;
+    }
+
+    /** Move focus to the next (or previous) control; an input gets its text selected. */
+    private function focusNext(int $direction): bool
+    {
+        $list = $this->focusOrder();
+        if (!$list) return false;
+        $at = array_search($this->focusId, array_map(fn (Element $e) => $e->id, $list), true);
+        $next = $list[$at === false ? ($direction > 0 ? 0 : count($list) - 1) : (($at + $direction + count($list)) % count($list))];
+        $this->focusOn($next);
+        if ($next->kind === 'input') {
+            $this->moveCaret($next, 0, false);
+            $this->moveCaret($next, mb_strlen($next->text), true);
+        }
         return true;
+    }
+
+    /** Focus an element by id from code, showing the focus ring as keyboard focus does. */
+    public function focusElement(string $id): bool
+    {
+        $e = $this->find($id);
+        if (!$e) return false;
+        $this->focusOn($e);
+        return true;
+    }
+
+    private function focusOn(Element $e): void
+    {
+        [$this->focusId, $this->keyboardFocus] = [$e->id, true];
+        // Scroll a list so the focused element is in view.
+        for ($box = $e->parent; $box; $box = $box->parent) {
+            if (empty($box->style['scroll']) || $box->id === null) continue;
+            $top = $e->y - $box->y + $box->scrollY - $box->get('pt', 0);
+            $offset = $this->layout->scroll[$box->id] ?? 0;
+            if ($top < $offset) $this->layout->scroll[$box->id] = $top;
+            elseif ($top + $e->h > $offset + $box->h - $box->get('pb', 0) - $box->get('pt', 0)) {
+                $this->layout->scroll[$box->id] = $top + $e->h - $box->h + $box->get('pt', 0) + $box->get('pb', 0);
+            }
+            break;
+        }
+        $this->stale = $this->dirty = true;
+    }
+
+    /** Keys for a focused control: its own handler, Enter/Space to activate, arrows between siblings. */
+    private function controlKey(Element $e, int $key, int $mods): bool
+    {
+        if ($e->onKeyDown && ($e->onKeyDown)($key, $mods, $e) === true) {
+            $this->stale = true;
+            return true;
+        }
+        if (in_array($key, [GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER, GLFW_KEY_SPACE], true) && $e->onClick) {
+            ($e->onClick)($e->x + $e->w / 2, $e->y + $e->h / 2, $e);
+            $this->stale = true;
+            return true;
+        }
+        $step = match ($key) { GLFW_KEY_LEFT, GLFW_KEY_UP => -1, GLFW_KEY_RIGHT, GLFW_KEY_DOWN => 1, default => 0 };
+        if ($step && $e->parent && in_array($e->parent->get('role'), ['tablist', 'radiogroup', 'menu', 'toolbar', 'listbox'], true)) {
+            // Tab bars, toggle groups and menus: arrows move between their items.
+            $siblings = array_values(array_filter($e->parent->children, fn (Element $c) => $c->id !== null && $this->isFocusable($c) && empty($c->style['hidden'])));
+            $at = array_search($e, $siblings, true);
+            if ($at !== false && isset($siblings[$at + $step])) {
+                $this->focusOn($siblings[$at + $step]);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Escape: the newest element with onEscape (an open menu or dialog), or else leave the input. */
+    private function escape(): bool
+    {
+        $handler = null;
+        foreach ($this->order as [$e]) if ($e->onEscape) $handler = $e;
+        if ($handler) {
+            ($handler->onEscape)();
+            $this->stale = $this->dirty = true;
+            return true;
+        }
+        if ($this->focusId !== null) {
+            $this->focusId = null;
+            $this->dirty = true;
+        }
+        return false;
+    }
+
+    /**
+     * What a screen reader would be given: nested [role, name, state, children] for
+     * elements with a role, inputs, text, images and focusable controls. Containers
+     * without a role are flattened away.
+     */
+    public function accessibilityTree(): array
+    {
+        $this->fresh();
+        return $this->tree ? $this->a11y($this->tree) : [];
+    }
+
+    private function a11y(Element $e): array
+    {
+        if (!empty($e->style['hidden'])) return [];
+        $role = $e->get('role') ?? match (true) {
+            $e->kind === 'input' => 'textbox',
+            $e->kind === 'text' => 'text',
+            $e->kind === 'image' => 'image',
+            $this->isFocusable($e) => 'button',
+            default => null,
+        };
+        $children = [];
+        foreach ($e->children as $c) array_push($children, ...$this->a11y($c));
+        if ($role === null) return $children;
+        $state = $e->get('roleState', []);
+        if ($e->focused) $state['focused'] = true;
+        if ($e->kind === 'input') $state += ['value' => $e->text, 'multiline' => (bool) $e->get('multiline')];
+        $name = $e->label ?? match ($e->kind) {
+            'text' => $e->text,
+            'input' => $e->placeholder,
+            default => trim(implode(' ', array_map(fn ($n) => $n['name'], array_filter($children, fn ($n) => $n['role'] === 'text')))),
+        };
+        // Controls are named by their content: their text is not repeated as children.
+        if (in_array($role, ['text', 'button', 'tab', 'menuitem', 'checkbox', 'switch', 'combobox', 'textbox', 'link'], true)) $children = [];
+        return [['role' => $role, 'name' => $name, 'state' => $state, 'children' => $children]];
+    }
+
+    /** Turn transitions and fade-ins off or on; by default this follows the system setting. */
+    public function reduceMotion(bool $on): self
+    {
+        $this->painter->reduceMotion = $on;
+        $this->dirty = true;
+        return $this;
+    }
+
+    /** Scale the whole interface, 0.5 to 3; Ctrl/Cmd + and - do the same. */
+    public function zoom(?float $zoom = null): float
+    {
+        if ($zoom !== null) {
+            $this->zoom = round(max(0.5, min(3.0, $zoom)), 3);
+            $this->stale = $this->dirty = true;
+        }
+        return $this->zoom;
     }
 
     // Selectable text -----------------------------------------------------
