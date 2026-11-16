@@ -25,6 +25,11 @@ $render = fn () => col()->full()->p(24)->gap(16)->bg(t('background'))
 (new App('Layout', 480, 320, $render))->run();
 ```
 
+`grid(3)->gap(16)->children($cards)` places children in three equal columns; each
+row is as tall as its tallest cell, and cells without a height stretch to it.
+`row()->flexWrap()->gap(8)` lets children continue on the next line when they do not
+fit, like tags or toolbar buttons; `justify()` applies to each line.
+
 ## Size and spacing
 
 | Chain | Meaning |

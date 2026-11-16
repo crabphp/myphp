@@ -122,6 +122,10 @@ final class Element
     public function row(): self { return $this->set('dir', 'row'); }
     public function col(): self { return $this->set('dir', 'col'); }
     public function gap(float $px): self { return $this->set('gap', $px); }
+    /** Lay children out in $columns equal columns, rows as tall as their tallest cell. */
+    public function grid(int $columns): self { return $this->set('grid', max(1, $columns)); }
+    /** Let a row's children continue on the next line when they do not fit. */
+    public function flexWrap(): self { return $this->row()->set('flexWrap', true); }
 
     public function w(float|string $v): self { return $this->set('w', $v); }
     public function h(float|string $v): self { return $this->set('h', $v); }

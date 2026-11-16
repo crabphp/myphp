@@ -107,6 +107,12 @@ function icon(string $name, float $size = 16, ?string $color = null): Element
     return div()->size($size)->icon($name, $color ?? t('foreground'), $size);
 }
 
+/** A grid of $columns equal columns: grid(3)->gap(16)->children($cards). */
+function grid(int $columns): Element
+{
+    return div()->grid($columns);
+}
+
 function spacer(): Element
 {
     return div()->grow();
