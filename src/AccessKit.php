@@ -98,16 +98,30 @@ final class AccessKit
     /** The bridge for this app, or null where screen readers are not supported (yet). */
     public static function attach(App $app): ?self
     {
-        if (getenv('PHPUI_ACCESSKIT') === '0' || PHP_OS_FAMILY !== 'Darwin' || !extension_loaded('ffi')) return null;
-        $library = self::library();
-        if ($library === null) return null;
+        $off = match (true) {
+            getenv('PHPUI_ACCESSKIT') === '0' => 'PHPUI_ACCESSKIT=0',
+            PHP_OS_FAMILY !== 'Darwin' => 'only macOS is supported so far',
+            !extension_loaded('ffi') => 'this runtime has no FFI extension (update myphp)',
+            self::library() === null => 'libaccesskit is not bundled in this myphp (update myphp)',
+            !in_array(ini_get('ffi.enable'), ['1', 'On', 'on', 'true'], true) && PHP_SAPI !== 'cli' => 'ffi.enable is ' . var_export(ini_get('ffi.enable'), true),
+            default => null,
+        };
+        if ($off !== null) { self::debug("off: $off"); return null; }
         try {
-            $bridge = new self($app, $library);
-            return $bridge->connectMacOS() ? $bridge : null;
+            $bridge = new self($app, self::library());
+            if (!$bridge->connectMacOS()) { self::debug('off: no window to attach to'); return null; }
+            self::debug('attached to the window; waiting for VoiceOver to ask for the tree');
+            return $bridge;
         } catch (\Throwable $e) {
             fwrite(STDERR, 'myphp: screen reader support is off: ' . $e->getMessage() . "\n");
             return null;
         }
+    }
+
+    /** PHPUI_DEBUG=1 prints what the bridge does, for checking it with a screen reader. */
+    public static function debug(string $message): void
+    {
+        if (getenv('PHPUI_DEBUG')) fwrite(STDERR, "myphp: accessibility: $message\n");
     }
 
     /** libaccesskit for this system: MYPHP_ACCESSKIT, or the copy bundled in assets/native. */
@@ -142,10 +156,14 @@ final class AccessKit
         // GLFW focuses its window, not the view: forward VoiceOver's focus question to the view.
         $this->ak->accesskit_macos_add_focus_forwarder_to_window_class('GLFWWindow');
         $this->callbacks = [
-            'activate' => fn ($userdata) => $this->update(true),
+            'activate' => function ($userdata) {
+                self::debug('VoiceOver connected: sending the tree');
+                return $this->update(true);
+            },
             'action' => function ($request, $userdata) {
                 // Queue it: the app handles it on its next loop turn, never in the middle of a frame.
                 $this->actions[] = [(int) $request->action, (int) $request->target_node];
+                self::debug('action ' . (int) $request->action . ' on node ' . (int) $request->target_node);
                 $this->ak->accesskit_action_request_free($request);
             },
             'update' => fn ($userdata) => $this->update(false),
@@ -166,7 +184,9 @@ final class AccessKit
         if ($signature === $this->published) return;
         $this->published = $signature;
         $events = $this->ak->accesskit_macos_subclassing_adapter_update_if_active($this->adapter, $this->callbacks['update'], null);
-        if (!FFI::isNull($events)) $this->ak->accesskit_macos_queued_events_raise($events);
+        $active = !FFI::isNull($events);
+        if ($active) $this->ak->accesskit_macos_queued_events_raise($events);
+        self::debug('tree changed: ' . ($active ? 'sent ' . (count($this->elements)) . ' known controls' : 'no screen reader listening'));
     }
 
     public function windowFocus(bool $focused): void

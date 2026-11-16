@@ -541,9 +541,13 @@ final class App
             });
             return;
         }
-        if ($key === GLFW_KEY_TAB && $this->focusNext(($mods & GLFW_MOD_SHIFT) ? -1 : 1)) {
-            $this->stale = $this->dirty = true;
-            return;
+        if ($key === GLFW_KEY_TAB) {
+            $moved = $this->focusNext(($mods & GLFW_MOD_SHIFT) ? -1 : 1);
+            AccessKit::debug('Tab: ' . ($moved ? "focus is now {$this->focusId}" : 'nothing focusable'));
+            if ($moved) {
+                $this->stale = $this->dirty = true;
+                return;
+            }
         }
         $focused = $this->focused();
         $input = $focused?->kind === 'input' ? $focused : null;
