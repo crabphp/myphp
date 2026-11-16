@@ -88,6 +88,7 @@ Try the built-in demos:
 ```sh
 myphp demo dashboard
 myphp demo desktop
+myphp demo gallery
 myphp demo notes
 myphp demo todo
 ```

@@ -6,6 +6,11 @@ All functions are in `PhpUi` and return chainable `Element` objects. Import with
 
 Signatures below match `src/components.php` and `src/charts.php`.
 
+Run `myphp demo gallery` to try every component live, in light and dark, with the
+code for each example next to it (select it, or press Copy).
+
+![Component gallery](images/gallery.webp)
+
 ## Controls
 
 - `button(string $label, ?callable $onClick = null, string $variant = 'default', string $size = 'default', ?string $icon = null): Element` — Variants: default, secondary, outline, ghost, destructive, link; sizes: default, sm, lg, icon, icon-sm.
