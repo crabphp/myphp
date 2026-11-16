@@ -9,6 +9,7 @@ $asset = 'myphp-windows-x86_64.exe'
 $dir = if ($env:MYPHP_INSTALL_DIR) { $env:MYPHP_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\myphp' }
 $base = 'https://github.com/crabphp/myphp/releases'
 $url = if ($env:MYPHP_DOWNLOAD_URL) { $env:MYPHP_DOWNLOAD_URL }
+    elseif ($env:MYPHP_VERSION -eq 'nightly') { "$base/download/nightly/$asset" }
     elseif ($env:MYPHP_VERSION) { "$base/download/v$($env:MYPHP_VERSION)/$asset" }
     else { "$base/latest/download/$asset" }
 

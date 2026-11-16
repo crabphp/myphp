@@ -29,7 +29,7 @@ function myphpHelp(): int
         'init' => '  myphp init <name>     create a new app',
         'run' => '  myphp run [file]      run an app (default: app.php); --watch reloads on save',
         'build' => '  myphp build [file]    build one executable (default: app.php)',
-        'upgrade' => '  myphp upgrade         update myphp; --nightly for the newest unreleased build',
+        'upgrade' => '  myphp upgrade         update myphp (--nightly: newest build from main, --stable: releases)',
     ] as $name => $line) {
         if (function_exists('cmd' . ucfirst($name))) echo "$line\n";
     }

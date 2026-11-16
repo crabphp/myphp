@@ -108,7 +108,12 @@ folders for screenshots must already exist.
 myphp upgrade            # the latest release
 myphp upgrade 0.1.2      # a specific version
 myphp upgrade --nightly  # the newest build from main, not released yet
+myphp upgrade --stable   # back to releases
 ```
+
+A nightly build stays on nightly builds: plain `myphp upgrade` gets the newest one.
+To install a nightly directly: `curl -fsSL …/install.sh | sh -s -- --nightly`
+(PowerShell: `$env:MYPHP_VERSION='nightly'` before `irm …/install.ps1 | iex`).
 
 Downloads the build for this system with `curl` or `wget`, checks its SHA-256 and
 that it runs, then replaces the `myphp` you ran. Nothing changes if any step fails.

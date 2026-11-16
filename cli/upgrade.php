@@ -58,13 +58,15 @@ function myphpVersionOf(string $binary): ?string
 function cmdUpgrade(array $args): int
 {
     $version = null;
-    $nightly = false;
+    // Stay on the channel you are on: a nightly build upgrades to the newest nightly.
+    $nightly = str_starts_with(myphpVersion(), 'nightly-');
     foreach ($args as $arg) {
         if ($arg === '--nightly') $nightly = true;
+        elseif ($arg === '--stable') $nightly = false;
         elseif (preg_match('/^v?(\d+\.\d+\.\d+)$/D', $arg, $m)) $version = $m[1];
-        else return myphpError('usage: myphp upgrade [--nightly | X.Y.Z]', 2);
+        else return myphpError('usage: myphp upgrade [--nightly | --stable | X.Y.Z]', 2);
     }
-    if ($nightly && $version) return myphpError('usage: myphp upgrade [--nightly | X.Y.Z]', 2);
+    if ($version !== null) $nightly = false;
     if (PHP_SAPI !== 'micro') return myphpError('upgrade replaces the installed myphp binary; a source checkout updates with git pull');
     $asset = myphpAsset() ?? myphpError('no myphp build for this system');
     if (is_int($asset)) return $asset;
@@ -93,7 +95,7 @@ function cmdUpgrade(array $args): int
         $new = myphpVersionOf($temp) ?? myphpError('the downloaded myphp does not run; nothing was changed');
         if (is_int($new)) return $new;
         $old = 'myphp ' . myphpVersion();
-        if (!$nightly && $new === "$old (PHP " . PHP_VERSION . ')') {
+        if ($new === "$old (PHP " . PHP_VERSION . ')') {
             echo "Already up to date: $new\n";
             return 0;
         }

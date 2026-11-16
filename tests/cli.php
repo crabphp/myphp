@@ -49,6 +49,8 @@ if (is_file("$buildDir/versioned/myphp")) {
     check($code === 0 && str_contains($out, 'Already up to date'), 'upgrading again changes nothing');
     [$code, $out] = cliProcess(["$installed/myphp", 'upgrade', '--nightly'], env: $env);
     same(0, $code, 'upgrade --nightly uses the nightly build');
+    [$code, , $err] = cliProcess(["$installed/myphp", 'upgrade', '--nightly', '--stable'], env: $env);
+    same(0, $code, "upgrade --stable is accepted: $err");
     file_put_contents("$rel/latest/download/myphp-linux-x86_64.sha256", str_repeat('0', 64) . "\n");
     copy(getenv('MYPHP_BIN'), "$installed/myphp");
     [$code, , $err] = cliProcess(["$installed/myphp", 'upgrade'], env: $env);

@@ -11,8 +11,12 @@ case "$(uname -s)-$(uname -m)" in
 esac
 DIR=${MYPHP_INSTALL_DIR:-$HOME/.local/bin}
 VERSION=${MYPHP_VERSION:-}
+# `sh -s -- --nightly` (or MYPHP_VERSION=nightly) installs the newest build from main.
+if [ "${1:-}" = --nightly ]; then VERSION=nightly; fi
 BASE=https://github.com/crabphp/myphp/releases
-if [ -n "$VERSION" ]; then
+if [ "$VERSION" = nightly ]; then
+    URL=$BASE/download/nightly/$ASSET
+elif [ -n "$VERSION" ]; then
     URL=$BASE/download/v$VERSION/$ASSET
 else
     URL=$BASE/latest/download/$ASSET
