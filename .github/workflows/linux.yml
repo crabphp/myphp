@@ -39,18 +39,27 @@ jobs:
           path: spc/buildroot/bin
           key: runtime-linux-x86_64-${{ hashFiles('build/craft.yml') }}
 
+      - uses: shivammathur/setup-php@v2
+        if: steps.runtime.outputs.cache-hit != 'true'
+        with:
+          php-version: '8.4'
+          tools: composer
+
+      # static-php-cli v3 (the commit the maintainer builds with) is the version that builds glfw on Linux.
       # glfw links X11 dynamically; the runtime targets glibc 2.17 so it runs on old distributions.
       - name: Build the PHP runtime with static-php-cli
         if: steps.runtime.outputs.cache-hit != 'true'
         run: |
-          mkdir -p spc/x11libs && cd spc
+          git clone -q --branch v3 https://github.com/crazywhalecc/static-php-cli.git spc
+          git -C spc checkout -q b8de36c
+          cd spc
+          composer install -q --no-dev --no-interaction
+          mkdir -p x11libs
           for l in X11 Xrandr Xinerama Xcursor Xi; do ln -sf /usr/lib/x86_64-linux-gnu/lib$l.so x11libs/; done
           cp ../build/craft.yml .
-          curl -fsSL -o spc https://dl.static-php.dev/static-php-cli/spc-bin/nightly/spc-linux-x86_64
-          chmod +x spc
-          ./spc doctor --auto-fix
-          SPC_TARGET=native-native-gnu.2.17 SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" ./spc craft \
-            || { grep -n -B3 -A12 -E 'error[: ]|undefined reference|ld: ' log/spc.shell.log | tail -200; exit 1; }
+          bin/spc doctor --auto-fix || true
+          SPC_TARGET=native-native-gnu.2.17 SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft \
+            || { tail -n 80 craft.log 2>/dev/null; grep -rn -B3 -A12 -E 'error[: ]|undefined reference|ld: ' log 2>/dev/null | tail -200; exit 1; }
 
       - name: Build myphp
         run: |
