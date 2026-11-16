@@ -12,7 +12,7 @@ use StaticPHP\Runtime\Executor\WindowsCMakeExecutor;
 
 /**
  * SDL3 for myphp's phpsdl extension: video and input with input methods, and SDL_GPU
- * (Vulkan, Metal, Direct3D 12); no audio (miniaudio plays sound), camera, haptics,
+ * (Vulkan, Metal, Direct3D 12) to draw; no OpenGL, no audio (miniaudio plays sound), camera, haptics,
  * sensors, joysticks or SDL's 2D renderers. On Linux SDL loads X11, Wayland, D-Bus and
  * Vulkan at run time, so only their headers are needed to build.
  */
@@ -35,6 +35,8 @@ class sdl3
         '-DSDL_RENDER=OFF',
         '-DSDL_POWER=OFF',
         '-DSDL_GPU=ON',
+        '-DSDL_OPENGL=OFF',
+        '-DSDL_OPENGLES=OFF',
         '-DSDL_KMSDRM=OFF',
         '-DSDL_OFFSCREEN=OFF',
         '-DSDL_DIALOG=ON',

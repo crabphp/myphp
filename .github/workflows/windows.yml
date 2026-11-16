@@ -109,20 +109,15 @@ jobs:
           MYPHP_DOWNLOAD_URL=$(cygpath -w "$GITHUB_WORKSPACE/$MYPHP") MYPHP_INSTALL_DIR=$(cygpath -w "$WORK/bin") MYPHP_NO_PATH=1 \
             pwsh -NoProfile -File "$GITHUB_WORKSPACE/install.ps1"
 
-      # Hosted runners have no GPU, so a software OpenGL (Mesa llvmpipe) is placed next to the binaries.
+      # Hosted runners have no GPU: SDL_GPU draws with Direct3D 12 on Windows' software adapter (WARP).
       - name: Smoke test (open a window)
         run: |
-          mkdir -p shots mesa
-          gh release download --repo pal1000/mesa-dist-win --pattern '*release-mingw.7z' --dir mesa
-          7z x -omesa/out mesa/*.7z x64/opengl32.dll x64/libgallium_wgl.dll > /dev/null
-          for dir in build "$SMOKE/build"; do cp mesa/out/x64/*.dll "$dir/"; done
-          export GALLIUM_DRIVER=llvmpipe
+          mkdir -p shots
           PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/built-app.png") "$SMOKE/build/smoke.exe"
           PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/demo.png") $MYPHP run examples/showcase.php
           PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/desktop.png") $MYPHP run examples/desktop.php
           ls -l shots
           test -s shots/built-app.png && test -s shots/demo.png && test -s shots/desktop.png
-          rm -f build/*.dll
 
       - name: Package
         run: |

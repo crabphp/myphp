@@ -6,9 +6,8 @@
 void phpsdl_render_register(zend_class_entry *renderer_ce);
 void phpsdl_render_shutdown(void);
 
-/* SDL_GPU (Vulkan, Metal, Direct3D 12) when MYPHP_GPU=1; OpenGL 3.3 otherwise. */
-extern bool phpsdl_gpu;
-/* The GPU driver's name ("vulkan", "metal", "direct3d12"), or "opengl". */
+/* Drawing is SDL_GPU's: Vulkan, Metal or Direct3D 12. The driver's name ("vulkan",
+ * "metal", "direct3d12"), or "none" before a window has claimed the device. */
 const char *phpsdl_backend(void);
 /* A window draws with the GPU device once claimed; released before it is destroyed. */
 bool phpsdl_gpu_claim(SDL_Window *window);

@@ -102,7 +102,6 @@ Lists commands. No arguments, `-h`, and `--help` also print help.
 | `PHPUI_SCREENSHOT=/tmp/app.png` | Render one frame at window size, save PNG, clean up, and exit; still needs a display |
 | `PHPUI_SCREENSHOTS=/tmp/shots` | Examples only: run their existing scripted screenshot flows |
 | `PHPUI_DESKTOP=auto` | Bus first, then tools; `portal` disables tool fallbacks, `fallback` skips D-Bus |
-| `MYPHP_GPU=1` | Draw with SDL_GPU (Vulkan, Metal, Direct3D 12) instead of OpenGL 3.3 |
 | `MYPHP_INSTALL_DIR` | Installer destination; default `$HOME/.local/bin` |
 | `MYPHP_VERSION` | Installer: release number without `v`, empty means latest; build script: embedded CLI version |
 | `MYPHP_DOWNLOAD_URL` | Installer binary URL override, including `file://` for local testing |
@@ -138,8 +137,8 @@ Nightly builds come from every push to `main` and may be less stable.
 - `2`: wrong usage, such as an unknown command or missing init name.
 
 Apps can print their own output or explicitly exit with their own code.
-Linux x86-64 (glibc 2.17+, X11/XWayland, OpenGL), experimental macOS (arm64,
-x86-64) and experimental Windows (x86-64). No cross-compilation: `myphp build` targets the platform it runs on (on Windows it writes `build/<name>.exe`). Windows limits: built apps also open a
+Linux x86-64 (glibc 2.17+, X11/XWayland, Vulkan), experimental macOS (arm64,
+x86-64; Metal) and experimental Windows (x86-64; Direct3D 12). No cross-compilation: `myphp build` targets the platform it runs on (on Windows it writes `build/<name>.exe`). Windows limits: built apps also open a
 console window, and a binary started through an 8.3 short path (`C:\Users\LONGNA~1\...`)
 does not work; use the full path.
 Source CLI runs use `php84 bin/myphp`; source builds also need `MYPHP_SFX` and

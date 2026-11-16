@@ -1,6 +1,7 @@
 # phpsdl
 
-myphp's native layer, compiled into the myphp runtime. It replaces PHP-GLFW.
+myphp's native layer, compiled into the myphp runtime. It replaces PHP-GLFW, and
+draws with SDL_GPU: Vulkan, Metal or Direct3D 12. There is no OpenGL.
 
 - **SDL3** (`phpsdl.c`): window, mouse, keyboard, clipboard, cursors, and input
   methods. Text being composed arrives as `preedit` events, and the window tells the
@@ -12,17 +13,17 @@ myphp's native layer, compiled into the myphp runtime. It replaces PHP-GLFW.
   fallback font per character (variable fallbacks follow the requested weight) and
   rasterizes glyphs with HarfBuzz into an atlas shared with icons, which are SVG masks
   tinted when drawn. Frames start and end here too, on screen or off (screenshots).
-- **SDL_GPU** (`render.c`, `nanovg_sdlgpu.c`, `shaders/`): with `MYPHP_GPU=1` everything
-  draws with SDL_GPU, on Vulkan, Metal or Direct3D 12, instead of OpenGL 3.3: the
-  renderer, and NanoVG through a port of its GL3 backend (fills, even-odd fills,
-  strokes, stencil strokes, clips, images, text). `shaders/*.hlsl` are compiled to
-  SPIR-V, DXIL and MSL by `shaders/build.sh` (DXC and SPIRV-Cross) into
-  `shaders/*_shaders.h`, which are committed. On SDL_GPU the `gl*()` functions and
-  `VGContext::imageFromHandle()` (a GL texture) have nothing to draw into.
-- **OpenGL 3.3, NanoVG (for `canvas()`), SVG, textures, buffers, math and audio** (`gl/`, `vendor/`):
-  PHP-GLFW's modules, generated without GLFW by `tools/generate.sh` (MIT, see
+- **SDL_GPU** (`render.c`, `nanovg_sdlgpu.c`, `shaders/`): the renderer, and NanoVG
+  through a port of its GL3 backend (fills, even-odd fills, strokes, stencil strokes,
+  clips, images, text). `shaders/*.hlsl` are compiled to SPIR-V, DXIL and MSL by
+  `shaders/build.sh` (DXC and SPIRV-Cross) into `shaders/*_shaders.h`, which are
+  committed.
+- **NanoVG (for `canvas()`), SVG, textures, buffers, math and audio** (`gl/`, `vendor/`):
+  PHP-GLFW's modules, generated without GLFW or OpenGL by `tools/generate.sh` (MIT, see
   `gl/LICENSE-php-glfw`). The PHP API is the same: `GL\VectorGraphics\VGContext`,
-  `GL\Texture\Texture2D`, `GL\Buffer\FloatBuffer`, `GL\Audio\Engine`, `gl*()`.
+  `GL\Texture\Texture2D`, `GL\Buffer\FloatBuffer`, `GL\Audio\Engine`. The `gl*()`
+  functions and `VGContext::imageFromHandle()` (an OpenGL texture) are gone; a
+  `VGContext` draws into the frame a window has begun.
 
 Keys, modifiers and mouse buttons use GLFW's numbering, and the `GLFW_KEY_*`,
 `GLFW_MOD_*` and `GLFW_MOUSE_BUTTON_*` constants exist, so apps written for
@@ -31,13 +32,13 @@ PHP-GLFW keep working.
 ## PHP API
 
 ```php
-$window = new PhpSdl\Window('Title', 800, 600);   // OpenGL 3.3 core, or SDL_GPU with MYPHP_GPU=1
+$window = new PhpSdl\Window('Title', 800, 600);   // claims the GPU device (made by the first window)
 $window->size(); $window->pixelSize(); $window->vsync(false);
 $window->begin([1, 1, 1, 1]);                      // a frame, cleared to white...
 $window->swap();                                   // ...shown
 $window->beginCapture(800, 600, [1, 1, 1, 1]);     // or drawn off screen...
 $window->endCapture('frame.png');                  // ...and saved
-PhpSdl\Sdl::backend();                             // "opengl", or "vulkan", "metal", "direct3d12"
+PhpSdl\Sdl::backend();                             // "vulkan", "metal" or "direct3d12"
 $window->startTextInput($x, $y, $w, $h);           // text and composition at this caret
 $window->stopTextInput();
 PhpSdl\Sdl::events(0.5);  // [['type' => 'key', 'key' => GLFW_KEY_A, 'mods' => 0], ...]
@@ -67,13 +68,13 @@ shared extension for development:
 # HarfBuzz 13+, static, with its rasterizer
 cmake -S harfbuzz-x.y.z -B hb -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DHB_BUILD_RASTER=ON \
   -DHB_BUILD_SUBSET=OFF -DCMAKE_INSTALL_PREFIX=$HOME/.cache/phpsdl/sdl3 && cmake --build hb && cmake --install hb
-# SDL3, static, with IME (IBus and Fcitx need the D-Bus and IBus headers)
+# SDL3, static, with SDL_GPU and IME (IBus and Fcitx need the D-Bus and IBus headers)
 cmake -S SDL3-x.y.z -B build -DSDL_SHARED=OFF -DSDL_STATIC=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-  -DSDL_AUDIO=OFF -DCMAKE_INSTALL_PREFIX=$HOME/.cache/phpsdl/sdl3 && cmake --build build && cmake --install build
+  -DSDL_GPU=ON -DSDL_OPENGL=OFF -DSDL_OPENGLES=OFF -DSDL_AUDIO=OFF -DCMAKE_INSTALL_PREFIX=$HOME/.cache/phpsdl/sdl3 && cmake --build build && cmake --install build
 phpize && ./configure --enable-phpsdl --with-sdl3-dir=$HOME/.cache/phpsdl/sdl3 && make
 php -d extension=modules/phpsdl.so ...   # without the glfw extension loaded
+# No GPU (a VM, CI)? Mesa's lavapipe is a software Vulkan: mesa-vulkan-drivers
 ```
 
-After changing a shader in `shaders/`, run `shaders/build.sh` (keep the GLSL in
-`render.c` and NanoVG's in `vendor/nanovg/src/nanovg_gl.h` doing the same). After changing `phpsdl.stub.php`, regenerate `phpsdl_arginfo.h` with PHP's
-`build/gen_stub.php`.
+After changing a shader in `shaders/`, run `shaders/build.sh`. After changing
+`phpsdl.stub.php`, regenerate `phpsdl_arginfo.h` with PHP's `build/gen_stub.php`.

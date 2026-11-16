@@ -22,8 +22,8 @@ then `php`, and writes `build/myphp` and `build/myphp-full`; default runtimes:
 `~/.cache/spc/runtimes/core/micro.sfx` and `~/.cache/spc/runtimes/full/micro.sfx`. Build artifacts are ignored.
 `build/make-binary.sh` still makes the legacy `build/dashboard` test fixture.
 `PHPUI_SCREENSHOT=/tmp/app.png` saves one frame at window size and exits.
-`MYPHP_GPU=1` draws with SDL_GPU (Vulkan, Metal, Direct3D 12) instead of OpenGL 3.3;
-`tests/run.sh` runs either way (on Linux, Mesa's lavapipe is a software Vulkan).
+Drawing is SDL_GPU's (Vulkan, Metal, Direct3D 12). Without a GPU, `tests/run.sh` runs
+on Mesa's lavapipe, a software Vulkan (Fedora: `mesa-vulkan-drivers`).
 
 Release preparation needs `gh` on PATH, a clean pushed `main`, and a new version.
 Only a maintainer should run `build/release.sh X.Y.Z` without `--dry-run`: it tags,
@@ -74,7 +74,7 @@ as artifacts. Nobody has run these on a real Mac yet: `src/Desktop.php` uses
 
 `.github/workflows/windows.yml` builds `myphp-windows-x86_64.exe` with
 `build/craft-windows.yml` (no `posix`/`pcntl`), smoke-tests `init`, `build` and
-`install.ps1`, renders screenshots of a built app and two demos with Mesa's software
-OpenGL (`GALLIUM_DRIVER=llvmpipe`, the runners have no GPU), and attaches the binary
+`install.ps1`, renders screenshots of a built app and two demos with Direct3D 12 on Windows' software
+adapter (WARP; the runners have no GPU), and attaches the binary
 to a published release. `src/Desktop.php` uses `powershell`, `reg` and `rundll32`
 there; those paths have not run on a real Windows desktop yet.

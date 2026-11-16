@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds build/dashboard: one executable holding PHP, the glfw extension, the
-# code and the assets. It only needs X11 and an OpenGL driver on the machine.
+# code and the assets. It only needs X11 and a Vulkan driver on the machine.
 # Needs micro.sfx from static-php-cli (see README).
 # Usage: build/make-binary.sh [path/to/micro.sfx]
 #

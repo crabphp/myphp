@@ -9,7 +9,7 @@ webview, no Electron. Apps build into a single file you can send to anyone.
 
 ## Install
 
-Linux x86-64 (X11 or XWayland, OpenGL), or macOS on Apple Silicon or Intel (experimental):
+Linux x86-64 (X11 or XWayland, a Vulkan driver), or macOS on Apple Silicon or Intel (experimental):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/crabphp/myphp/main/install.sh | sh

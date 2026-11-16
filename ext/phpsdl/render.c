@@ -6,9 +6,9 @@
  * a list of fonts per character, and is rasterized by HarfBuzz into an 8-bit atlas
  * shared with icons, which are white SVG masks tinted when drawn.
  *
- * The list draws with SDL_GPU (Vulkan, Metal, Direct3D 12) when MYPHP_GPU=1, and
- * with OpenGL 3.3 otherwise; both run the same shader (shaders/ui.hlsl, and the GLSL
- * here). Frames, on screen or off, start and end here too.
+ * The list draws with SDL_GPU (Vulkan, Metal, Direct3D 12), with shaders/ui.hlsl.
+ * Frames, on screen or off, start and end here too, and NanoVG (nanovg_sdlgpu.c)
+ * draws into them.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -18,7 +18,6 @@
 #include <php.h>
 #include <zend_exceptions.h>
 #include <math.h>
-#include <glad/glad.h>
 #include <hb.h>
 #include <hb-ot.h>
 #include <hb-raster.h>
@@ -32,7 +31,7 @@
 
 #include "render.h"
 
-/* A texture: a GL name, or an SDL_GPUTexture. */
+/* A texture: an SDL_GPUTexture. */
 typedef uintptr_t pr_tex;
 
 /* Fonts --------------------------------------------------------------------- */
@@ -357,7 +356,6 @@ static pr_slot *icon_slot(zend_string *svg, int px)
 
 /* The GPU device ---------------------------------------------------------- */
 
-bool phpsdl_gpu = false;
 static SDL_GPUDevice *device = NULL;
 static SDL_GPUShader *gpu_vs = NULL, *gpu_fs = NULL;
 static SDL_GPUSampler *gpu_sampler = NULL;
@@ -384,8 +382,7 @@ static SDL_GPUTextureFormat gpu_stencil_format = SDL_GPU_TEXTUREFORMAT_INVALID;
 
 const char *phpsdl_backend(void)
 {
-    if (!phpsdl_gpu) return "opengl";
-    return device ? SDL_GetGPUDeviceDriver(device) : "gpu";
+    return device ? SDL_GetGPUDeviceDriver(device) : "none";
 }
 
 bool phpsdl_gpu_claim(SDL_Window *window)
@@ -629,22 +626,7 @@ static pr_image *image_load(zend_string *path)
     pr_image *img = &images[image_count++];
     img->path = zend_string_init(ZSTR_VAL(path), ZSTR_LEN(path), 1);
     img->w = w; img->h = h;
-    if (phpsdl_gpu) {
-        img->tex = (pr_tex) gpu_texture_rgba(w, h, px);
-        stbi_image_free(px);
-        return img;
-    }
-    GLuint tex;
-    glGenTextures(1, &tex);
-    img->tex = tex;
-    glBindTexture(GL_TEXTURE_2D, img->tex);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    img->tex = (pr_tex) gpu_texture_rgba(w, h, px);
     stbi_image_free(px);
     return img;
 }
@@ -663,145 +645,12 @@ typedef struct {
     pr_command *commands;
     int command_count, command_cap;
     float width, height, ratio;
-    GLuint program, vao, vbo;
-    GLint u_view, u_scale, u_tex;
 } pr_renderer;
-
-static const char *VERTEX =
-    "#version 330 core\n"
-    "layout(location = 0) in vec4 aRect;\n"
-    "layout(location = 1) in vec4 aRadii;\n"
-    "layout(location = 2) in vec4 aTop;\n"
-    "layout(location = 3) in vec4 aBottom;\n"
-    "layout(location = 4) in vec4 aBorder;\n"
-    "layout(location = 5) in vec4 aClip;\n"
-    "layout(location = 6) in vec4 aParams;\n"
-    "layout(location = 7) in vec4 aKind;\n"
-    "uniform vec2 uView;\n"
-    "out vec2 vPos;\n"
-    "out vec2 vUv;\n"
-    "flat out vec4 vRect, vRadii, vTop, vBottom, vBorder, vParams, vKind;\n"
-    "void main() {\n"
-    "    vec2 corner = vec2(gl_VertexID & 1, gl_VertexID >> 1);\n"
-    "    float pad = aKind.x == 0.0 ? aParams.y + 1.0 : 0.0;\n"
-    /* Clip by shrinking the quad, and keep texture coordinates on the unclipped rectangle. */
-    "    vec2 lo = max(aRect.xy - pad, aClip.xy);\n"
-    "    vec2 hi = max(lo, min(aRect.xy + aRect.zw + pad, aClip.xy + aClip.zw));\n"
-    "    vPos = mix(lo, hi, corner);\n"
-    "    vec2 t = (vPos - aRect.xy) / max(aRect.zw, vec2(1e-6));\n"
-    "    vUv = mix(aBottom.xy, aBottom.zw, t);\n"
-    "    vRect = aRect; vRadii = aRadii; vTop = aTop; vBottom = aBottom; vBorder = aBorder; vParams = aParams; vKind = aKind;\n"
-    "    gl_Position = vec4(vPos.x / uView.x * 2.0 - 1.0, 1.0 - vPos.y / uView.y * 2.0, 0.0, 1.0);\n"
-    "}\n";
-
-static const char *FRAGMENT =
-    "#version 330 core\n"
-    "in vec2 vPos;\n"
-    "in vec2 vUv;\n"
-    "flat in vec4 vRect, vRadii, vTop, vBottom, vBorder, vParams, vKind;\n"
-    "uniform float uScale;\n"
-    "uniform sampler2D uTex;\n"
-    "out vec4 fragColor;\n"
-    /* Signed distance to a rounded box; radii are top-left, top-right, bottom-right, bottom-left. */
-    "float roundedBox(vec2 p, vec2 center, vec2 halfSize, vec4 r) {\n"
-    "    vec2 q = p - center;\n"
-    "    float radius = q.x < 0.0 ? (q.y < 0.0 ? r.x : r.w) : (q.y < 0.0 ? r.y : r.z);\n"
-    "    radius = min(radius, min(halfSize.x, halfSize.y));\n"
-    "    vec2 d = abs(q) - halfSize + radius;\n"
-    "    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - radius;\n"
-    "}\n"
-    "vec4 premul(vec4 c) { return vec4(c.rgb * c.a, c.a); }\n"
-    "void main() {\n"
-    "    if (vKind.x == 1.0) {\n"
-    "        fragColor = premul(vTop) * texture(uTex, vUv).r;\n"
-    "        return;\n"
-    "    }\n"
-    "    if (vKind.x == 2.0) {\n"
-    /* An image: its corners follow the box it fills (border slot), and it fades with the top color's alpha. */
-    "        vec2 bh = vBorder.zw * 0.5;\n"
-    "        float d = roundedBox(vPos, vBorder.xy + bh, bh, vRadii);\n"
-    "        vec4 c = texture(uTex, vUv);\n"
-    "        fragColor = premul(c) * vTop.a * clamp(0.5 - d * uScale, 0.0, 1.0);\n"
-    "        return;\n"
-    "    }\n"
-    "    vec2 halfSize = vRect.zw * 0.5;\n"
-    "    float d = roundedBox(vPos, vRect.xy + halfSize, halfSize, vRadii);\n"
-    "    float blur = vParams.y;\n"
-    "    if (blur > 0.0) {\n"
-    /* A shadow is not drawn under its element: the element is the shadow moved back by its offset and spread. */
-    "        float spread = vParams.z;\n"
-    "        vec2 holeHalf = max(halfSize - spread, vec2(0.0));\n"
-    "        vec2 holeCenter = vRect.xy + halfSize - vec2(0.0, vParams.w);\n"
-    "        float hole = roundedBox(vPos, holeCenter, holeHalf, max(vRadii - spread, vec4(0.0)));\n"
-    "        float outside = clamp(0.5 + hole * uScale, 0.0, 1.0);\n"
-    "        fragColor = premul(vTop) * (1.0 - smoothstep(-0.5 * blur, 0.5 * blur, d)) * outside;\n"
-    "        return;\n"
-    "    }\n"
-    "    float outer = clamp(0.5 - d * uScale, 0.0, 1.0);\n"
-    "    float t = clamp((vPos.y - vRect.y) / max(vRect.w, 1.0), 0.0, 1.0);\n"
-    "    vec4 fill = premul(mix(vTop, vBottom, t)) * outer;\n"
-    "    float bw = vParams.x;\n"
-    "    if (bw > 0.0) {\n"
-    "        float inner = clamp(0.5 - (d + bw) * uScale, 0.0, 1.0);\n"
-    "        vec4 band = premul(vBorder) * (outer - inner);\n"
-    "        fill = band + fill * (1.0 - band.a);\n"
-    "    }\n"
-    "    fragColor = fill;\n"
-    "}\n";
-
-static GLuint compile(GLenum type, const char *src)
-{
-    GLuint s = glCreateShader(type);
-    glShaderSource(s, 1, &src, NULL);
-    glCompileShader(s);
-    GLint ok;
-    glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        char log[2048];
-        glGetShaderInfoLog(s, sizeof log, NULL, log);
-        zend_throw_error(NULL, "Renderer shader: %s", log);
-        glDeleteShader(s);
-        return 0;
-    }
-    return s;
-}
 
 static int renderer_init(pr_renderer *r)
 {
-    if (phpsdl_gpu) return gpu_init();
-    if (r->program) return 1;
-    GLuint vs = compile(GL_VERTEX_SHADER, VERTEX);
-    if (!vs) return 0;
-    GLuint fs = compile(GL_FRAGMENT_SHADER, FRAGMENT);
-    if (!fs) { glDeleteShader(vs); return 0; }
-    r->program = glCreateProgram();
-    glAttachShader(r->program, vs);
-    glAttachShader(r->program, fs);
-    glLinkProgram(r->program);
-    glDeleteShader(vs);
-    glDeleteShader(fs);
-    GLint ok;
-    glGetProgramiv(r->program, GL_LINK_STATUS, &ok);
-    if (!ok) { zend_throw_error(NULL, "Renderer program does not link"); return 0; }
-    r->u_view = glGetUniformLocation(r->program, "uView");
-    r->u_scale = glGetUniformLocation(r->program, "uScale");
-    r->u_tex = glGetUniformLocation(r->program, "uTex");
-    glGenVertexArrays(1, &r->vao);
-    glGenBuffers(1, &r->vbo);
-    if (!atlas_tex) {
-        GLuint tex;
-        glGenTextures(1, &tex);
-        atlas_tex = tex;
-        glBindTexture(GL_TEXTURE_2D, tex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, ATLAS, ATLAS, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        if (!atlas) atlas_reset();
-        dirty_top = 0; dirty_bottom = ATLAS;
-    }
-    return 1;
+    (void) r;
+    return gpu_init();
 }
 
 static float *instance(pr_renderer *r, pr_tex tex)
@@ -835,45 +684,7 @@ static void renderer_flush_gpu(pr_renderer *r);
 static void renderer_flush(pr_renderer *r)
 {
     if (r->count == 0) { r->command_count = 0; return; }
-    if (phpsdl_gpu) { renderer_flush_gpu(r); return; }
-    if (!renderer_init(r)) { r->count = r->command_count = 0; return; }
-    if (dirty_bottom > dirty_top) {
-        glBindTexture(GL_TEXTURE_2D, atlas_tex);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, dirty_top, ATLAS, dirty_bottom - dirty_top, GL_RED, GL_UNSIGNED_BYTE, atlas + (size_t) dirty_top * ATLAS);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-        dirty_top = ATLAS; dirty_bottom = 0;
-    }
-    glUseProgram(r->program);
-    glUniform2f(r->u_view, r->width, r->height);
-    glUniform1f(r->u_scale, r->ratio);
-    glUniform1i(r->u_tex, 0);
-    glBindVertexArray(r->vao);
-    glBindBuffer(GL_ARRAY_BUFFER, r->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * STRIDE * r->count, r->data, GL_STREAM_DRAW);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); /* premultiplied */
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glDisable(GL_STENCIL_TEST);
-    glDisable(GL_SCISSOR_TEST);
-    glActiveTexture(GL_TEXTURE0);
-    for (int c = 0; c < r->command_count; c++) {
-        pr_command *cmd = &r->commands[c];
-        glBindTexture(GL_TEXTURE_2D, cmd->tex ? cmd->tex : atlas_tex);
-        /* GL 3.3 has no base instance: point the attributes at this command's instances. */
-        for (int i = 0; i < 8; i++) {
-            glEnableVertexAttribArray(i);
-            glVertexAttribPointer(i, 4, GL_FLOAT, GL_FALSE, STRIDE * sizeof(float), (void *) (sizeof(float) * ((size_t) cmd->first * STRIDE + i * 4)));
-            glVertexAttribDivisor(i, 1);
-        }
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, cmd->count);
-    }
-    glBindVertexArray(0);
-    glUseProgram(0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    r->count = 0;
-    r->command_count = 0;
+    renderer_flush_gpu(r);
 }
 
 /* The list on SDL_GPU: instances and new atlas rows go up in a copy pass, then one
@@ -985,36 +796,10 @@ static void renderer_text(pr_renderer *r, const char *text, size_t len, int font
 
 /* Frames ------------------------------------------------------------------- */
 
-static GLuint capture_fbo = 0, capture_rbo[2] = {0, 0};
-static int capture_w = 0, capture_h = 0;
-
 bool phpsdl_frame_begin(SDL_Window *window, int width, int height, const float clear[4])
 {
     if (width < 1) width = 1;
     if (height < 1) height = 1;
-    if (!phpsdl_gpu) {
-        if (window) {
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        } else {
-            /* Off screen: color, and stencil for NanoVG. */
-            glGenFramebuffers(1, &capture_fbo);
-            glGenRenderbuffers(2, capture_rbo);
-            glBindRenderbuffer(GL_RENDERBUFFER, capture_rbo[0]);
-            glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, width, height);
-            glBindRenderbuffer(GL_RENDERBUFFER, capture_rbo[1]);
-            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
-            glBindFramebuffer(GL_FRAMEBUFFER, capture_fbo);
-            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, capture_rbo[0]);
-            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, capture_rbo[1]);
-            capture_w = width; capture_h = height;
-            if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) return false;
-        }
-        glViewport(0, 0, width, height);
-        glClearColor(clear[0], clear[1], clear[2], clear[3]);
-        glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-        return true;
-    }
-
     if (!device) return false;
     /* A frame left open (an exception mid-draw) is sent as it is. */
     if (frame.cmd) {
@@ -1055,31 +840,6 @@ static bool save_png(const char *path, int w, int h, const unsigned char *rgba)
 
 bool phpsdl_frame_end(SDL_Window *window, const char *png)
 {
-    if (!phpsdl_gpu) {
-        if (window) { SDL_GL_SwapWindow(window); return true; }
-        if (!capture_fbo) return false;
-        int w = capture_w, h = capture_h;
-        size_t row = (size_t) w * 4;
-        unsigned char *pixels = emalloc(row * h), *tmp = emalloc(row);
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-        glPixelStorei(GL_PACK_ALIGNMENT, 4);
-        /* OpenGL's rows start at the bottom. */
-        for (int y = 0; y < h / 2; y++) {
-            memcpy(tmp, pixels + y * row, row);
-            memcpy(pixels + y * row, pixels + (h - 1 - y) * row, row);
-            memcpy(pixels + (h - 1 - y) * row, tmp, row);
-        }
-        bool ok = png ? save_png(png, w, h, pixels) : true;
-        efree(tmp);
-        efree(pixels);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glDeleteFramebuffers(1, &capture_fbo);
-        glDeleteRenderbuffers(2, capture_rbo);
-        capture_fbo = 0;
-        return ok;
-    }
-
     if (!frame.cmd) return false;
     if (frame.clear && frame.target) {
         /* Nothing was drawn: the frame is just its background. */
@@ -1156,7 +916,7 @@ static void renderer_free(zend_object *obj)
     pr_renderer_object *o = (pr_renderer_object *) ((char *) obj - XtOffsetOf(pr_renderer_object, std));
     if (o->r.data) efree(o->r.data);
     if (o->r.commands) efree(o->r.commands);
-    /* GL objects stay: the shared context may already be gone, and they are few. */
+    /* GPU objects are shared by every renderer and released at shutdown. */
     zend_object_std_dtor(obj);
 }
 

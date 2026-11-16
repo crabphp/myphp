@@ -1,6 +1,6 @@
 #!/bin/sh
-# Regenerate phpsdl's OpenGL, NanoVG, texture, buffer, math and audio bindings
-# from PHP-GLFW (MIT, Mario Döring) without GLFW, and copy them with the C
+# Regenerate phpsdl's NanoVG, texture, buffer, math, SVG and audio bindings from
+# PHP-GLFW (MIT, Mario Döring) without GLFW or OpenGL, and copy them with the C
 # libraries they use into ext/phpsdl/gl and ext/phpsdl/vendor.
 #   tools/generate.sh [php-glfw checkout]
 set -eu
@@ -28,8 +28,8 @@ for d in glad nanovg nanosvg stb miniaudio cvector; do cp -r "vendor/$d" "$EXT/v
 find "$EXT/vendor" \( -name '*.o' -o -name '*.lo' -o -name '*.dep' \) -delete
 # phpsdl rasterizes icons with nanosvg's rasterizer, which PHP-GLFW does not ship.
 curl -fsSL -o "$EXT/vendor/nanosvg/src/nanosvgrast.h" https://raw.githubusercontent.com/memononen/nanosvg/239e102ec2c6/src/nanosvgrast.h
-# NanoVG's GL state cache must be switchable: phpsdl shares one GL context between NanoVG contexts.
-"$PHP" -r '$f = $argv[1]; $s = file_get_contents($f); file_put_contents($f, str_replace("#define NANOVG_GL_USE_STATE_FILTER (1)\n", "#ifndef NANOVG_GL_USE_STATE_FILTER\n#define NANOVG_GL_USE_STATE_FILTER (1)\n#endif\n", $s));' "$EXT/vendor/nanovg/src/nanovg_gl.h"
-# VGContext draws with SDL_GPU (nanovg_sdlgpu.c) when phpsdl does.
+# No OpenGL: drop the gl*() functions and constants, glad and NanoVG's GL backend.
+"$PHP" "$EXT/tools/strip-gl.php" "$EXT"
+# VGContext draws with SDL_GPU (nanovg_sdlgpu.c).
 "$PHP" "$EXT/tools/patch-vg.php" "$EXT/gl/phpglfw_vg.c"
 echo "Generated from php-glfw $REV into $EXT/gl and $EXT/vendor"

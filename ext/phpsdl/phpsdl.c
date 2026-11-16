@@ -1,6 +1,7 @@
 /*
- * phpsdl: myphp's native layer. SDL3 for the window, input and input methods;
- * OpenGL, NanoVG, textures, buffers and audio from PHP-GLFW's modules (gl/).
+ * phpsdl: myphp's native layer. SDL3 for the window, input and input methods, SDL_GPU
+ * (Vulkan, Metal, Direct3D 12) for drawing; NanoVG, textures, buffers and audio from
+ * PHP-GLFW's modules (gl/), without OpenGL.
  *
  * Keys, modifiers and mouse buttons are reported in GLFW's numbering, and the
  * GLFW_KEY_* constants are defined, so code written for PHP-GLFW keeps working.
@@ -15,13 +16,11 @@
 #include <zend_exceptions.h>
 #include <ext/standard/info.h>
 
-#include <glad/glad.h>
 #include <SDL3/SDL.h>
 
 #include "phpglfw.h"
 #include "phpglfw_arginfo.h"
 #include "phpglfw_constants.h"
-#include "phpglfw_functions.h"
 #include "phpglfw_math.h"
 #include "phpglfw_buffer.h"
 #include "phpglfw_texture.h"
@@ -35,13 +34,6 @@
 #include "render.h"
 
 ZEND_DECLARE_MODULE_GLOBALS(phpsdl)
-
-/* One OpenGL context, shared by every window and kept until the module shuts down:
- * NanoVG contexts and textures free their GPU objects when PHP releases them, which
- * may be after the window is gone. The first window, which made the context, stays
- * (hidden) until then too. */
-static SDL_Window *phpsdl_first = NULL;
-static SDL_GLContext phpsdl_context = NULL;
 
 typedef struct {
     SDL_Window *window;
@@ -70,16 +62,10 @@ static zend_object *phpsdl_window_create(zend_class_entry *ce)
 static void phpsdl_window_free(zend_object *obj)
 {
     phpsdl_window_object *intern = phpsdl_window_from(obj);
-    if (intern->window && phpsdl_gpu) {
+    /* The GPU device, and what NanoVG and the renderer made on it, outlive windows. */
+    if (intern->window) {
         phpsdl_gpu_release(intern->window);
         SDL_DestroyWindow(intern->window);
-        intern->window = NULL;
-    } else if (intern->window) {
-        if (intern->window == phpsdl_first) SDL_HideWindow(intern->window);
-        else {
-            if (SDL_GL_GetCurrentWindow() == intern->window) SDL_GL_MakeCurrent(phpsdl_first, phpsdl_context);
-            SDL_DestroyWindow(intern->window);
-        }
         intern->window = NULL;
     }
     zend_object_std_dtor(obj);
@@ -217,55 +203,18 @@ ZEND_METHOD(PhpSdl_Window, __construct)
 
     if (!phpsdl_ensure_video()) RETURN_THROWS();
 
-    if (phpsdl_gpu) {
-        SDL_Window *window = SDL_CreateWindow(ZSTR_VAL(title), (int) width, (int) height,
-            SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
-        if (!window) {
-            phpsdl_throw("SDL could not create the window");
-            RETURN_THROWS();
-        }
-        if (!phpsdl_gpu_claim(window)) {
-            SDL_DestroyWindow(window);
-            phpsdl_throw("SDL_GPU could not draw into the window");
-            RETURN_THROWS();
-        }
-        phpsdl_create_cursors();
-        phpsdl_window_from(Z_OBJ_P(ZEND_THIS))->window = window;
-        SDL_StopTextInput(window);
-        return;
-    }
-
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
-    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-
     SDL_Window *window = SDL_CreateWindow(ZSTR_VAL(title), (int) width, (int) height,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+        SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (!window) {
         phpsdl_throw("SDL could not create the window");
         RETURN_THROWS();
     }
-    if (!phpsdl_context) {
-        phpsdl_context = SDL_GL_CreateContext(window);
-        if (!phpsdl_context) {
-            SDL_DestroyWindow(window);
-            phpsdl_throw("SDL could not create an OpenGL 3.3 context");
-            RETURN_THROWS();
-        }
-        phpsdl_first = window;
-        SDL_GL_MakeCurrent(window, phpsdl_context);
-        if (!gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress)) {
-            zend_throw_error(NULL, "Could not load the OpenGL functions");
-            RETURN_THROWS();
-        }
-        phpsdl_create_cursors();
+    if (!phpsdl_gpu_claim(window)) {
+        SDL_DestroyWindow(window);
+        phpsdl_throw("No GPU to draw with (phpsdl needs Vulkan, Metal or Direct3D 12)");
+        RETURN_THROWS();
     }
-    /* The newest window draws: one at a time, as the toolkit opens them. */
-    SDL_GL_MakeCurrent(window, phpsdl_context);
-    SDL_GL_SetSwapInterval(1);
+    phpsdl_create_cursors();
     phpsdl_window_from(Z_OBJ_P(ZEND_THIS))->window = window;
     /* Text arrives only while text input is on; the toolkit turns it on for inputs. */
     SDL_StopTextInput(window);
@@ -334,7 +283,6 @@ ZEND_METHOD(PhpSdl_Window, begin)
     if (!window) RETURN_FALSE;
     float color[4];
     phpsdl_read_color(clear, color);
-    if (!phpsdl_gpu) SDL_GL_MakeCurrent(window, phpsdl_context);
     int w = 0, h = 0;
     SDL_GetWindowSizeInPixels(window, &w, &h);
     RETURN_BOOL(phpsdl_frame_begin(window, w, h, color));
@@ -357,7 +305,6 @@ ZEND_METHOD(PhpSdl_Window, beginCapture)
     ZEND_PARSE_PARAMETERS_END();
     float color[4];
     phpsdl_read_color(clear, color);
-    if (!phpsdl_gpu && PHPSDL_WINDOW()) SDL_GL_MakeCurrent(PHPSDL_WINDOW(), phpsdl_context);
     if (!phpsdl_frame_begin(NULL, (int) width, (int) height, color)) {
         zend_throw_error(NULL, "Could not draw off screen at %dx%d", (int) width, (int) height);
     }
@@ -422,12 +369,7 @@ ZEND_METHOD(PhpSdl_Window, vsync)
     ZEND_PARSE_PARAMETERS_START(1, 1)
         Z_PARAM_BOOL(on)
     ZEND_PARSE_PARAMETERS_END();
-    if (PHPSDL_WINDOW() && phpsdl_gpu) {
-        phpsdl_gpu_vsync(PHPSDL_WINDOW(), on);
-    } else if (PHPSDL_WINDOW()) {
-        SDL_GL_MakeCurrent(PHPSDL_WINDOW(), phpsdl_context);
-        SDL_GL_SetSwapInterval(on ? 1 : 0);
-    }
+    if (PHPSDL_WINDOW()) phpsdl_gpu_vsync(PHPSDL_WINDOW(), on);
 }
 
 ZEND_METHOD(PhpSdl_Window, close)
@@ -583,9 +525,6 @@ PHP_INI_END()
 PHP_MINIT_FUNCTION(phpsdl)
 {
     REGISTER_INI_ENTRIES();
-    phpglfw_register_constants(INIT_FUNC_ARGS_PASSTHRU);
-    phpglfw_init_callbacks();
-    phpglfw_register_ipos();
     phpglfw_register_math_module(INIT_FUNC_ARGS_PASSTHRU);
     phpglfw_register_buffer_module(INIT_FUNC_ARGS_PASSTHRU);
     phpglfw_register_texture_module(INIT_FUNC_ARGS_PASSTHRU);
@@ -603,8 +542,7 @@ PHP_MINIT_FUNCTION(phpsdl)
     phpsdl_window_handlers.free_obj = phpsdl_window_free;
     phpsdl_window_handlers.clone_obj = NULL;
     phpsdl_sdl_ce = register_class_PhpSdl_Sdl();
-    const char *gpu = getenv("MYPHP_GPU");
-    phpsdl_gpu = gpu && *gpu && strcmp(gpu, "0") != 0;
+
     register_class_PhpSdl_Text();
     phpsdl_render_register(register_class_PhpSdl_Renderer());
     return SUCCESS;
@@ -613,14 +551,9 @@ PHP_MINIT_FUNCTION(phpsdl)
 PHP_MSHUTDOWN_FUNCTION(phpsdl)
 {
     UNREGISTER_INI_ENTRIES();
-    phpglfw_shutdown_callbacks();
     phpsdl_render_shutdown();
     for (int i = 0; i < 3; i++) if (phpsdl_cursors[i]) SDL_DestroyCursor(phpsdl_cursors[i]);
-    if (phpsdl_context) SDL_GL_DestroyContext(phpsdl_context);
-    if (phpsdl_first) SDL_DestroyWindow(phpsdl_first);
     if (phpsdl_video) SDL_Quit();
-    phpsdl_first = NULL;
-    phpsdl_context = NULL;
     phpsdl_video = false;
     return SUCCESS;
 }
@@ -649,7 +582,7 @@ static PHP_GINIT_FUNCTION(phpsdl)
 zend_module_entry phpsdl_module_entry = {
     STANDARD_MODULE_HEADER,
     "phpsdl",
-    ext_functions,
+    NULL,
     PHP_MINIT(phpsdl),
     PHP_MSHUTDOWN(phpsdl),
     NULL,

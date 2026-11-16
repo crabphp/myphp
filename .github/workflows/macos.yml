@@ -111,7 +111,7 @@ jobs:
           MYPHP_DOWNLOAD_URL=file://$GITHUB_WORKSPACE/$MYPHP MYPHP_INSTALL_DIR=$WORK/bin sh "$GITHUB_WORKSPACE/install.sh"
           echo "SMOKE=$WORK/smoke" >> "$GITHUB_ENV"
 
-      # Hosted runners may not offer an OpenGL 3.3 context, so a failure here is reported but not fatal.
+      # Hosted runners may not offer Metal to SDL_GPU, so a failure here is reported but not fatal.
       - name: Smoke test (open a window)
         continue-on-error: true
         run: |

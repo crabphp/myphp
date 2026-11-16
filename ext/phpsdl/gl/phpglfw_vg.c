@@ -36,10 +36,7 @@
 #include "ext/standard/info.h"
 #include "ext/standard/php_var.h"
 
-#define NANOVG_GL3_IMPLEMENTATION
-#include "nanovg_gl.h"
 #include "nanovg_sdlgpu.h"
-#include "render.h"
 
 #define DEFINE_STATIC_VGCOLOR_METHOD(name, r, g, b, a) \
     PHP_METHOD(GL_VectorGraphics_VGColor, name) \
@@ -743,7 +740,7 @@ static void phpglfw_vgcontext_free_handler(zend_object *object)
     phpglfw_vgcontext_object *intern = phpglfw_vgcontext_objectptr_from_zobj_p(object);
 
     if (intern->nvgctx != NULL) {
-	    nvgDeleteGL3(intern->nvgctx);
+	    nvgDeleteInternal(intern->nvgctx);
         intern->nvgctx = NULL;
     }
 
@@ -842,38 +839,9 @@ PHP_METHOD(GL_VectorGraphics_VGContext, imageFromTexture)
 
 PHP_METHOD(GL_VectorGraphics_VGContext, imageFromHandle)
 {
-    zend_long texture, w, h;
-    zend_long repeat = PHPGLFW_VG_REPEAT_NONE;
-    zend_long filter = PHPGLFW_VG_FILTER_LINEAR;
-    if (zend_parse_parameters(ZEND_NUM_ARGS() , "lll|ll", &texture, &w, &h, &repeat, &filter) == FAILURE) {
-        RETURN_THROWS();
-    }
-
-    phpglfw_vgcontext_object *intern = phpglfw_vgcontext_objectptr_from_zobj_p(Z_OBJ_P(getThis()));
-
-    object_init_ex(return_value, phpglfw_get_vg_vgimage_ce());
-    phpglfw_vgimage_object *image = phpglfw_vgimage_objectptr_from_zobj_p(Z_OBJ_P(return_value));
-
-    // build the NVGimageFlags
-    int image_flags = 0;
-    if (repeat == PHPGLFW_VG_REPEAT_X) {
-        image_flags |= NVG_IMAGE_REPEATX;
-    } else if (repeat == PHPGLFW_VG_REPEAT_Y) {
-        image_flags |= NVG_IMAGE_REPEATY;
-    } else if (repeat == PHPGLFW_VG_REPEAT_XY) {
-        image_flags |= NVG_IMAGE_REPEATX | NVG_IMAGE_REPEATY;
-    }
-
-    // apply nearest filtering (default is linear)
-    if (filter == PHPGLFW_VG_FILTER_NEAREST) {
-        image_flags |= NVG_IMAGE_NEAREST;
-    }
-
-    if (phpsdl_gpu) {
-        zend_throw_error(NULL, "A VGImage from an OpenGL texture needs OpenGL; phpsdl draws with SDL_GPU");
-        return;
-    }
-    image->nvgimage_handle = nvglCreateImageFromHandleGL3(intern->nvgctx, texture, w, h, image_flags);
+    /* phpsdl: there is no OpenGL texture to take. */
+    zend_throw_error(NULL, "VGContext::imageFromHandle() takes an OpenGL texture; phpsdl draws with SDL_GPU. Use imageFromTexture()");
+    RETURN_THROWS();
 }
 
 // builds the current NanoVG path from a nanosvg path list. Each sub-path keeps
@@ -1030,9 +998,9 @@ PHP_METHOD(GL_VectorGraphics_VGContext, __construct)
         return;
     }
 
-    /* phpsdl: NanoVG draws with SDL_GPU when phpsdl does. */
-    intern->nvgctx = phpsdl_gpu ? nvgCreateSDLGPU(flags) : nvgCreateGL3(flags);
-    if (!intern->nvgctx) zend_throw_error(NULL, "Could not create the VGContext: %s", phpsdl_gpu ? "no window draws with SDL_GPU yet" : "no OpenGL context");
+    /* phpsdl: NanoVG draws with SDL_GPU, into the frame phpsdl draws. */
+    intern->nvgctx = nvgCreateSDLGPU(flags);
+    if (!intern->nvgctx) zend_throw_error(NULL, "Could not create the VGContext: open a PhpSdl\\Window first");
 }
 
 /**

@@ -3,7 +3,7 @@
 /** @generate-class-entries */
 
 namespace PhpSdl {
-    /** A window: OpenGL 3.3 (one context, shared by all windows), or SDL_GPU with MYPHP_GPU=1. */
+    /** A window, drawn with SDL_GPU (Vulkan, Metal or Direct3D 12). */
     final class Window
     {
         public function __construct(string $title, int $width, int $height) {}
@@ -74,7 +74,7 @@ namespace PhpSdl {
         public static function clipboard(): string {}
         public static function setClipboard(string $text): void {}
         public static function version(): string {}
-        /** What draws: "opengl", or with MYPHP_GPU=1 SDL_GPU's driver ("vulkan", "metal", "direct3d12"). */
+        /** SDL_GPU's driver: "vulkan", "metal" or "direct3d12" ("none" before the first window). */
         public static function backend(): string {}
     }
 }

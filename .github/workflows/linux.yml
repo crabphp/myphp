@@ -37,14 +37,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # SDL3 (phpsdl) loads X11, Wayland and D-Bus at run time; it needs their headers to
-      # build, and D-Bus and IBus ones for input methods.
-      - name: Install X11, Wayland, input-method and OpenGL development files
+      # SDL3 (phpsdl) loads X11, Wayland, D-Bus and Vulkan at run time; it needs their
+      # headers to build, and D-Bus and IBus ones for input methods. Mesa's lavapipe is a
+      # software Vulkan for the smoke test.
+      - name: Install X11, Wayland, input-method and Vulkan files
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libxfixes-dev \
             libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev wayland-protocols libdecor-0-dev libegl-dev \
-            libdbus-1-dev libibus-1.0-dev libgl-dev xvfb libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 imagemagick pkg-config cmake > /dev/null
+            libdbus-1-dev libibus-1.0-dev xvfb mesa-vulkan-drivers libvulkan1 imagemagick pkg-config cmake > /dev/null
           # The runner ships older OpenSSL, libxml2, curl and SQLite development links, and the
           # glfw recipe puts the system library folder first: remove those links so the
           # runtime links the versions static-php-cli builds.
@@ -104,12 +105,9 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/shots"
           xvfb-run -a -s '-screen 0 1600x1000x24' sh -c "
             PHPUI_SCREENSHOT=$GITHUB_WORKSPACE/shots/built-app.png ./build/smoke &&
-            PHPUI_SCREENSHOT=$GITHUB_WORKSPACE/shots/showcase.png $GITHUB_WORKSPACE/$MYPHP run $GITHUB_WORKSPACE/examples/showcase.php &&
-            MYPHP_GPU=1 PHPUI_SCREENSHOT=$GITHUB_WORKSPACE/shots/showcase-vulkan.png $GITHUB_WORKSPACE/$MYPHP run $GITHUB_WORKSPACE/examples/showcase.php"
+            PHPUI_SCREENSHOT=$GITHUB_WORKSPACE/shots/showcase.png $GITHUB_WORKSPACE/$MYPHP run $GITHUB_WORKSPACE/examples/showcase.php"
           ls -l "$GITHUB_WORKSPACE/shots"
           test -s "$GITHUB_WORKSPACE/shots/showcase.png"
-          # SDL_GPU on Mesa's software Vulkan, canvases (NanoVG) included.
-          test -s "$GITHUB_WORKSPACE/shots/showcase-vulkan.png"
 
       - name: Package
         run: |
