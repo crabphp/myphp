@@ -65,7 +65,7 @@ jobs:
           export CMAKE_PREFIX_PATH=$PWD/x11root
           cp ../build/craft.yml .
           bin/spc doctor --auto-fix || true
-          SPC_TARGET=native-native-gnu.2.17 SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft -v \
+          SPC_TARGET=x86_64-linux-gnu.2.17 SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft -v \
             || { tail -n 80 craft.log 2>/dev/null; grep -rn -B3 -A12 -E 'error[: ]|undefined reference|ld: ' log 2>/dev/null | tail -200; exit 1; }
 
       - uses: actions/upload-artifact@v4
