@@ -30,7 +30,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev \
-            libgl-dev xvfb libgl1-mesa-dri imagemagick > /dev/null
+            libgl-dev xvfb libgl1-mesa-dri imagemagick pkg-config > /dev/null
 
       - name: Restore the PHP runtime
         id: runtime
@@ -49,6 +49,9 @@ jobs:
       # glfw links X11 dynamically; the runtime targets glibc 2.17 so it runs on old distributions.
       - name: Build the PHP runtime with static-php-cli
         if: steps.runtime.outputs.cache-hit != 'true'
+        env:
+          # Sources come from GitHub; a token avoids its limit on anonymous downloads.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git clone -q --branch v3 https://github.com/crazywhalecc/static-php-cli.git spc
           git -C spc checkout -q b8de36c
@@ -58,7 +61,7 @@ jobs:
           for l in X11 Xrandr Xinerama Xcursor Xi; do ln -sf /usr/lib/x86_64-linux-gnu/lib$l.so x11libs/; done
           cp ../build/craft.yml .
           bin/spc doctor --auto-fix || true
-          SPC_TARGET=native-native-gnu.2.17 SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft \
+          SPC_TARGET=native-native-gnu.2.17 SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft -v \
             || { tail -n 80 craft.log 2>/dev/null; grep -rn -B3 -A12 -E 'error[: ]|undefined reference|ld: ' log 2>/dev/null | tail -200; exit 1; }
 
       - name: Build myphp
