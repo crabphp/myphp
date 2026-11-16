@@ -16,3 +16,7 @@ foreach ($lines as $i => $line) {
 if ($start === null || $end === null) { fwrite(STDERR, "template layout changed\n"); exit(1); }
 array_splice($lines, $start, $end - $start);
 file_put_contents($tpl, implode('', $lines));
+// No template may include GLFW's header.
+foreach (glob("$dir/templates/*.php") as $template) {
+    file_put_contents($template, str_replace("#include <GLFW/glfw3.h>\n", '', file_get_contents($template)));
+}

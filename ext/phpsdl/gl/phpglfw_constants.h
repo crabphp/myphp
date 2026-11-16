@@ -34,7 +34,6 @@
 
 #include <zend_API.h>
 #include <glad/glad.h>
-#include <GLFW/glfw3.h>
 
 void phpglfw_register_constants(INIT_FUNC_ARGS);
 

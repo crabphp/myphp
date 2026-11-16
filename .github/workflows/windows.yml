@@ -81,6 +81,12 @@ jobs:
           }
           Get-ChildItem buildroot\bin
 
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: spc-logs-windows-${{ matrix.flavor }}
+          path: spc/log/
+
       - name: Build myphp
         run: |
           VERSION=${{ inputs.version || 'dev' }}
