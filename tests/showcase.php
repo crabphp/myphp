@@ -53,3 +53,9 @@ check($copy !== null, 'the showcase tree has stable ids');
 $app->clickId('nav-dashboard');
 same('dashboard', $state->page, 'the dashboard page opens from the sidebar');
 check($app->find('add-section') !== null, 'the dashboard shows its table');
+// The dashboard scrolls: its card is no taller than the window, so there is room to scroll.
+$app->pointer(800, 500);
+$main = $app->find('main');
+check($main !== null && $main->contentH > $main->h, 'the dashboard is taller than its scroll area');
+$app->wheel(-3);
+check($app->find('main')->scrollY > 0, 'the wheel scrolls the dashboard');

@@ -463,12 +463,12 @@ static void phpsdl_add_event(zval *list, SDL_Event *ev)
             add_assoc_double(&e, "y", ev->button.y);
             break;
         case SDL_EVENT_MOUSE_WHEEL: {
-            float dy = ev->wheel.y;
-            if (ev->wheel.direction == SDL_MOUSEWHEEL_FLIPPED) dy = -dy;
+            /* As the system scrolls: SDL's values already follow "natural" scrolling (its
+             * FLIPPED flag only says so), the way GLFW reported them. */
             array_init(&e);
             add_assoc_string(&e, "type", "scroll");
             add_assoc_double(&e, "dx", ev->wheel.x);
-            add_assoc_double(&e, "dy", dy);
+            add_assoc_double(&e, "dy", ev->wheel.y);
             break;
         }
         case SDL_EVENT_TEXT_INPUT:

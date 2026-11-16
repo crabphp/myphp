@@ -88,7 +88,8 @@ final class Layout
                 if ($c->isAbsolute()) continue;
                 $n++;
                 [$cw, $ch] = [$this->fixed($c, 'w') ?? $c->mw, $this->fixed($c, 'h') ?? $c->mh];
-                $main += $row ? ($c->get('basis') ?? $cw) : $ch;
+                // A basis replaces the content size on the main axis, in rows and columns alike.
+                $main += $c->get('basis') ?? ($row ? $cw : $ch);
                 $cross = max($cross, $row ? $ch : $cw);
             }
             $main += $e->get('gap', 0) * max(0, $n - 1);
