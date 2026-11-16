@@ -59,3 +59,20 @@ $dir = dataDir('my-app');
 check(is_dir($dir) && str_ends_with($dir, 'data-home/my-app'), 'dataDir() creates the app folder');
 try { dataDir('../escape'); check(false, 'dataDir() rejects paths'); }
 catch (InvalidArgumentException) { check(true, 'dataDir() rejects paths'); }
+
+// select(): a complete dropdown with its own open state.
+$pick = state(['size' => 'm']);
+$selectApp = new App('Select', 300, 300, fn () => col()->full()->p(10)
+    ->child(PhpUi\select('size', $pick->size, ['s' => 'Small', 'm' => 'Medium', 'l' => 'Large'], fn ($v) => $pick->size = $v)->w(160)));
+$selectApp->frame();
+same('Medium', $selectApp->find('size-trigger')->children[0]->text, 'select shows the chosen label');
+same(null, $selectApp->find('size-menu'), 'the menu starts closed');
+$selectApp->clickId('size-trigger');
+check($selectApp->find('size-menu') !== null, 'clicking the trigger opens the menu');
+$menu = $selectApp->find('size-menu');
+$selectApp->click($menu->x + 20, $menu->y + 4 + 32 * 2 + 16);
+same('l', $pick->size, 'choosing an option calls onChange with its value');
+same(null, $selectApp->find('size-menu'), 'choosing closes the menu');
+$selectApp->clickId('size-trigger');
+$selectApp->click(250, 250);
+same(null, $selectApp->find('size-menu'), 'clicking outside closes the menu');

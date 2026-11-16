@@ -151,6 +151,25 @@ function selectTrigger(string $value, callable $onClick, string $size = 'default
         ->onClick($onClick);
 }
 
+/**
+ * A complete dropdown: trigger, menu and open/closed state. $options is
+ * [value => label]; $onChange receives the chosen value. $id must be unique.
+ */
+function select(string $id, string $value, array $options, callable $onChange, string $placeholder = 'Select…', string $size = 'default'): Element
+{
+    $menu = state(['open' => false], "select:$id");
+    $label = isset($options[$value]) ? (string) $options[$value] : $placeholder;
+    $items = [];
+    foreach ($options as $key => $text) {
+        $items[] = [(string) $text, fn () => $onChange((string) $key), 'checked' => (string) $key === $value];
+    }
+    return div()->id($id)
+        ->child(selectTrigger($label, fn () => $menu->open = !$menu->open, $size)->id("$id-trigger")
+            ->when(!isset($options[$value]), fn ($e) => $e->textColor(t('muted-foreground'))))
+        ->when($menu->open, fn ($e) => $e->child(
+            dropdownMenu($items, fn () => $menu->open = false, 0)->w('100%')->absolute()->top(($size === 'sm' ? 32 : 36) + 4)->left(0)->id("$id-menu")));
+}
+
 // Tabs ----------------------------------------------------------------------
 
 /** bg-muted rounded-lg p-[3px] h-9; the active trigger is bg-background with shadow-sm. */
@@ -238,6 +257,7 @@ function dropdownMenu(array $items, callable $onClose, float $width = 192): Elem
                 ->when($ico !== null, fn ($e) => $e->child(icon($ico, 16, $destructive ? $fg : t('muted-foreground'))))
                 ->child(text($label)->grow())
                 ->when($shortcut !== null, fn ($e) => $e->child(text($shortcut)->textSize(12)->tracking(1)->textColor(t('muted-foreground'))))
+                ->when(isset($item['checked']), fn ($e) => $e->child($item['checked'] ? icon('check', 16, t('foreground')) : div()->size(16)))
                 ->onClick(function () use ($onClick, $onClose) {
                     $onClose();
                     if ($onClick) $onClick();

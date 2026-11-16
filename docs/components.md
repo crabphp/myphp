@@ -15,6 +15,7 @@ Signatures below match `src/components.php` and `src/charts.php`.
 - `label(string $text): Element` — Medium-weight field label.
 - `checkbox(bool $checked, callable $onToggle): Element` — Click to toggle your boolean state.
 - `switchToggle(bool $on, callable $onToggle): Element` — Compact boolean switch.
+- `select(string $id, string $value, array $options, callable $onChange, string $placeholder = 'Select…', string $size = 'default'): Element` — A complete dropdown: `[value => label]` options; opens and closes on its own and marks the chosen option.
 - `selectTrigger(string $value, callable $onClick, string $size = 'default'): Element` — Value and chevron; pair with `dropdownMenu()`; size also accepts `sm`.
 - `tabs(array $items, string $active, callable $onChange, string $idPrefix = 'tab'): Element` — `[value => label]` choices; callback receives the selected value.
 - `toggleGroup(array $items, string $active, callable $onChange, string $idPrefix = 'toggle'): Element` — Connected outlined buttons with the same choice/callback format as tabs.
@@ -32,7 +33,7 @@ Signatures below match `src/components.php` and `src/charts.php`.
 
 ## Overlays
 
-- `dropdownMenu(array $items, callable $onClose, float $width = 192): Element` — Items are `[label, onClick, icon?, shortcut?]`, `'separator'`, or `['label' => text]`; position the panel with absolute insets.
+- `dropdownMenu(array $items, callable $onClose, float $width = 192): Element` — Items are `[label, onClick, icon?, shortcut?]` (add `'checked' => bool` for a check column), `'separator'`, or `['label' => text]`; position the panel with absolute insets.
 - `dialog(string $title, string $description, Element $body, Element $footer, callable $onClose): Element` — Full-parent modal overlay with a close button and outside-click dismissal.
 - `messageBox(string $title, string $message, array $buttons, callable $onButton, string $type = 'info', int $default = 0, array $destructive = []): Element` — Pure message overlay; caller owns its queue and callbacks; `Desktop::message()` manages those for you.
 - `tooltip(string $text, string $side = 'bottom'): Element` — Child overlay visible while its parent is hovered; side may be `top`.
