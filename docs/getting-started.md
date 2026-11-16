@@ -76,7 +76,8 @@ separate PHP installation; it is never needed to run the app.
 ## Explore
 
 The [`examples/`](../examples) folder of the repository has complete apps: a
-dashboard, a component gallery, notes, a music player, a todo list and desktop APIs.
+dashboard, a component gallery, notes, a music player, a log viewer, a todo list
+and desktop APIs.
 
 ```sh
 git clone https://github.com/crabphp/myphp

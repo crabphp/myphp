@@ -89,12 +89,12 @@ This only feeds your editor. Apps never need `vendor/`.
 - **Fast:** one GPU draw for all boxes and shadows; the app sleeps when idle.
 
 Try the examples in [`examples/`](examples): a dashboard, a component gallery,
-notes, a music player, a todo list and desktop APIs.
+notes, a music player, a log viewer, a todo list and desktop APIs.
 
 ```sh
 git clone https://github.com/crabphp/myphp
 cd myphp/examples
-myphp run gallery.php     # also: dashboard, desktop, notes, player, todo
+myphp run gallery.php     # also: dashboard, desktop, logs, notes, player, todo
 ```
 
 ![Desktop APIs demo](docs/images/desktop.webp)
