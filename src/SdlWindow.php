@@ -26,12 +26,13 @@ final class SdlWindow extends Window
     public function setTitle(string $title): void { $this->handle->setTitle($title); }
     public function shouldClose(): bool { return $this->closing; }
     public function swap(): void { $this->handle->swap(); }
-    public function time(): float { return \PhpSdl\time(); }
+    public function vsync(bool $on): void { $this->handle->vsync($on); }
+    public function time(): float { return \PhpSdl\Sdl::time(); }
     public function focus(): void { $this->handle->raise(); }
     public function focused(): bool { return $this->handle->focused(); }
     public function setCursor(string $cursor): void { $this->handle->setCursor($cursor); }
-    public function clipboard(): string { return \PhpSdl\clipboard(); }
-    public function setClipboard(string $text): void { \PhpSdl\setClipboard($text); }
+    public function clipboard(): string { return \PhpSdl\Sdl::clipboard(); }
+    public function setClipboard(string $text): void { \PhpSdl\Sdl::setClipboard($text); }
     public function close(): void { $this->handle->close(); }
 
     public function textInput(?array $rect): void
@@ -44,7 +45,7 @@ final class SdlWindow extends Window
     public function waitEvents(float $timeout): void
     {
         $drops = [];
-        foreach (\PhpSdl\events($timeout) as $e) {
+        foreach (\PhpSdl\Sdl::events($timeout) as $e) {
             match ($e['type']) {
                 'quit' => $this->closing = true,
                 'pointer' => $this->emit('pointer', $e['x'], $e['y']),

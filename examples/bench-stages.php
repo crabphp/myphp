@@ -14,7 +14,7 @@ require __DIR__ . '/dashboard.php';
 
 $painter = (new ReflectionProperty($app, 'painter'))->getValue($app);
 $layout = (new ReflectionProperty($app, 'layout'))->getValue($app);
-glfwSwapInterval(0);
+$app->window->vsync(false);
 
 $median = function (array $t): float { sort($t); return $t[intdiv(count($t), 2)]; };
 $ms = fn (int $from) => (hrtime(true) - $from) / 1e6;
@@ -25,7 +25,7 @@ printf("%-10s %8s %8s %10s %9s %8s\n", 'size', 'tree', 'layout', 'render', 'GPU'
 
 foreach (getenv('PHPUI_BENCH_SMALL') ? [[360, 225]] : [[1440, 900], [720, 450], [360, 225]] as [$w, $h]) {
     $app->window->setSize($w, $h);
-    glfwPollEvents();
+    $app->window->waitEvents(0);
     $t = ['tree' => [], 'layout' => [], 'render' => [], 'gpu' => []];
     for ($i = 0; $i < max(1, (int) (getenv('PHPUI_BENCH_RUNS') ?: 25)); $i++) {
         $s = hrtime(true); $tree = $render(); $t['tree'][] = $ms($s);

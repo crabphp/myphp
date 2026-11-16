@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-if (!extension_loaded('glfw')) {
-    fwrite(STDERR, "PHP UI needs the glfw extension (PHP-GLFW): https://phpgl.net\n");
+if (!extension_loaded('phpsdl') && !extension_loaded('glfw')) {
+    fwrite(STDERR, "myphp needs its runtime (the phpsdl extension): run apps with \"myphp run\"\n");
     exit(1);
 }
 if (class_exists(\PhpUi\App::class, false)) return;

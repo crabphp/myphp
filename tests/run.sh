@@ -2,8 +2,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PHP="${PHP:-$(command -v php84 || command -v php)}"
-if ! "$PHP" -r 'exit(extension_loaded("glfw") ? 0 : 1);'; then
-    echo "Tests need a PHP with the glfw extension (try PHP=php84). Selected: $PHP" >&2
+if ! "$PHP" -r 'exit(extension_loaded("glfw") || extension_loaded("phpsdl") ? 0 : 1);'; then
+    echo "Tests need a PHP with the phpsdl or glfw extension (try PHP=php84). Selected: $PHP" >&2
     exit 1
 fi
 mode=fake

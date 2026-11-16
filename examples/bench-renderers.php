@@ -12,12 +12,12 @@ require __DIR__ . '/dashboard.php';
 
 $painter = (new ReflectionProperty($app, 'painter'))->getValue($app);
 $layout = (new ReflectionProperty($app, 'layout'))->getValue($app);
-glfwSwapInterval(0);
+$app->window->vsync(false);
 
 $median = function (array $t): float { sort($t); return $t[intdiv(count($t), 2)]; };
 [$w, $h] = getenv('PHPUI_BENCH_SMALL') ? [360, 225] : [1440, 900];
 $app->window->setSize($w, $h);
-glfwPollEvents();
+$app->window->waitEvents(0);
 [$fbw, $fbh] = $app->window->framebufferSize();
 
 $tree = $render();

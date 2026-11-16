@@ -61,6 +61,7 @@ final class GlfwWindow extends Window
     public function shouldClose(): bool { return (bool) glfwWindowShouldClose($this->handle); }
     public function waitEvents(float $timeout): void { glfwWaitEventsTimeout($timeout); }
     public function swap(): void { glfwSwapBuffers($this->handle); }
+    public function vsync(bool $on): void { glfwSwapInterval($on ? 1 : 0); }
     public function time(): float { return glfwGetTime(); }
     public function focus(): void { glfwFocusWindow($this->handle); }
     // Polled: PHP-GLFW's focus callback breaks later layout.

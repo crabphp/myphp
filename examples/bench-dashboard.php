@@ -15,7 +15,7 @@ require __DIR__ . '/dashboard.php';
 $get = fn (string $prop) => (new ReflectionProperty($app, $prop))->getValue($app);
 $painter = $get('painter');
 $layout = $get('layout');
-glfwSwapInterval(0);
+$app->window->vsync(false);
 [$w, $h] = getenv('PHPUI_BENCH_SMALL') ? [360, 225] : [1440, 900];
 $app->window->setSize($w, $h);
 

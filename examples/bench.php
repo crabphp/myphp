@@ -48,7 +48,7 @@ foreach ($sizes as $n) {
     // Whole frame through App, including GPU submit and swap.
     $prop = new ReflectionProperty($app, 'render');
     $prop->setValue($app, fn () => $tree($n));
-    glfwSwapInterval(0);
+    $app->window->vsync(false);
     $frame = $time(fn () => $app->frame(), $runs);
 
     printf("%6d %6d %7.2fms %7.2fms %7.2fms %7.2fms %8.0f\n", $n, $nodes, $build, $lay, $paint, $frame, 1000 / $frame);

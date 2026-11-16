@@ -47,6 +47,8 @@ abstract class Window
     /** Wait up to $timeout seconds for events and dispatch them. */
     abstract public function waitEvents(float $timeout): void;
     abstract public function swap(): void;
+    /** Wait for the display before showing each frame (on by default); off for benchmarks. */
+    abstract public function vsync(bool $on): void;
     abstract public function time(): float;
     abstract public function focus(): void;
     abstract public function focused(): bool;

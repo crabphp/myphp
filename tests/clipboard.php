@@ -11,11 +11,11 @@ same('a ✓', Desktop::clipboard(), 'clipboard round trip preserves Unicode');
 // Keep the selection owner in our process group rather than killing unrelated xsel instances.
 $owner = proc_open(['xsel', '-b', '-i', '--nodetach'], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
 fwrite($pipes[0], 'x'); fclose($pipes[0]);
-check(until(fn () => Desktop::clipboard() === 'x', poll: glfwPollEvents(...)), 'another program can supply clipboard text');
+check(until(fn () => Desktop::clipboard() === 'x', poll: fn () => $app->window->waitEvents(0)), 'another program can supply clipboard text');
 Desktop::setClipboard('y');
 $result = null;
 Desktop::spawn(['xsel', '-b', '-o'], function ($code, $text) use (&$result) { $result = [$code, $text]; });
-check(until(function () use (&$result) { return $result !== null; }, poll: function () { glfwPollEvents(); Desktop::poll(); }), 'clipboard owner services another program asynchronously');
+check(until(function () use (&$result) { return $result !== null; }, poll: function () use ($app) { $app->window->waitEvents(0); Desktop::poll(); }), 'clipboard owner services another program asynchronously');
 same([0, 'y'], $result, 'another program reads our clipboard');
 $app->clickId('input');
 Desktop::setClipboard("one\r\ntwo\nthree");

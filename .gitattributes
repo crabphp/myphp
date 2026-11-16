@@ -6,3 +6,4 @@
 /cli export-ignore
 /bin export-ignore
 /install.sh export-ignore
+/ext export-ignore
