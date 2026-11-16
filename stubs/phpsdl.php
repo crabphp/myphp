@@ -3,7 +3,7 @@
 // Editor stubs for phpsdl, myphp's runtime extension (ext/phpsdl). Its OpenGL, NanoVG (canvases),
 // texture, buffer and audio API is PHP-GLFW's, covered by phpgl/ide-stubs; GLFW_KEY_* constants too.
 namespace PhpSdl {
-    /** A window with the OpenGL 3.3 context, shared by all windows; the newest draws. */
+    /** A window: OpenGL 3.3 (one context, shared by all windows), or SDL_GPU with MYPHP_GPU=1. */
     final class Window
     {
         public function __construct(string $title, int $width, int $height) {}
@@ -13,7 +13,14 @@ namespace PhpSdl {
         public function pixelSize(): array {}
         public function setSize(int $width, int $height): void {}
         public function setTitle(string $title): void {}
+        /** Start a frame in the window, cleared to $clear (RGBA, 0 to 1); false when there is nothing to draw into. */
+        public function begin(array $clear): bool {}
+        /** Show the frame. */
         public function swap(): void {}
+        /** Draw the next frame off screen at $width×$height pixels... */
+        public function beginCapture(int $width, int $height, array $clear): void {}
+        /** ...and save it as a PNG. */
+        public function endCapture(string $path): void {}
         public function vsync(bool $on): void {}
         public function raise(): void {}
         public function focused(): bool {}
@@ -67,5 +74,7 @@ namespace PhpSdl {
         public static function clipboard(): string {}
         public static function setClipboard(string $text): void {}
         public static function version(): string {}
+        /** What draws: "opengl", or with MYPHP_GPU=1 SDL_GPU's driver ("vulkan", "metal", "direct3d12"). */
+        public static function backend(): string {}
     }
 }

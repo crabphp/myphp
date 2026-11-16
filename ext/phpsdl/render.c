@@ -6,7 +6,9 @@
  * a list of fonts per character, and is rasterized by HarfBuzz into an 8-bit atlas
  * shared with icons, which are white SVG masks tinted when drawn.
  *
- * OpenGL 3.3 for now; the list is backend-neutral so SDL_GPU can take over.
+ * The list draws with SDL_GPU (Vulkan, Metal, Direct3D 12) when MYPHP_GPU=1, and
+ * with OpenGL 3.3 otherwise; both run the same shader (shaders/ui.hlsl, and the GLSL
+ * here). Frames, on screen or off, start and end here too.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -25,8 +27,13 @@
 #define NANOSVGRAST_IMPLEMENTATION
 #include "nanosvgrast.h"
 #include "stb_image.h"
+#include "stb_image_write.h"
+#include "shaders/ui_shaders.h"
 
 #include "render.h"
+
+/* A texture: a GL name, or an SDL_GPUTexture. */
+typedef uintptr_t pr_tex;
 
 /* Fonts --------------------------------------------------------------------- */
 
@@ -218,7 +225,7 @@ typedef struct {
 } pr_slot;
 
 static unsigned char *atlas = NULL;
-static GLuint atlas_tex = 0;
+static pr_tex atlas_tex = 0;
 static int shelf_x = 0, shelf_y = 0, shelf_h = 0;
 static int dirty_top = ATLAS, dirty_bottom = 0;
 static pr_slot slots[SLOTS];
@@ -348,11 +355,206 @@ static pr_slot *icon_slot(zend_string *svg, int px)
     return s;
 }
 
+/* The GPU device ---------------------------------------------------------- */
+
+bool phpsdl_gpu = false;
+static SDL_GPUDevice *device = NULL;
+static SDL_GPUShader *gpu_vs = NULL, *gpu_fs = NULL;
+static SDL_GPUSampler *gpu_sampler = NULL;
+static struct { SDL_GPUTextureFormat format; SDL_GPUGraphicsPipeline *pipeline; } gpu_pipelines[4];
+static int gpu_pipeline_count = 0;
+static SDL_GPUBuffer *gpu_instances = NULL;
+static SDL_GPUTransferBuffer *gpu_instances_upload = NULL, *gpu_atlas_upload = NULL;
+static Uint32 gpu_instances_size = 0;
+
+/* The frame being drawn: into a window's swapchain texture, or off screen. */
+static struct {
+    SDL_GPUCommandBuffer *cmd;
+    SDL_GPUTexture *target;
+    SDL_GPUTexture *offscreen;
+    SDL_GPUTextureFormat format;
+    int width, height;
+    bool clear;
+    SDL_FColor color;
+} frame;
+
+const char *phpsdl_backend(void)
+{
+    if (!phpsdl_gpu) return "opengl";
+    return device ? SDL_GetGPUDeviceDriver(device) : "gpu";
+}
+
+bool phpsdl_gpu_claim(SDL_Window *window)
+{
+    if (!device) {
+        const char *debug = getenv("MYPHP_GPU_DEBUG");
+        device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_MSL,
+            debug && *debug && strcmp(debug, "0") != 0, NULL);
+        if (!device) return false;
+    }
+    return SDL_ClaimWindowForGPUDevice(device, window);
+}
+
+void phpsdl_gpu_release(SDL_Window *window)
+{
+    if (!device) return;
+    if (frame.cmd && !frame.offscreen) { SDL_SubmitGPUCommandBuffer(frame.cmd); memset(&frame, 0, sizeof frame); }
+    SDL_WaitForGPUIdle(device);
+    SDL_ReleaseWindowFromGPUDevice(device, window);
+}
+
+void phpsdl_gpu_vsync(SDL_Window *window, bool on)
+{
+    if (!device) return;
+    SDL_GPUPresentMode mode = SDL_GPU_PRESENTMODE_VSYNC;
+    if (!on) {
+        if (SDL_WindowSupportsGPUPresentMode(device, window, SDL_GPU_PRESENTMODE_IMMEDIATE)) mode = SDL_GPU_PRESENTMODE_IMMEDIATE;
+        else if (SDL_WindowSupportsGPUPresentMode(device, window, SDL_GPU_PRESENTMODE_MAILBOX)) mode = SDL_GPU_PRESENTMODE_MAILBOX;
+    }
+    SDL_SetGPUSwapchainParameters(device, window, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, mode);
+}
+
+static SDL_GPUShader *gpu_shader(SDL_GPUShaderStage stage)
+{
+    SDL_GPUShaderFormat formats = SDL_GetGPUShaderFormats(device);
+    bool vs = stage == SDL_GPU_SHADERSTAGE_VERTEX;
+    SDL_GPUShaderCreateInfo info = {0};
+    info.stage = stage;
+    info.num_uniform_buffers = 1;
+    info.num_samplers = vs ? 0 : 1;
+    if (formats & SDL_GPU_SHADERFORMAT_SPIRV) {
+        info.format = SDL_GPU_SHADERFORMAT_SPIRV;
+        info.code = vs ? ui_vs_spv : ui_ps_spv;
+        info.code_size = vs ? sizeof ui_vs_spv : sizeof ui_ps_spv;
+        info.entrypoint = vs ? "VSMain" : "PSMain";
+    } else if (formats & SDL_GPU_SHADERFORMAT_DXIL) {
+        info.format = SDL_GPU_SHADERFORMAT_DXIL;
+        info.code = vs ? ui_vs_dxil : ui_ps_dxil;
+        info.code_size = vs ? sizeof ui_vs_dxil : sizeof ui_ps_dxil;
+        info.entrypoint = vs ? "VSMain" : "PSMain";
+    } else if (formats & SDL_GPU_SHADERFORMAT_MSL) {
+        info.format = SDL_GPU_SHADERFORMAT_MSL;
+        info.code = vs ? ui_vs_msl : ui_ps_msl;
+        info.code_size = (vs ? sizeof ui_vs_msl : sizeof ui_ps_msl) - 1;
+        info.entrypoint = "main0";
+    } else {
+        return NULL;
+    }
+    return SDL_CreateGPUShader(device, &info);
+}
+
+/* Shaders, the sampler and the atlas, made once there is a device. */
+static bool gpu_init(void)
+{
+    if (gpu_sampler) return true;
+    if (!device) return false;
+    gpu_vs = gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX);
+    gpu_fs = gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT);
+    if (!gpu_vs || !gpu_fs) { zend_throw_error(NULL, "Renderer shaders: %s", SDL_GetError()); return false; }
+    SDL_GPUSamplerCreateInfo s = {0};
+    s.min_filter = SDL_GPU_FILTER_LINEAR;
+    s.mag_filter = SDL_GPU_FILTER_LINEAR;
+    s.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR;
+    s.address_mode_u = s.address_mode_v = s.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+    s.max_lod = 1000;
+    gpu_sampler = SDL_CreateGPUSampler(device, &s);
+    SDL_GPUTextureCreateInfo t = {0};
+    t.type = SDL_GPU_TEXTURETYPE_2D;
+    t.format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
+    t.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    t.width = t.height = ATLAS;
+    t.layer_count_or_depth = 1;
+    t.num_levels = 1;
+    atlas_tex = (pr_tex) SDL_CreateGPUTexture(device, &t);
+    SDL_GPUTransferBufferCreateInfo b = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, ATLAS * ATLAS, 0};
+    gpu_atlas_upload = SDL_CreateGPUTransferBuffer(device, &b);
+    if (!gpu_sampler || !atlas_tex || !gpu_atlas_upload) { zend_throw_error(NULL, "Renderer: %s", SDL_GetError()); return false; }
+    if (!atlas) atlas_reset();
+    dirty_top = 0; dirty_bottom = ATLAS;
+    return true;
+}
+
+static SDL_GPUGraphicsPipeline *gpu_pipeline(SDL_GPUTextureFormat format)
+{
+    for (int i = 0; i < gpu_pipeline_count; i++) if (gpu_pipelines[i].format == format) return gpu_pipelines[i].pipeline;
+    if (gpu_pipeline_count == 4) return NULL;
+    /* One instance per quad: eight float4 attributes, 128 bytes, a 4-vertex strip each. */
+    SDL_GPUVertexBufferDescription buffer = {0, 128, SDL_GPU_VERTEXINPUTRATE_INSTANCE, 0};
+    SDL_GPUVertexAttribute attributes[8];
+    for (Uint32 i = 0; i < 8; i++) {
+        attributes[i] = (SDL_GPUVertexAttribute) {i, 0, SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, i * 16};
+    }
+    SDL_GPUColorTargetDescription target = {0};
+    target.format = format;
+    target.blend_state.enable_blend = true; /* premultiplied */
+    target.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    target.blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    target.blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
+    target.blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    target.blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    target.blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+    SDL_GPUGraphicsPipelineCreateInfo info = {0};
+    info.vertex_shader = gpu_vs;
+    info.fragment_shader = gpu_fs;
+    info.vertex_input_state.vertex_buffer_descriptions = &buffer;
+    info.vertex_input_state.num_vertex_buffers = 1;
+    info.vertex_input_state.vertex_attributes = attributes;
+    info.vertex_input_state.num_vertex_attributes = 8;
+    info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLESTRIP;
+    info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+    info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+    info.target_info.color_target_descriptions = &target;
+    info.target_info.num_color_targets = 1;
+    SDL_GPUGraphicsPipeline *pipeline = SDL_CreateGPUGraphicsPipeline(device, &info);
+    if (!pipeline) { zend_throw_error(NULL, "Renderer pipeline: %s", SDL_GetError()); return NULL; }
+    gpu_pipelines[gpu_pipeline_count].format = format;
+    gpu_pipelines[gpu_pipeline_count++].pipeline = pipeline;
+    return pipeline;
+}
+
+/* An RGBA texture with mipmaps, uploaded on a command buffer of its own. */
+static SDL_GPUTexture *gpu_texture_rgba(int w, int h, const unsigned char *pixels)
+{
+    Uint32 levels = 1;
+    for (int s = w > h ? w : h; s > 1; s >>= 1) levels++;
+    SDL_GPUTextureCreateInfo t = {0};
+    t.type = SDL_GPU_TEXTURETYPE_2D;
+    t.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    t.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+    t.width = (Uint32) w;
+    t.height = (Uint32) h;
+    t.layer_count_or_depth = 1;
+    t.num_levels = levels;
+    SDL_GPUTexture *texture = SDL_CreateGPUTexture(device, &t);
+    if (!texture) return NULL;
+    SDL_GPUTransferBufferCreateInfo b = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, (Uint32) w * (Uint32) h * 4, 0};
+    SDL_GPUTransferBuffer *upload = SDL_CreateGPUTransferBuffer(device, &b);
+    void *map = upload ? SDL_MapGPUTransferBuffer(device, upload, false) : NULL;
+    if (!map) {
+        if (upload) SDL_ReleaseGPUTransferBuffer(device, upload);
+        SDL_ReleaseGPUTexture(device, texture);
+        return NULL;
+    }
+    memcpy(map, pixels, b.size);
+    SDL_UnmapGPUTransferBuffer(device, upload);
+    SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(device);
+    SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(cmd);
+    SDL_GPUTextureTransferInfo src = {upload, 0, 0, 0};
+    SDL_GPUTextureRegion dst = {0};
+    dst.texture = texture; dst.w = (Uint32) w; dst.h = (Uint32) h; dst.d = 1;
+    SDL_UploadToGPUTexture(copy, &src, &dst, false);
+    SDL_EndGPUCopyPass(copy);
+    if (levels > 1) SDL_GenerateMipmapsForGPUTexture(cmd, texture);
+    SDL_SubmitGPUCommandBuffer(cmd);
+    SDL_ReleaseGPUTransferBuffer(device, upload);
+    return texture;
+}
+
 /* Images ------------------------------------------------------------------ */
 
 typedef struct {
     zend_string *path;
-    GLuint tex;
+    pr_tex tex;
     int w, h;
 } pr_image;
 
@@ -370,7 +572,14 @@ static pr_image *image_load(zend_string *path)
     pr_image *img = &images[image_count++];
     img->path = zend_string_init(ZSTR_VAL(path), ZSTR_LEN(path), 1);
     img->w = w; img->h = h;
-    glGenTextures(1, &img->tex);
+    if (phpsdl_gpu) {
+        img->tex = (pr_tex) gpu_texture_rgba(w, h, px);
+        stbi_image_free(px);
+        return img;
+    }
+    GLuint tex;
+    glGenTextures(1, &tex);
+    img->tex = tex;
     glBindTexture(GL_TEXTURE_2D, img->tex);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
@@ -389,7 +598,7 @@ static pr_image *image_load(zend_string *path)
 #define STRIDE 32
 enum { KIND_BOX = 0, KIND_MASK = 1, KIND_IMAGE = 2 };
 
-typedef struct { GLuint tex; int first, count; } pr_command;
+typedef struct { pr_tex tex; int first, count; } pr_command;
 
 typedef struct {
     float *data;
@@ -500,8 +709,9 @@ static GLuint compile(GLenum type, const char *src)
     return s;
 }
 
-static int renderer_init_gl(pr_renderer *r)
+static int renderer_init(pr_renderer *r)
 {
+    if (phpsdl_gpu) return gpu_init();
     if (r->program) return 1;
     GLuint vs = compile(GL_VERTEX_SHADER, VERTEX);
     if (!vs) return 0;
@@ -522,8 +732,10 @@ static int renderer_init_gl(pr_renderer *r)
     glGenVertexArrays(1, &r->vao);
     glGenBuffers(1, &r->vbo);
     if (!atlas_tex) {
-        glGenTextures(1, &atlas_tex);
-        glBindTexture(GL_TEXTURE_2D, atlas_tex);
+        GLuint tex;
+        glGenTextures(1, &tex);
+        atlas_tex = tex;
+        glBindTexture(GL_TEXTURE_2D, tex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, ATLAS, ATLAS, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -535,7 +747,7 @@ static int renderer_init_gl(pr_renderer *r)
     return 1;
 }
 
-static float *instance(pr_renderer *r, GLuint tex)
+static float *instance(pr_renderer *r, pr_tex tex)
 {
     if (r->count == r->cap) {
         r->cap = r->cap ? r->cap * 2 : 1024;
@@ -561,10 +773,13 @@ static float *instance(pr_renderer *r, GLuint tex)
 
 static void put4(float *p, const float v[4]) { memcpy(p, v, sizeof(float) * 4); }
 
+static void renderer_flush_gpu(pr_renderer *r);
+
 static void renderer_flush(pr_renderer *r)
 {
     if (r->count == 0) { r->command_count = 0; return; }
-    if (!renderer_init_gl(r)) { r->count = r->command_count = 0; return; }
+    if (phpsdl_gpu) { renderer_flush_gpu(r); return; }
+    if (!renderer_init(r)) { r->count = r->command_count = 0; return; }
     if (dirty_bottom > dirty_top) {
         glBindTexture(GL_TEXTURE_2D, atlas_tex);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -604,11 +819,84 @@ static void renderer_flush(pr_renderer *r)
     r->command_count = 0;
 }
 
+/* The list on SDL_GPU: instances and new atlas rows go up in a copy pass, then one
+ * render pass draws them, one call per texture run. */
+static void renderer_flush_gpu(pr_renderer *r)
+{
+    SDL_GPUGraphicsPipeline *pipeline = NULL;
+    if (!frame.cmd || !frame.target || !gpu_init() || !(pipeline = gpu_pipeline(frame.format))) {
+        r->count = r->command_count = 0;
+        return;
+    }
+    Uint32 bytes = (Uint32) (sizeof(float) * STRIDE * r->count);
+    if (bytes > gpu_instances_size) {
+        Uint32 size = gpu_instances_size ? gpu_instances_size : 128 * 1024;
+        while (size < bytes) size *= 2;
+        if (gpu_instances) SDL_ReleaseGPUBuffer(device, gpu_instances);
+        if (gpu_instances_upload) SDL_ReleaseGPUTransferBuffer(device, gpu_instances_upload);
+        SDL_GPUBufferCreateInfo b = {SDL_GPU_BUFFERUSAGE_VERTEX, size, 0};
+        SDL_GPUTransferBufferCreateInfo t = {SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, size, 0};
+        gpu_instances = SDL_CreateGPUBuffer(device, &b);
+        gpu_instances_upload = SDL_CreateGPUTransferBuffer(device, &t);
+        gpu_instances_size = gpu_instances && gpu_instances_upload ? size : 0;
+        if (!gpu_instances_size) { r->count = r->command_count = 0; return; }
+    }
+
+    SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(frame.cmd);
+    void *map = SDL_MapGPUTransferBuffer(device, gpu_instances_upload, true);
+    if (map) {
+        memcpy(map, r->data, bytes);
+        SDL_UnmapGPUTransferBuffer(device, gpu_instances_upload);
+        SDL_GPUTransferBufferLocation src = {gpu_instances_upload, 0};
+        SDL_GPUBufferRegion dst = {gpu_instances, 0, bytes};
+        SDL_UploadToGPUBuffer(copy, &src, &dst, true);
+    }
+    if (dirty_bottom > dirty_top && (map = SDL_MapGPUTransferBuffer(device, gpu_atlas_upload, true))) {
+        Uint32 rows = (Uint32) (dirty_bottom - dirty_top);
+        memcpy(map, atlas + (size_t) dirty_top * ATLAS, (size_t) rows * ATLAS);
+        SDL_UnmapGPUTransferBuffer(device, gpu_atlas_upload);
+        SDL_GPUTextureTransferInfo src = {gpu_atlas_upload, 0, ATLAS, rows};
+        SDL_GPUTextureRegion dst = {0};
+        dst.texture = (SDL_GPUTexture *) atlas_tex;
+        dst.y = (Uint32) dirty_top; dst.w = ATLAS; dst.h = rows; dst.d = 1;
+        /* Not cycled: the rows above, drawn from already, stay. */
+        SDL_UploadToGPUTexture(copy, &src, &dst, false);
+        dirty_top = ATLAS; dirty_bottom = 0;
+    }
+    SDL_EndGPUCopyPass(copy);
+
+    SDL_GPUColorTargetInfo target = {0};
+    target.texture = frame.target;
+    target.clear_color = frame.color;
+    target.load_op = frame.clear ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
+    target.store_op = SDL_GPU_STOREOP_STORE;
+    frame.clear = false;
+    float view[4] = {r->width, r->height, 0, 0};
+    float scale[4] = {r->ratio, 0, 0, 0};
+    SDL_PushGPUVertexUniformData(frame.cmd, 0, view, sizeof view);
+    SDL_PushGPUFragmentUniformData(frame.cmd, 0, scale, sizeof scale);
+    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(frame.cmd, &target, 1, NULL);
+    SDL_GPUViewport viewport = {0, 0, r->width * r->ratio, r->height * r->ratio, 0, 1};
+    SDL_SetGPUViewport(pass, &viewport);
+    SDL_BindGPUGraphicsPipeline(pass, pipeline);
+    SDL_GPUBufferBinding binding = {gpu_instances, 0};
+    SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
+    for (int c = 0; c < r->command_count; c++) {
+        pr_command *cmd = &r->commands[c];
+        SDL_GPUTextureSamplerBinding sampler = {(SDL_GPUTexture *) (cmd->tex ? cmd->tex : atlas_tex), gpu_sampler};
+        SDL_BindGPUFragmentSamplers(pass, 0, &sampler, 1);
+        SDL_DrawGPUPrimitives(pass, 4, (Uint32) cmd->count, 0, (Uint32) cmd->first);
+    }
+    SDL_EndGPURenderPass(pass);
+    r->count = 0;
+    r->command_count = 0;
+}
+
 /* Text drawn into the list: glyph quads from the atlas, in logical units. */
 static void renderer_text(pr_renderer *r, const char *text, size_t len, int font, float size, float x, float baseline, const float color[4], float tracking, const float clip[4])
 {
     /* Glyphs name the atlas texture, which must exist before they are queued. */
-    if (!renderer_init_gl(r)) return;
+    if (!renderer_init(r)) return;
     float ratio = r->ratio > 0 ? r->ratio : 1;
     float px = size * ratio;
     shape(text, len, font, px, tracking * ratio, &scratch);
@@ -641,6 +929,146 @@ static void renderer_text(pr_renderer *r, const char *text, size_t len, int font
         put4(p + 20, clip);
         p[28] = KIND_MASK;
     }
+}
+
+/* Frames ------------------------------------------------------------------- */
+
+static GLuint capture_fbo = 0, capture_rbo[2] = {0, 0};
+static int capture_w = 0, capture_h = 0;
+
+bool phpsdl_frame_begin(SDL_Window *window, int width, int height, const float clear[4])
+{
+    if (width < 1) width = 1;
+    if (height < 1) height = 1;
+    if (!phpsdl_gpu) {
+        if (window) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        } else {
+            /* Off screen: color, and stencil for NanoVG. */
+            glGenFramebuffers(1, &capture_fbo);
+            glGenRenderbuffers(2, capture_rbo);
+            glBindRenderbuffer(GL_RENDERBUFFER, capture_rbo[0]);
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, width, height);
+            glBindRenderbuffer(GL_RENDERBUFFER, capture_rbo[1]);
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+            glBindFramebuffer(GL_FRAMEBUFFER, capture_fbo);
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, capture_rbo[0]);
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, capture_rbo[1]);
+            capture_w = width; capture_h = height;
+            if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) return false;
+        }
+        glViewport(0, 0, width, height);
+        glClearColor(clear[0], clear[1], clear[2], clear[3]);
+        glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        return true;
+    }
+
+    if (!device) return false;
+    /* A frame left open (an exception mid-draw) is sent as it is. */
+    if (frame.cmd) {
+        SDL_SubmitGPUCommandBuffer(frame.cmd);
+        if (frame.offscreen) SDL_ReleaseGPUTexture(device, frame.offscreen);
+    }
+    memset(&frame, 0, sizeof frame);
+    frame.cmd = SDL_AcquireGPUCommandBuffer(device);
+    if (!frame.cmd) return false;
+    frame.width = width; frame.height = height;
+    frame.clear = true;
+    frame.color = (SDL_FColor) {clear[0], clear[1], clear[2], clear[3]};
+    if (window) {
+        Uint32 w, h;
+        if (!SDL_WaitAndAcquireGPUSwapchainTexture(frame.cmd, window, &frame.target, &w, &h)) frame.target = NULL;
+        frame.format = SDL_GetGPUSwapchainTextureFormat(device, window);
+    } else {
+        SDL_GPUTextureCreateInfo t = {0};
+        t.type = SDL_GPU_TEXTURETYPE_2D;
+        t.format = frame.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+        t.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+        t.width = (Uint32) width;
+        t.height = (Uint32) height;
+        t.layer_count_or_depth = 1;
+        t.num_levels = 1;
+        frame.target = frame.offscreen = SDL_CreateGPUTexture(device, &t);
+    }
+    /* Nothing to draw into (a minimized window): the frame is still ended. */
+    return frame.target != NULL;
+}
+
+static bool save_png(const char *path, int w, int h, const unsigned char *rgba)
+{
+    return stbi_write_png(path, w, h, 4, rgba, w * 4) != 0;
+}
+
+bool phpsdl_frame_end(SDL_Window *window, const char *png)
+{
+    if (!phpsdl_gpu) {
+        if (window) { SDL_GL_SwapWindow(window); return true; }
+        if (!capture_fbo) return false;
+        int w = capture_w, h = capture_h;
+        size_t row = (size_t) w * 4;
+        unsigned char *pixels = emalloc(row * h), *tmp = emalloc(row);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        /* OpenGL's rows start at the bottom. */
+        for (int y = 0; y < h / 2; y++) {
+            memcpy(tmp, pixels + y * row, row);
+            memcpy(pixels + y * row, pixels + (h - 1 - y) * row, row);
+            memcpy(pixels + (h - 1 - y) * row, tmp, row);
+        }
+        bool ok = png ? save_png(png, w, h, pixels) : true;
+        efree(tmp);
+        efree(pixels);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDeleteFramebuffers(1, &capture_fbo);
+        glDeleteRenderbuffers(2, capture_rbo);
+        capture_fbo = 0;
+        return ok;
+    }
+
+    if (!frame.cmd) return false;
+    if (frame.clear && frame.target) {
+        /* Nothing was drawn: the frame is just its background. */
+        SDL_GPUColorTargetInfo target = {0};
+        target.texture = frame.target;
+        target.clear_color = frame.color;
+        target.load_op = SDL_GPU_LOADOP_CLEAR;
+        target.store_op = SDL_GPU_STOREOP_STORE;
+        SDL_EndGPURenderPass(SDL_BeginGPURenderPass(frame.cmd, &target, 1, NULL));
+    }
+    if (!frame.offscreen) {
+        SDL_SubmitGPUCommandBuffer(frame.cmd);
+        memset(&frame, 0, sizeof frame);
+        return true;
+    }
+    bool ok = false;
+    Uint32 bytes = (Uint32) frame.width * (Uint32) frame.height * 4;
+    SDL_GPUTransferBufferCreateInfo b = {SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, bytes, 0};
+    SDL_GPUTransferBuffer *download = SDL_CreateGPUTransferBuffer(device, &b);
+    if (download) {
+        SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(frame.cmd);
+        SDL_GPUTextureRegion src = {0};
+        src.texture = frame.offscreen; src.w = (Uint32) frame.width; src.h = (Uint32) frame.height; src.d = 1;
+        SDL_GPUTextureTransferInfo dst = {download, 0, 0, 0};
+        SDL_DownloadFromGPUTexture(copy, &src, &dst);
+        SDL_EndGPUCopyPass(copy);
+    }
+    SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(frame.cmd);
+    if (fence) {
+        SDL_WaitForGPUFences(device, true, &fence, 1);
+        SDL_ReleaseGPUFence(device, fence);
+    }
+    if (download) {
+        unsigned char *map = SDL_MapGPUTransferBuffer(device, download, false);
+        if (map) {
+            ok = png ? save_png(png, frame.width, frame.height, map) : true;
+            SDL_UnmapGPUTransferBuffer(device, download);
+        }
+        SDL_ReleaseGPUTransferBuffer(device, download);
+    }
+    SDL_ReleaseGPUTexture(device, frame.offscreen);
+    memset(&frame, 0, sizeof frame);
+    return ok;
 }
 
 /* PHP: PhpSdl\Text and PhpSdl\Renderer --------------------------------------- */
@@ -725,7 +1153,7 @@ PHP_METHOD(PhpSdl_Text, addFallback)
     ZEND_PARSE_PARAMETERS_END();
     if (fallback_count >= MAX_FONTS) RETURN_FALSE;
     char name[64];
-    snprintf(name, sizeof name, "\x01fallback%d", fallback_count);
+    snprintf(name, sizeof name, "\x01" "fallback%d", fallback_count);
     int f = font_load(name, ZSTR_VAL(path), (unsigned int) index);
     if (f < 0) RETURN_FALSE;
     fallbacks[fallback_count++] = f;
@@ -930,7 +1358,7 @@ PHP_METHOD(PhpSdl_Renderer, icon)
         Z_PARAM_ARRAY_HT_OR_NULL(clip)
     ZEND_PARSE_PARAMETERS_END();
     pr_renderer *r = renderer_of(ZEND_THIS);
-    if (!renderer_init_gl(r)) RETURN_THROWS();
+    if (!renderer_init(r)) return;
     int px = (int) lroundf((float) size * r->ratio);
     pr_slot *s = icon_slot(svg, px);
     if (!s) { renderer_flush(r); atlas_reset(); s = icon_slot(svg, px); }
@@ -963,7 +1391,7 @@ PHP_METHOD(PhpSdl_Renderer, image)
         Z_PARAM_ARRAY_HT_OR_NULL(clip)
     ZEND_PARSE_PARAMETERS_END();
     pr_renderer *r = renderer_of(ZEND_THIS);
-    if (!renderer_init_gl(r)) RETURN_THROWS();
+    if (!renderer_init(r)) return;
     pr_image *img = image_load(path);
     if (!img) return;
     float *p = instance(r, img->tex);
@@ -1024,6 +1452,24 @@ void phpsdl_render_shutdown(void)
     font_count = fallback_count = 0;
     if (shape_buffer) { hb_buffer_destroy(shape_buffer); shape_buffer = NULL; }
     if (raster) { hb_raster_draw_destroy(raster); raster = NULL; }
+    if (device) {
+        SDL_WaitForGPUIdle(device);
+        if (frame.offscreen) SDL_ReleaseGPUTexture(device, frame.offscreen);
+        for (int i = 0; i < image_count; i++) if (images[i].tex) SDL_ReleaseGPUTexture(device, (SDL_GPUTexture *) images[i].tex);
+        if (atlas_tex) SDL_ReleaseGPUTexture(device, (SDL_GPUTexture *) atlas_tex);
+        for (int i = 0; i < gpu_pipeline_count; i++) SDL_ReleaseGPUGraphicsPipeline(device, gpu_pipelines[i].pipeline);
+        if (gpu_vs) SDL_ReleaseGPUShader(device, gpu_vs);
+        if (gpu_fs) SDL_ReleaseGPUShader(device, gpu_fs);
+        if (gpu_sampler) SDL_ReleaseGPUSampler(device, gpu_sampler);
+        if (gpu_instances) SDL_ReleaseGPUBuffer(device, gpu_instances);
+        if (gpu_instances_upload) SDL_ReleaseGPUTransferBuffer(device, gpu_instances_upload);
+        if (gpu_atlas_upload) SDL_ReleaseGPUTransferBuffer(device, gpu_atlas_upload);
+        SDL_DestroyGPUDevice(device);
+        device = NULL;
+        gpu_vs = gpu_fs = NULL; gpu_sampler = NULL; gpu_pipeline_count = 0;
+        gpu_instances = NULL; gpu_instances_upload = gpu_atlas_upload = NULL; gpu_instances_size = 0;
+        memset(&frame, 0, sizeof frame);
+    }
     for (int i = 0; i < image_count; i++) zend_string_release(images[i].path);
     image_count = 0;
     if (atlas) { pefree(atlas, 1); atlas = NULL; }

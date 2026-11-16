@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace PhpUi;
 
-use GL\Buffer\UByteBuffer;
-use GL\Texture\Texture2D;
 
 /**
  * The window and its loop: render() builds a fresh tree, Layout places it,
@@ -258,53 +256,30 @@ final class App
      */
     public function screenshot(string $path, int $w, int $h, float $scale = 2): void
     {
-        [$pw, $ph] = [(int) ($w * $scale), (int) ($h * $scale)];
-        glGenFramebuffers(1, $fbo);
-        glGenRenderbuffers(2, $color, $stencil);
-        glBindRenderbuffer(GL_RENDERBUFFER, $color);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, $pw, $ph);
-        glBindRenderbuffer(GL_RENDERBUFFER, $stencil);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, $pw, $ph);
-        glBindFramebuffer(GL_FRAMEBUFFER, $fbo);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, $color);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, $stencil);
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) !== GL_FRAMEBUFFER_COMPLETE) throw new \RuntimeException('Framebuffer incomplete');
-
-        $this->painter->target = $fbo;
         $this->painter->instant = true;
         try {
-            $this->draw($w, $h, $scale, true);
+            $this->draw($w, $h, $scale, true, [(int) ($w * $scale), (int) ($h * $scale)]);
+            $this->window->endCapture($path);
         } finally {
-            [$this->painter->target, $this->painter->instant] = [0, false];
+            $this->painter->instant = false;
         }
-
-        $pixels = new UByteBuffer();
-        glReadPixels(0, 0, $pw, $ph, GL_RGBA, GL_UNSIGNED_BYTE, $pixels);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glDeleteFramebuffers(1, $fbo);
-        glDeleteRenderbuffers(2, $color, $stencil);
-
-        Texture2D::fromBuffer($pw, $ph, $pixels, Texture2D::CHANNEL_RGBA)->writePNG($path);
-        // OpenGL rows start at the bottom; reload flipped to get an upright image.
-        Texture2D::fromDisk($path, 4, true)->writePNG($path);
     }
 
-    private function draw(float $w, float $h, float $ratio, bool $caretOn): void
+    /** One frame: into the window, or off screen at $capture [width, height] pixels. */
+    private function draw(float $w, float $h, float $ratio, bool $caretOn, ?array $capture = null): void
     {
         // Build twice when hover changed what the tree looks like is not needed: hover is paint-only.
         $this->tree = $this->build();
         // Zoom lays out a smaller logical window and draws it scaled up.
-        [$vw, $vh] = [$w * $ratio, $h * $ratio];
         [$w, $h, $ratio] = [$w / $this->zoom, $h / $this->zoom, $ratio * $this->zoom];
         $this->layout->compute($this->tree, $w, $h);
         $this->markState($this->tree, '0', null);
         $this->stale = false;
         $this->updateCursor();
 
-        glViewport(0, 0, (int) $vw, (int) $vh);
         $bg = $this->painter->color($this->tree->get('bg', t('background')));
-        glClearColor($bg->r, $bg->g, $bg->b, 1);
-        glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        $clear = [$bg->r, $bg->g, $bg->b, 1];
+        $capture ? $this->window->beginCapture($capture[0], $capture[1], $clear) : $this->window->begin($clear);
         $this->painter->render($this->tree, $w, $h, $ratio, $caretOn);
     }
 

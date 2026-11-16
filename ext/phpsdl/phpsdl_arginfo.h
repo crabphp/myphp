@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 78e3e2d1b01055821535a46ce97dd7fcf18fbb6d */
+ * Stub hash: 3d95a8e6c823c94509a97c92eeb54843627b8eea */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_PhpSdl_Window___construct, 0, 0, 3)
 	ZEND_ARG_TYPE_INFO(0, title, IS_STRING, 0)
@@ -21,7 +21,21 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Window_setTitle, 0,
 	ZEND_ARG_TYPE_INFO(0, title, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Window_begin, 0, 1, _IS_BOOL, 0)
+	ZEND_ARG_TYPE_INFO(0, clear, IS_ARRAY, 0)
+ZEND_END_ARG_INFO()
+
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Window_swap, 0, 0, IS_VOID, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Window_beginCapture, 0, 3, IS_VOID, 0)
+	ZEND_ARG_TYPE_INFO(0, width, IS_LONG, 0)
+	ZEND_ARG_TYPE_INFO(0, height, IS_LONG, 0)
+	ZEND_ARG_TYPE_INFO(0, clear, IS_ARRAY, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Window_endCapture, 0, 1, IS_VOID, 0)
+	ZEND_ARG_TYPE_INFO(0, path, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Window_vsync, 0, 1, IS_VOID, 0)
@@ -164,12 +178,17 @@ ZEND_END_ARG_INFO()
 
 #define arginfo_class_PhpSdl_Sdl_version arginfo_class_PhpSdl_Sdl_clipboard
 
+#define arginfo_class_PhpSdl_Sdl_backend arginfo_class_PhpSdl_Sdl_clipboard
+
 ZEND_METHOD(PhpSdl_Window, __construct);
 ZEND_METHOD(PhpSdl_Window, size);
 ZEND_METHOD(PhpSdl_Window, pixelSize);
 ZEND_METHOD(PhpSdl_Window, setSize);
 ZEND_METHOD(PhpSdl_Window, setTitle);
+ZEND_METHOD(PhpSdl_Window, begin);
 ZEND_METHOD(PhpSdl_Window, swap);
+ZEND_METHOD(PhpSdl_Window, beginCapture);
+ZEND_METHOD(PhpSdl_Window, endCapture);
 ZEND_METHOD(PhpSdl_Window, vsync);
 ZEND_METHOD(PhpSdl_Window, raise);
 ZEND_METHOD(PhpSdl_Window, focused);
@@ -195,6 +214,7 @@ ZEND_METHOD(PhpSdl_Sdl, time);
 ZEND_METHOD(PhpSdl_Sdl, clipboard);
 ZEND_METHOD(PhpSdl_Sdl, setClipboard);
 ZEND_METHOD(PhpSdl_Sdl, version);
+ZEND_METHOD(PhpSdl_Sdl, backend);
 
 static const zend_function_entry class_PhpSdl_Window_methods[] = {
 	ZEND_ME(PhpSdl_Window, __construct, arginfo_class_PhpSdl_Window___construct, ZEND_ACC_PUBLIC)
@@ -202,7 +222,10 @@ static const zend_function_entry class_PhpSdl_Window_methods[] = {
 	ZEND_ME(PhpSdl_Window, pixelSize, arginfo_class_PhpSdl_Window_pixelSize, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Window, setSize, arginfo_class_PhpSdl_Window_setSize, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Window, setTitle, arginfo_class_PhpSdl_Window_setTitle, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Window, begin, arginfo_class_PhpSdl_Window_begin, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Window, swap, arginfo_class_PhpSdl_Window_swap, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Window, beginCapture, arginfo_class_PhpSdl_Window_beginCapture, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Window, endCapture, arginfo_class_PhpSdl_Window_endCapture, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Window, vsync, arginfo_class_PhpSdl_Window_vsync, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Window, raise, arginfo_class_PhpSdl_Window_raise, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Window, focused, arginfo_class_PhpSdl_Window_focused, ZEND_ACC_PUBLIC)
@@ -240,6 +263,7 @@ static const zend_function_entry class_PhpSdl_Sdl_methods[] = {
 	ZEND_ME(PhpSdl_Sdl, clipboard, arginfo_class_PhpSdl_Sdl_clipboard, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_ME(PhpSdl_Sdl, setClipboard, arginfo_class_PhpSdl_Sdl_setClipboard, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_ME(PhpSdl_Sdl, version, arginfo_class_PhpSdl_Sdl_version, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
+	ZEND_ME(PhpSdl_Sdl, backend, arginfo_class_PhpSdl_Sdl_backend, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_FE_END
 };
 

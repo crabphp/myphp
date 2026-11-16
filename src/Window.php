@@ -43,7 +43,12 @@ abstract class Window
     abstract public function shouldClose(): bool;
     /** Wait up to $timeout seconds for events and dispatch them. */
     abstract public function waitEvents(float $timeout): void;
+    /** Start a frame cleared to $clear (RGBA, 0 to 1); swap() shows it. */
+    abstract public function begin(array $clear): bool;
     abstract public function swap(): void;
+    /** Draw the next frame off screen at $width×$height pixels; endCapture() saves it as a PNG. */
+    abstract public function beginCapture(int $width, int $height, array $clear): void;
+    abstract public function endCapture(string $path): void;
     /** Wait for the display before showing each frame (on by default); off for benchmarks. */
     abstract public function vsync(bool $on): void;
     abstract public function time(): float;

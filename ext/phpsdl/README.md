@@ -11,7 +11,12 @@ myphp's native layer, compiled into the myphp runtime. It replaces PHP-GLFW.
   `PhpSdl\Text` shapes text with HarfBuzz (ligatures, marks, complex scripts), picks a
   fallback font per character (variable fallbacks follow the requested weight) and
   rasterizes glyphs with HarfBuzz into an atlas shared with icons, which are SVG masks
-  tinted when drawn. OpenGL 3.3 today; SDL_GPU next.
+  tinted when drawn. Frames start and end here too, on screen or off (screenshots).
+- **SDL_GPU** (`render.c`, `shaders/`): with `MYPHP_GPU=1` the renderer draws with
+  SDL_GPU, on Vulkan, Metal or Direct3D 12, instead of OpenGL 3.3. `shaders/ui.hlsl` is
+  compiled to SPIR-V, DXIL and MSL by `shaders/build.sh` (DXC and SPIRV-Cross) into
+  `shaders/ui_shaders.h`, which is committed. NanoVG (`canvas()`) still needs OpenGL;
+  on SDL_GPU canvases are skipped until NanoVG gets an SDL_GPU backend.
 - **OpenGL 3.3, NanoVG (for `canvas()`), SVG, textures, buffers, math and audio** (`gl/`, `vendor/`):
   PHP-GLFW's modules, generated without GLFW by `tools/generate.sh` (MIT, see
   `gl/LICENSE-php-glfw`). The PHP API is the same: `GL\VectorGraphics\VGContext`,
@@ -24,8 +29,13 @@ PHP-GLFW keep working.
 ## PHP API
 
 ```php
-$window = new PhpSdl\Window('Title', 800, 600);   // with an OpenGL 3.3 core context
-$window->size(); $window->pixelSize(); $window->swap(); $window->vsync(false);
+$window = new PhpSdl\Window('Title', 800, 600);   // OpenGL 3.3 core, or SDL_GPU with MYPHP_GPU=1
+$window->size(); $window->pixelSize(); $window->vsync(false);
+$window->begin([1, 1, 1, 1]);                      // a frame, cleared to white...
+$window->swap();                                   // ...shown
+$window->beginCapture(800, 600, [1, 1, 1, 1]);     // or drawn off screen...
+$window->endCapture('frame.png');                  // ...and saved
+PhpSdl\Sdl::backend();                             // "opengl", or "vulkan", "metal", "direct3d12"
 $window->startTextInput($x, $y, $w, $h);           // text and composition at this caret
 $window->stopTextInput();
 PhpSdl\Sdl::events(0.5);  // [['type' => 'key', 'key' => GLFW_KEY_A, 'mods' => 0], ...]
@@ -62,5 +72,6 @@ phpize && ./configure --enable-phpsdl --with-sdl3-dir=$HOME/.cache/phpsdl/sdl3 &
 php -d extension=modules/phpsdl.so ...   # without the glfw extension loaded
 ```
 
-After changing `phpsdl.stub.php`, regenerate `phpsdl_arginfo.h` with PHP's
+After changing `shaders/ui.hlsl`, run `shaders/build.sh` (keep the GLSL in `render.c`
+doing the same). After changing `phpsdl.stub.php`, regenerate `phpsdl_arginfo.h` with PHP's
 `build/gen_stub.php`.

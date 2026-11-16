@@ -25,7 +25,10 @@ final class SdlWindow extends Window
     public function setSize(int $width, int $height): void { $this->handle->setSize($width, $height); }
     public function setTitle(string $title): void { $this->handle->setTitle($title); }
     public function shouldClose(): bool { return $this->closing; }
+    public function begin(array $clear): bool { return $this->handle->begin($clear); }
     public function swap(): void { $this->handle->swap(); }
+    public function beginCapture(int $width, int $height, array $clear): void { $this->handle->beginCapture($width, $height, $clear); }
+    public function endCapture(string $path): void { $this->handle->endCapture($path); }
     public function vsync(bool $on): void { $this->handle->vsync($on); }
     public function time(): float { return \PhpSdl\Sdl::time(); }
     public function focus(): void { $this->handle->raise(); }

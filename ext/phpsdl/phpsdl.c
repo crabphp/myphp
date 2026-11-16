@@ -70,7 +70,11 @@ static zend_object *phpsdl_window_create(zend_class_entry *ce)
 static void phpsdl_window_free(zend_object *obj)
 {
     phpsdl_window_object *intern = phpsdl_window_from(obj);
-    if (intern->window) {
+    if (intern->window && phpsdl_gpu) {
+        phpsdl_gpu_release(intern->window);
+        SDL_DestroyWindow(intern->window);
+        intern->window = NULL;
+    } else if (intern->window) {
         if (intern->window == phpsdl_first) SDL_HideWindow(intern->window);
         else {
             if (SDL_GL_GetCurrentWindow() == intern->window) SDL_GL_MakeCurrent(phpsdl_first, phpsdl_context);
@@ -191,6 +195,13 @@ static bool phpsdl_ensure_video(void)
     return true;
 }
 
+static void phpsdl_create_cursors(void)
+{
+    if (phpsdl_cursors[0]) return;
+    phpsdl_cursors[0] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT);
+    phpsdl_cursors[1] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);
+    phpsdl_cursors[2] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_TEXT);
+}
 
 /* Window ------------------------------------------------------------------- */
 
@@ -205,6 +216,24 @@ ZEND_METHOD(PhpSdl_Window, __construct)
     ZEND_PARSE_PARAMETERS_END();
 
     if (!phpsdl_ensure_video()) RETURN_THROWS();
+
+    if (phpsdl_gpu) {
+        SDL_Window *window = SDL_CreateWindow(ZSTR_VAL(title), (int) width, (int) height,
+            SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+        if (!window) {
+            phpsdl_throw("SDL could not create the window");
+            RETURN_THROWS();
+        }
+        if (!phpsdl_gpu_claim(window)) {
+            SDL_DestroyWindow(window);
+            phpsdl_throw("SDL_GPU could not draw into the window");
+            RETURN_THROWS();
+        }
+        phpsdl_create_cursors();
+        phpsdl_window_from(Z_OBJ_P(ZEND_THIS))->window = window;
+        SDL_StopTextInput(window);
+        return;
+    }
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -232,9 +261,7 @@ ZEND_METHOD(PhpSdl_Window, __construct)
             zend_throw_error(NULL, "Could not load the OpenGL functions");
             RETURN_THROWS();
         }
-        phpsdl_cursors[0] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT);
-        phpsdl_cursors[1] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);
-        phpsdl_cursors[2] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_TEXT);
+        phpsdl_create_cursors();
     }
     /* The newest window draws: one at a time, as the toolkit opens them. */
     SDL_GL_MakeCurrent(window, phpsdl_context);
@@ -286,10 +313,63 @@ ZEND_METHOD(PhpSdl_Window, setTitle)
     if (PHPSDL_WINDOW()) SDL_SetWindowTitle(PHPSDL_WINDOW(), ZSTR_VAL(title));
 }
 
+static void phpsdl_read_color(HashTable *ht, float out[4])
+{
+    out[0] = out[1] = out[2] = 0; out[3] = 1;
+    zval *v;
+    int i = 0;
+    ZEND_HASH_FOREACH_VAL(ht, v) {
+        if (i >= 4) break;
+        out[i++] = (float) zval_get_double(v);
+    } ZEND_HASH_FOREACH_END();
+}
+
+ZEND_METHOD(PhpSdl_Window, begin)
+{
+    HashTable *clear;
+    ZEND_PARSE_PARAMETERS_START(1, 1)
+        Z_PARAM_ARRAY_HT(clear)
+    ZEND_PARSE_PARAMETERS_END();
+    SDL_Window *window = PHPSDL_WINDOW();
+    if (!window) RETURN_FALSE;
+    float color[4];
+    phpsdl_read_color(clear, color);
+    if (!phpsdl_gpu) SDL_GL_MakeCurrent(window, phpsdl_context);
+    int w = 0, h = 0;
+    SDL_GetWindowSizeInPixels(window, &w, &h);
+    RETURN_BOOL(phpsdl_frame_begin(window, w, h, color));
+}
+
 ZEND_METHOD(PhpSdl_Window, swap)
 {
     ZEND_PARSE_PARAMETERS_NONE();
-    if (PHPSDL_WINDOW()) SDL_GL_SwapWindow(PHPSDL_WINDOW());
+    if (PHPSDL_WINDOW()) phpsdl_frame_end(PHPSDL_WINDOW(), NULL);
+}
+
+ZEND_METHOD(PhpSdl_Window, beginCapture)
+{
+    zend_long width, height;
+    HashTable *clear;
+    ZEND_PARSE_PARAMETERS_START(3, 3)
+        Z_PARAM_LONG(width)
+        Z_PARAM_LONG(height)
+        Z_PARAM_ARRAY_HT(clear)
+    ZEND_PARSE_PARAMETERS_END();
+    float color[4];
+    phpsdl_read_color(clear, color);
+    if (!phpsdl_gpu && PHPSDL_WINDOW()) SDL_GL_MakeCurrent(PHPSDL_WINDOW(), phpsdl_context);
+    if (!phpsdl_frame_begin(NULL, (int) width, (int) height, color)) {
+        zend_throw_error(NULL, "Could not draw off screen at %dx%d", (int) width, (int) height);
+    }
+}
+
+ZEND_METHOD(PhpSdl_Window, endCapture)
+{
+    zend_string *path;
+    ZEND_PARSE_PARAMETERS_START(1, 1)
+        Z_PARAM_PATH_STR(path)
+    ZEND_PARSE_PARAMETERS_END();
+    if (!phpsdl_frame_end(NULL, ZSTR_VAL(path))) zend_throw_error(NULL, "Could not save %s", ZSTR_VAL(path));
 }
 
 ZEND_METHOD(PhpSdl_Window, raise)
@@ -342,7 +422,9 @@ ZEND_METHOD(PhpSdl_Window, vsync)
     ZEND_PARSE_PARAMETERS_START(1, 1)
         Z_PARAM_BOOL(on)
     ZEND_PARSE_PARAMETERS_END();
-    if (PHPSDL_WINDOW()) {
+    if (PHPSDL_WINDOW() && phpsdl_gpu) {
+        phpsdl_gpu_vsync(PHPSDL_WINDOW(), on);
+    } else if (PHPSDL_WINDOW()) {
         SDL_GL_MakeCurrent(PHPSDL_WINDOW(), phpsdl_context);
         SDL_GL_SetSwapInterval(on ? 1 : 0);
     }
@@ -479,6 +561,12 @@ ZEND_METHOD(PhpSdl_Sdl, setClipboard)
     SDL_SetClipboardText(ZSTR_VAL(text));
 }
 
+ZEND_METHOD(PhpSdl_Sdl, backend)
+{
+    ZEND_PARSE_PARAMETERS_NONE();
+    RETURN_STRING(phpsdl_backend());
+}
+
 ZEND_METHOD(PhpSdl_Sdl, version)
 {
     ZEND_PARSE_PARAMETERS_NONE();
@@ -515,6 +603,8 @@ PHP_MINIT_FUNCTION(phpsdl)
     phpsdl_window_handlers.free_obj = phpsdl_window_free;
     phpsdl_window_handlers.clone_obj = NULL;
     phpsdl_sdl_ce = register_class_PhpSdl_Sdl();
+    const char *gpu = getenv("MYPHP_GPU");
+    phpsdl_gpu = gpu && *gpu && strcmp(gpu, "0") != 0;
     register_class_PhpSdl_Text();
     phpsdl_render_register(register_class_PhpSdl_Renderer());
     return SUCCESS;
