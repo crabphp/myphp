@@ -76,9 +76,9 @@ Known limits:
 - File dialogs are not tied to the app window: PHP-GLFW does not expose its X11
   window ID. A chooser may appear behind the app. Zenity multiple results cannot
   represent filenames containing newlines.
-- Inputs support Ctrl+V (line breaks become spaces), Ctrl+C and Ctrl+X (Cmd on
-  macOS). With no
-  selection yet, copy and cut take the **whole input**. On X11 the clipboard is
+- Inputs copy, cut and paste the selection with Ctrl+C/X/V (Cmd on macOS); pasting
+  into a one-line input turns line breaks into spaces. With nothing selected, copy
+  and cut take the **whole input**. On X11 the clipboard is
   owned by the app and disappears on quit unless a clipboard manager saves it.
 - System-theme fallback has no live updates. No-preference preserves the current
   theme. Toggling the theme in the app stops following the system.

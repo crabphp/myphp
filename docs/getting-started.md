@@ -35,7 +35,7 @@ requirement and no background service.
 
 `app.php` is a small counter:
 
-- `$state` is a plain PHP object holding the count.
+- `$state` holds the count in a typed object, so your editor autocompletes it.
 - `$render` builds a fresh element tree from that state.
 - `col()` fills the window; `card()` groups the title and controls.
 - `text()` displays the current count.

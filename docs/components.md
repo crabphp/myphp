@@ -1,8 +1,8 @@
 # Components
 
 All functions are in `PhpUi` and return chainable `Element` objects. Import with
-`use function PhpUi\{button, card, text};`. State belongs to your app; callbacks
-update it and the next render builds a new tree. Theme colors come from `t()`.
+`use function PhpUi\{button, card, text};`. State belongs to your app (see `state()` in
+[Layout](layout.md#state)); callbacks update it and the next render builds a new tree. Theme colors come from `t()`.
 
 Signatures below match `src/components.php` and `src/charts.php`.
 
@@ -11,6 +11,7 @@ Signatures below match `src/components.php` and `src/charts.php`.
 - `button(string $label, ?callable $onClick = null, string $variant = 'default', string $size = 'default', ?string $icon = null): Element` — Variants: default, secondary, outline, ghost, destructive, link; sizes: default, sm, lg, icon, icon-sm.
 - `badge(string $label, string $variant = 'default', ?string $icon = null): Element` — Small label; variants: default, secondary, destructive, outline.
 - `textInput(string $id, string $value, callable $onInput, string $placeholder = '', ?string $icon = null): Element` — Controlled one-line input; `onInput(string $value)` updates your state.
+- `textarea(string $id, string $value, callable $onInput, string $placeholder = '', int $rows = 4): Element` — Multi-line input; text wraps and scrolls; Ctrl/Cmd+Enter calls `onSubmit`.
 - `label(string $text): Element` — Medium-weight field label.
 - `checkbox(bool $checked, callable $onToggle): Element` — Click to toggle your boolean state.
 - `switchToggle(bool $on, callable $onToggle): Element` — Compact boolean switch.
@@ -39,7 +40,7 @@ Signatures below match `src/components.php` and `src/charts.php`.
 
 ## Display
 
-- `paragraph(string $text, float $width, float $size = 14): Element` — Fixed-width wrapped text; build inside a render callback after creating an `App`.
+- `paragraph(string $text, ?float $width = null, float $size = 14): Element` — Wrapped text; without a width it fills the space its parent gives it.
 - `separator(bool $vertical = false): Element` — One-pixel theme-colored divider.
 - `avatar(string $initials, float $size = 32, string $radius = 'full'): Element` — Initials in a circle; a radius value other than `full` gives rounded corners.
 - `progress(float $value): Element` — Progress bar clamped to 0–100.

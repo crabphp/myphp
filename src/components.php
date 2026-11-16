@@ -104,6 +104,16 @@ function textInput(string $id, string $value, callable $onInput, string $placeho
     return div()->h(36)->child($e->w('100%'))->child(icon($icon, 16, t('muted-foreground'))->absolute()->left(11)->top(10));
 }
 
+/** A multi-line input: Enter adds a line, Ctrl/Cmd+Enter submits; text wraps and scrolls. */
+function textarea(string $id, string $value, callable $onInput, string $placeholder = '', int $rows = 4): Element
+{
+    $e = input($id, $value, $onInput)->multiline($rows)->px(12)->py(8)->rounded(8)
+        ->bg(Theme::dark() ? t('input', 0.3) : '#00000000')->border(1, t('input'))->shadow('xs')->textSize(14)
+        ->focus(fn ($s) => $s->borderColor(t('ring'))->ring(3, t('ring', 0.5)));
+    $e->placeholder = $placeholder;
+    return $e;
+}
+
 function label(string $text): Element
 {
     return text($text)->textSize(14)->medium();
@@ -293,13 +303,11 @@ function toast(string $title, string $description, ?string $icon = 'circle-check
 // Display -------------------------------------------------------------------
 
 /** Fixed-width wrapped text, measured with the app's painter at build time. */
-function paragraph(string $text, float $width, float $size = 14): Element
+/** Text that wraps to its width; without $width it fills the space its parent gives it. */
+function paragraph(string $text, ?float $width = null, float $size = 14): Element
 {
-    $painter = Painter::$shared ?? throw new \LogicException('Create an App before building a paragraph');
-    return col()->w($width)->textSize($size)->children(array_map(
-        fn (string $line) => text($line)->font('regular')->h($painter->lineHeight($size)),
-        $painter->wrap($text, $width, 'regular', $size),
-    ));
+    $e = text($text)->wrap()->textSize($size)->font('regular');
+    return $width === null ? $e : $e->w($width);
 }
 
 function separator(bool $vertical = false): Element

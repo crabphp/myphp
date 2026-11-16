@@ -10,9 +10,11 @@ A complete `app.php` for `myphp run`:
 ```php
 <?php
 use PhpUi\App;
-use function PhpUi\{button, col, paragraph, row, t, text};
+use function PhpUi\{button, col, paragraph, row, state, t, text};
 
-$state = (object) ['count' => 0];
+$state = state(new class {
+    public int $count = 0;
+});
 $render = fn () => col()->full()->p(24)->gap(16)->bg(t('background'))
     ->child(row()->itemsCenter()->gap(12)
         ->child(text('Count: ' . $state->count)->grow()->bold())
@@ -61,10 +63,48 @@ Other primitives: `text($string)`, controlled `input($id, $value, $onInput)`,
 `icon($name, $size = 16, $color = null)`, `spacer()`, and `canvas($draw)`.
 Canvas callbacks receive `(VGContext $vg, Element $box, Painter $painter)`.
 
+## State
+
+Keep app state in an object and change it in event handlers; the next frame shows
+the new values. An anonymous class gives your editor autocompletion and types:
+
+```php
+$state = state(new class {
+    public int $count = 0;
+    /** @var list<string> */
+    public array $todos = [];
+});
+button('Add', fn () => $state->todos[] = 'Ship it');
+```
+
+`state()` returns the object you pass. Clicks, keys, drops and desktop callbacks
+(dialogs, notifications) redraw on their own. After changing a typed object from
+anywhere else, call `App::current()->invalidate()`.
+
+`state(['count' => 0])` with an array is a quick untyped store instead: `$s->count++`,
+`$s->todos[] = $x`, `$s->set([...])`. It has no autocompletion, but changes to it
+always redraw the window.
+
+With a key, `state(new class { public bool $open = false; }, 'menu')` returns the same
+state on every call, so a component function can keep its own state between renders.
+
+## Text
+
+`text()` stays on one line. `->wrap()` breaks it onto as many lines as its width
+allows, and lets it shrink in a row; give its container a width (or `flex1()`) so it
+has something to wrap to. `paragraph($text, $width = null, $size = 14)` is wrapping
+text with an optional fixed width. `->truncate()` cuts one line with an ellipsis.
+
+Inputs (`textInput()`, and `textarea()` for several lines) are full editors: click
+or drag to place the caret and select, double-click selects a word, arrows move
+(Ctrl/Alt for words, Shift to select), Home/End, Backspace/Delete, select all, and
+copy, cut and paste of the selection. Long text scrolls to keep the caret visible.
+In a textarea, Enter adds a line, Up/Down move between lines, the wheel scrolls, and
+Ctrl/Cmd+Enter calls `onSubmit`. On macOS the shortcuts use Cmd, and Alt for words.
+
 ## Limits
 
-`paragraph($text, $width, $size = 14)` measures fixed-width text using the app's
-painter at render time; it is not general layout-driven wrapping. There is no text
-selection or cursor movement, IME, accessibility layer, or animation system yet.
-Inputs are single-line; copy/cut operate on the whole value. See [Components](components.md)
+There is no IME (input method) support, undo, rich text, accessibility layer, or
+animation system yet. With nothing selected, copy and cut take the whole value of an
+input. See [Components](components.md)
 and [Desktop](desktop.md) for the available controls and desktop behavior.

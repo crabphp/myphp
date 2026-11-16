@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 // Run with myphp run.
 use PhpUi\App;
-use function PhpUi\{button, card, cardContent, cardHeader, col, t, text};
+use function PhpUi\{button, card, cardContent, cardHeader, col, state, t, text};
 
-$state = (object) ['count' => 0];
+$state = state(new class {
+    public int $count = 0;
+});
 $render = fn () => col()->full()->p(24)->bg(t('background'))->center()
     ->child(card(
         cardHeader('{{name}}'),

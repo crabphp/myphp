@@ -34,6 +34,11 @@ final class App
     private array $pollers = [], $waitHints = [], $shutdownHandlers = [];
     private array $modals = [];
     private ?Element $modalTree = null;
+    private bool $building = false;
+    /** Caret, selection and scroll of each input by id, with the text they belong to. */
+    private array $edits = [];
+    private ?string $dragId = null;
+    private array $lastPress = [0.0, null, 0.0, 0.0];
 
     public function __construct(string $title, int $width, int $height, callable $render)
     {
@@ -84,6 +89,8 @@ final class App
     /** Ask for a new frame, e.g. after state changed outside an event handler. */
     public function invalidate(): void
     {
+        // Reading state while rendering is not a change.
+        if ($this->building) return;
         $this->stale = $this->dirty = true;
     }
 
@@ -133,9 +140,14 @@ final class App
 
     private function build(): Element
     {
-        $tree = ($this->render)($this);
-        $box = $this->modals[0] ?? null;
-        $this->modalTree = $box instanceof \Closure ? $box() : $box;
+        $this->building = true;
+        try {
+            $tree = ($this->render)($this);
+            $box = $this->modals[0] ?? null;
+            $this->modalTree = $box instanceof \Closure ? $box() : $box;
+        } finally {
+            $this->building = false;
+        }
         if ($this->modalTree) $tree->child($this->modalTree);
         return $tree;
     }
@@ -272,6 +284,9 @@ final class App
     {
         [$this->mouseX, $this->mouseY] = [$x, $y];
         if ($this->tree) $this->markHover();
+        if ($this->dragId !== null && ($input = $this->find($this->dragId))) {
+            $this->moveCaret($input, $this->offsetAt($input, $x, $y), true);
+        }
         $this->dirty = true;
     }
 
@@ -290,6 +305,20 @@ final class App
         $this->pressed = $this->handler($top, fn (Element $e) => $e->onClick !== null);
         $input = $this->handler($top, fn (Element $e) => $e->kind === 'input');
         $this->focusId = $input?->id;
+        if ($input) {
+            $offset = $this->offsetAt($input, $x, $y);
+            [$time, $id, $px, $py] = $this->lastPress;
+            $double = $id === $input->id && microtime(true) - $time < 0.4 && abs($x - $px) < 4 && abs($y - $py) < 4;
+            $this->lastPress = [$double ? 0.0 : microtime(true), $input->id, $x, $y];
+            if ($double) {
+                [$from, $to] = $this->wordAt($input->text, $offset);
+                $this->moveCaret($input, $from, false);
+                $this->moveCaret($input, $to, true);
+            } else {
+                $this->moveCaret($input, $offset, false);
+                $this->dragId = $input->id;
+            }
+        }
         $this->dirty = true;
     }
 
@@ -302,6 +331,7 @@ final class App
             $this->stale = true;
         }
         $this->pressed = null;
+        $this->dragId = null;
         $this->dirty = true;
     }
 
@@ -330,6 +360,15 @@ final class App
     public function wheel(float $dy): void
     {
         $this->fresh();
+        $area = $this->handler($this->top($this->mouseX, $this->mouseY), fn (Element $e) => $e->kind === 'input' && $e->get('multiline'));
+        if ($area && count($this->painter->inputLines($area)) * $this->painter->lineHeight($area->size) > $this->innerH($area)) {
+            $edit = $this->edit($area);
+            $edit['sy'] -= $dy * 48;
+            $edit['follow'] = false;
+            $this->edits[$area->id] = $edit;
+            $this->stale = $this->dirty = true;
+            return;
+        }
         $box = $this->handler($this->top($this->mouseX, $this->mouseY), fn (Element $e) => !empty($e->style['scroll']));
         if (!$box) return;
         $this->layout->scroll[$box->id] = ($this->layout->scroll[$box->id] ?? 0) - $dy * 48;
@@ -341,9 +380,9 @@ final class App
     {
         $this->fresh();
         $input = $this->focused();
-        if ($input?->onInput) {
-            ($input->onInput)($input->text . $text);
-            $this->stale = true;
+        if ($input) {
+            [$from, $to] = $this->selection($input);
+            $this->replace($input, $from, $to, $text);
         }
         $this->dirty = true;
     }
@@ -361,25 +400,7 @@ final class App
             return;
         }
         $input = $this->focused();
-        $used = false;
-        if ($input) {
-            if (($mods & (PHP_OS_FAMILY === 'Darwin' ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL)) && in_array($key, [GLFW_KEY_V, GLFW_KEY_C, GLFW_KEY_X], true)) {
-                if ($key === GLFW_KEY_V) $this->type(preg_replace('/\r\n|[\r\n]/', ' ', Desktop::clipboard()));
-                else {
-                    Desktop::setClipboard($input->text);
-                    if ($key === GLFW_KEY_X && $input->onInput) ($input->onInput)('');
-                }
-                $used = true;
-            } elseif ($key === GLFW_KEY_BACKSPACE && $input->onInput) {
-                ($input->onInput)(mb_substr($input->text, 0, -1));
-                $used = true;
-            } elseif (in_array($key, [GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER], true) && $input->onSubmit) {
-                ($input->onSubmit)($input->text);
-                $used = true;
-            } elseif ($key === GLFW_KEY_ESCAPE) {
-                $this->focusId = null;
-            }
-        }
+        $used = $input !== null && $this->editKey($input, $key, $mods);
         if (!$used && $this->onKey) ($this->onKey)($key, $mods);
         $this->stale = $this->dirty = true;
     }
@@ -419,6 +440,7 @@ final class App
         $e->id ??= $path;
         $e->parent = $parent;
         $e->focused = $e->kind === 'input' && $e->id === $this->focusId;
+        if ($e->kind === 'input') $this->syncEdit($e);
         foreach ($e->children as $i => $c) $this->markState($c, "$path.$i", $e);
         if ($parent === null) $this->markHover();
     }
@@ -502,6 +524,243 @@ final class App
     {
         $this->fresh();
         return $this->focusId === null ? null : $this->find($this->focusId);
+    }
+
+    // Text editing ---------------------------------------------------------
+
+    /** A key for the focused input; false when the input does not use it. */
+    private function editKey(Element $input, int $key, int $mods): bool
+    {
+        $mac = PHP_OS_FAMILY === 'Darwin';
+        $primary = (bool) ($mods & ($mac ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL));
+        $byWord = (bool) ($mods & ($mac ? GLFW_MOD_ALT : GLFW_MOD_CONTROL));
+        $shift = (bool) ($mods & GLFW_MOD_SHIFT);
+        $multi = (bool) $input->get('multiline');
+        $text = $input->text;
+        $len = mb_strlen($text);
+        $edit = $this->edit($input);
+        [$from, $to] = $this->selection($input);
+        $hasSelection = $from !== $to;
+
+        switch (true) {
+            case $primary && $key === GLFW_KEY_A:
+                $this->moveCaret($input, 0, false);
+                $this->moveCaret($input, $len, true);
+                return true;
+            case $primary && in_array($key, [GLFW_KEY_C, GLFW_KEY_X], true):
+                // With nothing selected, copy and cut take the whole value.
+                if (!$hasSelection) [$from, $to] = [0, $len];
+                Desktop::setClipboard(mb_substr($text, $from, $to - $from));
+                if ($key === GLFW_KEY_X) $this->replace($input, $from, $to, '');
+                return true;
+            case $primary && $key === GLFW_KEY_V:
+                $this->replace($input, $from, $to, Desktop::clipboard());
+                return true;
+            case $key === GLFW_KEY_LEFT || $key === GLFW_KEY_RIGHT:
+                $left = $key === GLFW_KEY_LEFT;
+                if ($mac && $primary) {
+                    $target = $this->lineEdge($input, $edit['caret'], $left);
+                } elseif ($hasSelection && !$shift) {
+                    $target = $left ? $from : $to;
+                } elseif ($byWord) {
+                    $target = $left ? $this->wordLeft($text, $edit['caret']) : $this->wordRight($text, $edit['caret']);
+                } else {
+                    $target = max(0, min($len, $edit['caret'] + ($left ? -1 : 1)));
+                }
+                $this->moveCaret($input, $target, $shift);
+                return true;
+            case $key === GLFW_KEY_HOME || $key === GLFW_KEY_END:
+                $start = $key === GLFW_KEY_HOME;
+                $this->moveCaret($input, $primary || !$multi ? ($start ? 0 : $len) : $this->lineEdge($input, $edit['caret'], $start), $shift);
+                return true;
+            case $multi && ($key === GLFW_KEY_UP || $key === GLFW_KEY_DOWN):
+                $this->moveLine($input, $key === GLFW_KEY_UP ? -1 : 1, $shift);
+                return true;
+            case $key === GLFW_KEY_BACKSPACE || $key === GLFW_KEY_DELETE:
+                if (!$hasSelection) {
+                    $back = $key === GLFW_KEY_BACKSPACE;
+                    $c = $edit['caret'];
+                    [$from, $to] = $back
+                        ? [$byWord ? $this->wordLeft($text, $c) : max(0, $c - 1), $c]
+                        : [$c, $byWord ? $this->wordRight($text, $c) : min($len, $c + 1)];
+                }
+                $this->replace($input, $from, $to, '');
+                return true;
+            case in_array($key, [GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER], true):
+                if ($multi && !$primary) {
+                    $this->replace($input, $from, $to, "\n");
+                    return true;
+                }
+                if (!$input->onSubmit) return false;
+                ($input->onSubmit)($text);
+                return true;
+            case $key === GLFW_KEY_ESCAPE:
+                $this->focusId = null;
+                return false;
+        }
+        return false;
+    }
+
+    /** The edit state of an input; a value changed by the app puts the caret at its end. */
+    private function edit(Element $e): array
+    {
+        $len = mb_strlen($e->text);
+        $edit = $this->edits[$e->id] ?? null;
+        if ($edit === null || $edit['text'] !== $e->text) {
+            $edit = ['text' => $e->text, 'caret' => $len, 'anchor' => $len, 'sx' => $edit['sx'] ?? 0.0,
+                'sy' => $edit['sy'] ?? 0.0, 'goal' => null, 'follow' => true];
+        }
+        $edit['caret'] = max(0, min($len, $edit['caret']));
+        $edit['anchor'] = max(0, min($len, $edit['anchor']));
+        return $edit;
+    }
+
+    /** Selection as [from, to], from <= to. */
+    private function selection(Element $e): array
+    {
+        $edit = $this->edit($e);
+        return [min($edit['caret'], $edit['anchor']), max($edit['caret'], $edit['anchor'])];
+    }
+
+    private function moveCaret(Element $e, int $offset, bool $extend, bool $keepGoal = false): void
+    {
+        $edit = $this->edit($e);
+        $edit['caret'] = max(0, min(mb_strlen($e->text), $offset));
+        if (!$extend) $edit['anchor'] = $edit['caret'];
+        if (!$keepGoal) $edit['goal'] = null;
+        $edit['follow'] = true;
+        $this->edits[$e->id] = $edit;
+        $this->syncEdit($e);
+        $this->dirty = true;
+    }
+
+    /** Replace characters [$from, $to) with $insert through the input's onInput. */
+    private function replace(Element $e, int $from, int $to, string $insert): void
+    {
+        if (!$e->onInput) return;
+        $insert = $e->get('multiline')
+            ? str_replace(["\r\n", "\r"], "\n", $insert)
+            : preg_replace('/\r\n|[\r\n]/', ' ', $insert);
+        $text = mb_substr($e->text, 0, $from) . $insert . mb_substr($e->text, $to);
+        $caret = $from + mb_strlen($insert);
+        $edit = $this->edit($e);
+        ($e->onInput)($text);
+        $this->edits[$e->id] = ['text' => $text, 'caret' => $caret, 'anchor' => $caret, 'goal' => null, 'follow' => true] + $edit;
+        $this->stale = $this->dirty = true;
+    }
+
+    /** Copy the edit state onto the element for painting, scrolling the caret into view. */
+    private function syncEdit(Element $e): void
+    {
+        $edit = $this->edit($e);
+        $multi = (bool) $e->get('multiline');
+        $iw = $e->w - $e->get('pl', 0) - $e->get('pr', 0);
+        if ($e->id !== $this->focusId) {
+            $edit['caret'] = $edit['anchor'] = mb_strlen($e->text);
+            $edit['sx'] = 0.0;
+            $edit['follow'] = false;
+        }
+        $font = [$e->font, $e->size, $e->get('tracking', 0)];
+        if (!$multi) {
+            $full = $this->painter->textWidth($e->text, ...$font);
+            if ($edit['follow']) {
+                $cx = $this->painter->textWidth(mb_substr($e->text, 0, $edit['caret']), ...$font);
+                if ($cx - $edit['sx'] > $iw - 2) $edit['sx'] = $cx - $iw + 2;
+                if ($cx < $edit['sx']) $edit['sx'] = $cx;
+            }
+            $edit['sx'] = max(0.0, min($edit['sx'], $full - $iw + 2));
+        } else {
+            $lh = $this->painter->lineHeight($e->size);
+            $lines = $this->painter->inputLines($e);
+            $ih = $this->innerH($e);
+            if ($edit['follow']) {
+                $cy = Painter::lineOf($lines, $edit['caret']) * $lh;
+                if ($cy < $edit['sy']) $edit['sy'] = $cy;
+                if ($cy + $lh > $edit['sy'] + $ih) $edit['sy'] = $cy + $lh - $ih;
+            }
+            $edit['sy'] = max(0.0, min($edit['sy'], count($lines) * $lh - $ih));
+        }
+        $edit['follow'] = false;
+        $this->edits[$e->id] = $edit;
+        [$e->caret, $e->anchor, $e->scrollX, $e->scrollY] = [$edit['caret'], $edit['anchor'], $edit['sx'], $multi ? $edit['sy'] : 0.0];
+    }
+
+    private function innerH(Element $e): float
+    {
+        return max(1.0, $e->h - $e->get('pt', 0) - $e->get('pb', 0));
+    }
+
+    /** The character offset under a point in an input. */
+    private function offsetAt(Element $e, float $x, float $y): int
+    {
+        $edit = $this->edit($e);
+        $font = [$e->font, $e->size, $e->get('tracking', 0)];
+        $local = $x - $e->x - $e->get('pl', 0);
+        if (!$e->get('multiline')) return $this->painter->offsetAt($e->text, $local + $edit['sx'], ...$font);
+        $lines = $this->painter->inputLines($e);
+        $lh = $this->painter->lineHeight($e->size);
+        $i = (int) max(0, min(count($lines) - 1, floor(($y - $e->y - $e->get('pt', 0) + $edit['sy']) / $lh)));
+        [$start, $len] = $lines[$i];
+        $offset = $start + $this->painter->offsetAt(mb_substr($e->text, $start, $len), $local, ...$font);
+        // Stay on this visual line rather than jumping to the start of the next wrapped one.
+        if ($len > 0 && $offset === $start + $len && isset($lines[$i + 1]) && $lines[$i + 1][0] === $offset) $offset--;
+        return $offset;
+    }
+
+    /** Start or end of the visual line holding $offset. */
+    private function lineEdge(Element $e, int $offset, bool $start): int
+    {
+        if (!$e->get('multiline')) return $start ? 0 : mb_strlen($e->text);
+        $lines = $this->painter->inputLines($e);
+        $i = Painter::lineOf($lines, $offset);
+        [$from, $len] = $lines[$i];
+        if ($start) return $from;
+        $end = $from + $len;
+        // A soft-wrapped line ends before its trailing space, so the caret stays on it.
+        return isset($lines[$i + 1]) && $lines[$i + 1][0] === $end && $len > 0 ? $end - 1 : $end;
+    }
+
+    /** Move one visual line up or down, keeping the caret's horizontal position. */
+    private function moveLine(Element $e, int $direction, bool $extend): void
+    {
+        $edit = $this->edit($e);
+        $lines = $this->painter->inputLines($e);
+        $font = [$e->font, $e->size, $e->get('tracking', 0)];
+        $i = Painter::lineOf($lines, $edit['caret']);
+        [$start] = $lines[$i];
+        $goal = $edit['goal'] ?? $this->painter->textWidth(mb_substr($e->text, $start, $edit['caret'] - $start), ...$font);
+        $target = $i + $direction;
+        if ($target < 0) $offset = 0;
+        elseif ($target >= count($lines)) $offset = mb_strlen($e->text);
+        else {
+            [$s, $len] = $lines[$target];
+            $offset = $s + $this->painter->offsetAt(mb_substr($e->text, $s, $len), $goal, ...$font);
+            if ($len > 0 && $offset === $s + $len && isset($lines[$target + 1]) && $lines[$target + 1][0] === $offset) $offset--;
+        }
+        $this->moveCaret($e, $offset, $extend, true);
+        $this->edits[$e->id]['goal'] = $goal;
+    }
+
+    private function wordLeft(string $text, int $offset): int
+    {
+        $before = mb_substr($text, 0, $offset);
+        return preg_match('/(?:\S+\s*|\s+)$/u', $before, $m) ? $offset - mb_strlen($m[0]) : 0;
+    }
+
+    private function wordRight(string $text, int $offset): int
+    {
+        $after = mb_substr($text, $offset);
+        return preg_match('/^(?:\s*\S+|\s+)/u', $after, $m) ? $offset + mb_strlen($m[0]) : mb_strlen($text);
+    }
+
+    /** The word (letters, digits, underscore) around $offset, for double-click. */
+    private function wordAt(string $text, int $offset): array
+    {
+        preg_match('/[\p{L}\p{N}_]*$/u', mb_substr($text, 0, $offset), $l);
+        preg_match('/^[\p{L}\p{N}_]*/u', mb_substr($text, $offset), $r);
+        $from = $offset - mb_strlen($l[0]);
+        $to = $offset + mb_strlen($r[0]);
+        return $from === $to ? [$offset, min(mb_strlen($text), $offset + 1)] : [$from, $to];
     }
 
     private function updateCursor(): void

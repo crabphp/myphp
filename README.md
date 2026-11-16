@@ -34,9 +34,11 @@ myphp run
 ```php
 <?php
 use PhpUi\App;
-use function PhpUi\{button, col, text};
+use function PhpUi\{button, col, state, text};
 
-$state = (object) ['count' => 0];
+$state = state(new class {
+    public int $count = 0;
+});
 
 $render = fn () => col()->full()->p(24)->gap(12)
     ->child(text('Count: ' . $state->count)->textSize(26)->bold())

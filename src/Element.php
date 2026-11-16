@@ -31,11 +31,17 @@ final class Element
     public string $color = '#000000';
     public float $size = 14;
     public string $font = 'regular';
+    /** Wrapped text lines, and for multi-line inputs [start, length] character ranges. */
+    public array $lines = [];
+    public ?float $wrapAt = null;
+    public float $scrollX = 0;
 
     // Filled in by App.
     public ?Element $parent = null;
     public bool $hovered = false;
     public bool $focused = false;
+    /** Input editing: caret and selection anchor as character offsets. */
+    public int $caret = 0, $anchor = 0;
 
     public function __construct(public readonly string $kind = 'div', public string $text = '') {}
 
@@ -196,6 +202,10 @@ final class Element
     public function tracking(float $px): self { return $this->set('tracking', $px); }
     public function textCenter(): self { return $this->set('textAlign', 'center'); }
     public function textRight(): self { return $this->set('textAlign', 'right'); }
+    /** Wrap text onto as many lines as its width needs; it may also shrink in a row. */
+    public function wrap(): self { return $this->set('wrap', true)->shrink(); }
+    /** A multi-line input showing $rows lines; Enter adds a line, Ctrl/Cmd+Enter submits. */
+    public function multiline(int $rows = 4): self { return $this->set('multiline', max(1, $rows)); }
     /** Cut text that does not fit with an ellipsis. */
     public function truncate(): self { return $this->set('truncate', true)->shrink(); }
 

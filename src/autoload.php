@@ -12,6 +12,7 @@ require __DIR__ . '/DBus.php';
 require __DIR__ . '/Desktop.php';
 require __DIR__ . '/Theme.php';
 require __DIR__ . '/Element.php';
+require __DIR__ . '/State.php';
 require __DIR__ . '/QuadRenderer.php';
 require __DIR__ . '/Painter.php';
 require __DIR__ . '/Layout.php';

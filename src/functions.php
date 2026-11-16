@@ -28,6 +28,23 @@ function realFile(string $path): string
     return $out;
 }
 
+/**
+ * App state. Pass an object for autocompletion and types:
+ * `$s = state(new class { public int $count = 0; })`, then `$s->count++` in a handler.
+ * An array gives a quick untyped store that also redraws on changes made outside
+ * event handlers. With a $key, the same state comes back on every call, so a
+ * component function can keep its own state between renders.
+ *
+ * @template T of object
+ * @param T|array<string, mixed> $initial
+ * @return ($initial is array ? State : T)
+ */
+function state(object|array $initial = [], ?string $key = null): object
+{
+    if ($key !== null) return State::keyed($key, $initial);
+    return is_array($initial) ? new State($initial) : $initial;
+}
+
 // Primitives ----------------------------------------------------------------
 
 function div(): Element

@@ -15,10 +15,24 @@ final class Layout
     /** @param array<string, float> $scroll Scroll offsets by element id, clamped here. */
     public function __construct(private Painter $painter, public array $scroll = []) {}
 
+    /** @var Element[] Wrapping text elements found by the last measure(). */
+    private array $wraps = [];
+
     public function compute(Element $root, float $width, float $height): void
     {
-        $this->measure($root, ['color' => t('foreground'), 'size' => 14, 'font' => 'regular', 'tracking' => 0.0]);
-        $this->place($root, 0, 0, $width, $height);
+        // Wrapped text is as tall as its width allows: lay out, wrap at the widths
+        // found, and lay out again until the widths stop changing.
+        for ($pass = 0; $pass < 4; $pass++) {
+            $this->wraps = [];
+            $this->measure($root, ['color' => t('foreground'), 'size' => 14, 'font' => 'regular', 'tracking' => 0.0]);
+            $this->place($root, 0, 0, $width, $height);
+            $changed = false;
+            foreach ($this->wraps as $e) {
+                $inner = max(1.0, $e->w - $e->get('pl', 0) - $e->get('pr', 0));
+                if ($e->wrapAt !== $inner) [$e->wrapAt, $changed] = [$inner, true];
+            }
+            if (!$changed) return;
+        }
     }
 
     /** Content size of each element (ignoring percent sizes), and inherited text style. */
@@ -31,12 +45,17 @@ final class Layout
         $e->style['tracking'] = $tracking;
         $text = ['color' => $e->color, 'size' => $e->size, 'font' => $e->font, 'tracking' => $tracking];
 
-        if ($e->kind === 'text') {
+        if ($e->kind === 'text' && $e->get('wrap')) {
+            $this->wraps[] = $e;
+            $e->lines = $e->wrapAt === null ? [$e->text] : $this->painter->wrap($e->text, $e->wrapAt, $e->font, $e->size);
+            $e->mw = ceil(max(array_map(fn ($line) => $this->painter->textWidth($line, $e->font, $e->size, $tracking), $e->lines ?: [''])));
+            $e->mh = $this->painter->lineHeight($e->size) * max(1, count($e->lines));
+        } elseif ($e->kind === 'text') {
             $e->mw = ceil($this->painter->textWidth($e->text, $e->font, $e->size, $tracking));
             $e->mh = $this->painter->lineHeight($e->size);
         } elseif ($e->kind === 'input') {
             $e->mw = 200;
-            $e->mh = $this->painter->lineHeight($e->size);
+            $e->mh = $this->painter->lineHeight($e->size) * $e->get('multiline', 1);
         } else {
             $row = $e->get('dir') === 'row';
             $main = $cross = 0.0;

@@ -41,6 +41,7 @@ final class Painter
     private array $overlays = [];
     private string $iconDir;
     private bool $caretOn = true;
+    private array $lineCache = [];
     private float $ratio = 1.0;
     /** Current clip rectangle and opacity, for the quad pass. */
     private array $clip = [];
@@ -103,6 +104,87 @@ final class Painter
             $lines[] = $line;
         }
         return $lines;
+    }
+
+    /**
+     * Break text into lines that fit $width, as [start, length] character ranges of
+     * the whole text. Unlike wrap(), nothing is dropped: spaces stay at the end of
+     * their line and each "\n" sits between two ranges. For editing.
+     */
+    public function breakLines(string $text, float $width, string $font = 'regular', float $size = 14, float $tracking = 0): array
+    {
+        $key = "$width\0$font\0$size\0$tracking\0$text";
+        if (isset($this->lineCache[$key])) return $this->lineCache[$key];
+        $fits = fn (string $s) => $width <= 0 || $this->textWidth($s, $font, $size, $tracking) <= $width;
+        $lines = [];
+        $start = 0;
+        foreach (explode("\n", $text) as $para) {
+            $len = mb_strlen($para);
+            preg_match_all('/\S+\s*|\s+/u', $para, $m);
+            [$from, $count, $pos] = [0, 0, 0];
+            foreach ($m[0] as $token) {
+                $n = mb_strlen($token);
+                $word = rtrim($token);
+                if ($count > 0 && !$fits(mb_substr($para, $from, $count) . $word)) {
+                    $lines[] = [$start + $from, $count];
+                    [$from, $count] = [$pos, 0];
+                }
+                if ($count === 0 && $word !== '' && !$fits($word)) {
+                    // A word wider than the line: split it by character.
+                    $chars = mb_str_split($word);
+                    $piece = 0;
+                    foreach ($chars as $i => $char) {
+                        if ($piece > 0 && !$fits(mb_substr($para, $from, $piece) . $char)) {
+                            $lines[] = [$start + $from, $piece];
+                            [$from, $piece] = [$pos + $i, 0];
+                        }
+                        $piece++;
+                    }
+                    $count = $piece + $n - mb_strlen($word);
+                } else {
+                    $count += $n;
+                }
+                $pos += $n;
+            }
+            $lines[] = [$start + $from, $count];
+            $start += $len + 1;
+        }
+        if (count($this->lineCache) > 64) $this->lineCache = [];
+        return $this->lineCache[$key] = $lines;
+    }
+
+    /** The line (index into breakLines()) that shows the caret at $offset. */
+    public static function lineOf(array $lines, int $offset): int
+    {
+        foreach ($lines as $i => [$start, $len]) {
+            if ($offset < $start) continue;
+            if ($offset < $start + $len) return $i;
+            // At the end of a soft-wrapped line the caret belongs to the next one.
+            if ($offset === $start + $len && !(isset($lines[$i + 1]) && $lines[$i + 1][0] === $offset)) return $i;
+        }
+        return max(0, count($lines) - 1);
+    }
+
+    /** The character offset in $line nearest to $x pixels from its start. */
+    public function offsetAt(string $line, float $x, string $font, float $size, float $tracking = 0): int
+    {
+        $n = mb_strlen($line);
+        if ($x <= 0 || $n === 0) return 0;
+        $width = fn (int $k) => $this->textWidth(mb_substr($line, 0, $k), $font, $size, $tracking);
+        [$lo, $hi] = [0, $n];
+        while ($lo < $hi) {
+            $mid = intdiv($lo + $hi + 1, 2);
+            $width($mid) <= $x ? $lo = $mid : $hi = $mid - 1;
+        }
+        if ($lo < $n && $x - $width($lo) > $width($lo + 1) - $x) $lo++;
+        return $lo;
+    }
+
+    /** Lines of a multi-line input at its current width. */
+    public function inputLines(Element $e): array
+    {
+        $iw = $e->w - $e->get('pl', 0) - $e->get('pr', 0);
+        return $e->lines = $this->breakLines($e->text, max(1, $iw - 2), $e->font, $e->size, $e->get('tracking', 0));
     }
 
     public function lineHeight(float $size): float
@@ -175,7 +257,9 @@ final class Painter
         } else {
             if ($pass === 'all') $this->boxVg($e, $s);
             if (isset($s['icon'])) $this->icon($e, ...$s['icon']);
-            if ($e->kind === 'text') {
+            if ($e->kind === 'text' && !empty($s['wrap'])) {
+                $this->lines($e, $s);
+            } elseif ($e->kind === 'text') {
                 $this->text($e, $e->text, $e->x, $e->w, $s['color'] ?? $e->color, $s);
             } elseif ($e->kind === 'input') {
                 $this->input($e, $s);
@@ -326,31 +410,89 @@ final class Painter
 
     // Text and icons ------------------------------------------------------------
 
+    /** Wrapped text: the lines Layout measured, from the top of the content box. */
+    private function lines(Element $e, array $s): void
+    {
+        [$pl, $pr, $pt] = [$s['pl'] ?? 0, $s['pr'] ?? 0, $s['pt'] ?? 0];
+        $lh = $this->lineHeight($e->size);
+        foreach ($e->lines as $i => $line) {
+            $this->text($e, $line, $e->x + $pl, $e->w - $pl - $pr, $s['color'] ?? $e->color, ['truncate' => false] + $s, $e->y + $pt + $i * $lh + $lh / 2);
+        }
+    }
+
     private function input(Element $e, array $s): void
     {
         $vg = $this->vg;
-        $ix = $e->x + ($s['pl'] ?? 0);
-        $iw = $e->w - ($s['pl'] ?? 0) - ($s['pr'] ?? 0);
+        [$pl, $pr, $pt] = [$s['pl'] ?? 0, $s['pr'] ?? 0, $s['pt'] ?? 0];
+        $ix = $e->x + $pl;
+        $iw = $e->w - $pl - $pr;
+        $lh = $this->lineHeight($e->size);
+        $ch = round($e->size * 1.15);
+        $color = $s['color'] ?? $e->color;
+        $tracking = $s['tracking'] ?? 0;
+        $multi = !empty($s['multiline']);
+        $width = fn (string $t) => $this->textWidth($t, $e->font, $e->size, $tracking);
+        $plain = ['truncate' => false, 'textAlign' => 'left'] + $s;
+        $selection = $e->focused && $e->caret !== $e->anchor ? [min($e->caret, $e->anchor), max($e->caret, $e->anchor)] : null;
+        $highlight = function (float $x, float $cy, float $w) use ($vg, $ch) {
+            $vg->beginPath();
+            $vg->rect($x, $cy - $ch / 2 - 1, max(2, $w), $ch + 2);
+            $vg->fillColor($this->color(t('ring', 0.45)));
+            $vg->fill();
+        };
+        $caret = function (float $x, float $cy) use ($vg, $ch, $color) {
+            $vg->beginPath();
+            $vg->rect(round($x), $cy - $ch / 2, 1, $ch);
+            $vg->fillColor($this->color($color));
+            $vg->fill();
+        };
+
         $vg->save();
         $vg->intersectScissor($e->x, $e->y, $e->w, $e->h);
-        if ($e->text === '' && $e->placeholder !== '') {
-            $this->text($e, $e->placeholder, $ix, $iw, $s['placeholder'] ?? t('muted-foreground'), $s);
+        if (!$multi) {
+            $cy = $e->y + $e->h / 2;
+            $tx = $ix - $e->scrollX;
+            if ($e->text === '' && $e->placeholder !== '') {
+                $this->text($e, $e->placeholder, $ix, $iw, $s['placeholder'] ?? t('muted-foreground'), $plain);
+            } else {
+                if ($selection) {
+                    $x1 = $width(mb_substr($e->text, 0, $selection[0]));
+                    $highlight($tx + $x1, $cy, $width(mb_substr($e->text, 0, $selection[1])) - $x1);
+                }
+                $this->text($e, $e->text, $tx, $iw, $color, $plain);
+            }
+            if ($e->focused && $this->caretOn) $caret($tx + $width(mb_substr($e->text, 0, $e->caret)), $cy);
         } else {
-            $this->text($e, $e->text, $ix, $iw, $s['color'] ?? $e->color, ['truncate' => false] + $s);
-        }
-        if ($e->focused && $this->caretOn) {
-            $cx = $ix + $this->textWidth($e->text, $e->font, $e->size) + 1;
-            $ch = round($e->size * 1.15);
-            $vg->beginPath();
-            $vg->rect($cx, $e->y + ($e->h - $ch) / 2, 1, $ch);
-            $vg->fillColor($this->color($s['color'] ?? $e->color));
-            $vg->fill();
+            $top = $e->y + $pt - $e->scrollY;
+            if ($e->text === '' && $e->placeholder !== '') {
+                $this->text($e, $e->placeholder, $ix, $iw, $s['placeholder'] ?? t('muted-foreground'), $plain, $top + $lh / 2);
+            }
+            $lines = $this->inputLines($e);
+            foreach ($lines as $i => [$start, $len]) {
+                $cy = $top + $i * $lh + $lh / 2;
+                if ($cy + $lh < $e->y || $cy - $lh > $e->y + $e->h) continue;
+                $line = mb_substr($e->text, $start, $len);
+                if ($selection && $selection[0] <= $start + $len && $selection[1] > $start) {
+                    $from = max($selection[0], $start) - $start;
+                    $to = min($selection[1], $start + $len) - $start;
+                    $x1 = $width(mb_substr($line, 0, $from));
+                    // A selected line break shows as a small block at the end of the line.
+                    $extra = $selection[1] > $start + $len ? 6 : 0;
+                    $highlight($ix + $x1, $cy, $width(mb_substr($line, 0, $to)) - $x1 + $extra);
+                }
+                if ($line !== '') $this->text($e, $line, $ix, $iw, $color, $plain, $cy);
+            }
+            if ($e->focused && $this->caretOn) {
+                $i = self::lineOf($lines, $e->caret);
+                [$start] = $lines[$i];
+                $caret($ix + $width(mb_substr($e->text, $start, $e->caret - $start)), $top + $i * $lh + $lh / 2);
+            }
         }
         $vg->restore();
     }
 
-    /** Draw one line of text, vertically centered in the element. */
-    public function text(Element $e, string $text, float $x, float $w, string $color, array $s = []): void
+    /** Draw one line of text, vertically centered in the element or on $cy. */
+    public function text(Element $e, string $text, float $x, float $w, string $color, array $s = [], ?float $cy = null): void
     {
         $vg = $this->vg;
         $tracking = $s['tracking'] ?? 0;
@@ -364,7 +506,7 @@ final class Painter
         $align = $s['textAlign'] ?? 'left';
         $vg->textAlign(match ($align) { 'center' => VGAlign::CENTER, 'right' => VGAlign::RIGHT, default => VGAlign::LEFT } | VGAlign::MIDDLE);
         $tx = match ($align) { 'center' => $x + $w / 2, 'right' => $x + $w, default => $x };
-        $vg->text($tx, $e->y + $e->h / 2, $text);
+        $vg->text($tx, $cy ?? $e->y + $e->h / 2, $text);
     }
 
     private function ellipsize(string $text, string $font, float $size, float $tracking, float $w): string
