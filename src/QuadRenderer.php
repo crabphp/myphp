@@ -52,11 +52,13 @@ final class QuadRenderer
 
     /**
      * One box. Colors are [r, g, b, a] in 0..1, not premultiplied. With $blur > 0
-     * the box is a shadow: $top is its color, feathered over $blur px.
+     * the box is a shadow: $top is its color, feathered over $blur px. A shadow is
+     * not drawn under its element, found from the shadow's $spread and $offsetY,
+     * so boxes with a see-through background stay clear, as with CSS box-shadow.
      */
-    public function add(array $rect, array $radii, array $top, array $bottom, array $border, float $borderW, float $blur, array $clip): void
+    public function add(array $rect, array $radii, array $top, array $bottom, array $border, float $borderW, float $blur, array $clip, float $spread = 0, float $offsetY = 0): void
     {
-        array_push($this->data, ...$rect, ...$radii, ...$top, ...$bottom, ...$border, ...$clip, ...[$borderW, $blur, 0, 0]);
+        array_push($this->data, ...$rect, ...$radii, ...$top, ...$bottom, ...$border, ...$clip, ...[$borderW, $blur, $spread, $offsetY]);
         $this->count++;
     }
 
@@ -147,7 +149,13 @@ final class QuadRenderer
             float d = roundedBox(vPos, vRect.xy + halfSize, halfSize, vRadii);
             float blur = vParams.y;
             if (blur > 0.0) {
-                fragColor = premul(vTop) * (1.0 - smoothstep(-0.5 * blur, 0.5 * blur, d));
+                // The element itself: the shadow rect moved back by the offset and spread.
+                float spread = vParams.z;
+                vec2 holeHalf = max(halfSize - spread, vec2(0.0));
+                vec2 holeCenter = vRect.xy + halfSize - vec2(0.0, vParams.w);
+                float hole = roundedBox(vPos, holeCenter, holeHalf, max(vRadii - spread, vec4(0.0)));
+                float outside = clamp(0.5 + hole * uScale, 0.0, 1.0);
+                fragColor = premul(vTop) * (1.0 - smoothstep(-0.5 * blur, 0.5 * blur, d)) * outside;
                 return;
             }
             // Coverage over one device pixel gives the anti-aliased edge.

@@ -71,6 +71,7 @@ filesystem paths pass through unchanged. Fonts and toolkit icons do this for you
 myphp demo
 myphp demo dashboard
 myphp demo desktop
+myphp demo notes
 myphp demo todo
 ```
 

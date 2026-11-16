@@ -18,7 +18,7 @@ $phar->startBuffering();
 foreach (['src', 'assets', 'cli'] as $folder) {
     $phar->buildFromDirectory($root, '#^' . preg_quote($root, '#') . "/$folder/#");
 }
-foreach (['dashboard', 'desktop', 'todo'] as $example) {
+foreach (['dashboard', 'desktop', 'notes', 'todo'] as $example) {
     $phar->addFile("$root/examples/$example.php", "examples/$example.php");
 }
 $phar->addFromString('version', getenv('MYPHP_VERSION') ?: 'dev');

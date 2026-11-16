@@ -410,7 +410,7 @@ final class Painter
             foreach (self::SHADOWS[$s['shadow']] ?? [] as [$oy, $blur, $spread, $a]) {
                 $color = [0, 0, 0, min(1, $a * $strength) * $this->alpha];
                 $rect = [$e->x - $spread, $e->y + $oy - $spread, $e->w + 2 * $spread, $e->h + 2 * $spread];
-                $this->quads->add($rect, array_fill(0, 4, $rr + $spread), $color, $color, $none, 0, $blur, $this->clip);
+                $this->quads->add($rect, array_fill(0, 4, $rr + $spread), $color, $color, $none, 0, $blur, $this->clip, $spread, $oy);
             }
         }
 
