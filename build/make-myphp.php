@@ -22,7 +22,8 @@ $phar->addFromString('version', getenv('MYPHP_VERSION') ?: 'dev');
 $phar->addFromString('sfx-size', (string) strlen($bytes));
 $phar->setStub("<?php Phar::mapPhar('myphp.phar'); require 'phar://myphp.phar/cli/main.php'; __HALT_COMPILER();");
 $phar->stopBuffering();
-$ini = "phar.readonly=0\n";
+// FFI loads native libraries such as AccessKit; micro only allows it with ffi.enable=1.
+$ini = "phar.readonly=0\nffi.enable=1\n";
 $binary = $bytes . "\xfd\xf6\x69\xe6" . pack('N', strlen($ini)) . $ini . file_get_contents($out);
 $target = "$dir/myphp" . ($windows ? '.exe' : '');
 if (file_put_contents($target, $binary) !== strlen($binary)) throw new RuntimeException('Cannot write myphp binary');

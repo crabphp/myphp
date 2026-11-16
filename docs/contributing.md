@@ -49,6 +49,7 @@ reuse the clean runtime prefix, with no INI block or OPcache/JIT (micro crashes 
 `PhpUi\realFile()`.
 
 Fonts: Geist and Geist Mono (OFL, `assets/fonts`). Icons: Lucide (ISC, `assets/icons`).
+The macOS build bundles AccessKit (MIT/Apache-2.0) in `assets/native`, downloaded by CI.
 
 ## macOS binaries
 

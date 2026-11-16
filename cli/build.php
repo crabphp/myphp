@@ -95,7 +95,9 @@ function cmdBuild(array $args): int
         $app = var_export('phar://app.phar/app/' . basename($entry), true);
         $phar->setStub("<?php Phar::mapPhar('app.phar'); require 'phar://app.phar/src/autoload.php'; require $app; __HALT_COMPILER();");
         $phar->stopBuffering();
-        $bytes = $sfx . file_get_contents($archive);
+        // Same INI as the CLI where apps need it: FFI for screen reader support.
+        $ini = "ffi.enable=1\n";
+        $bytes = $sfx . "\xfd\xf6\x69\xe6" . pack('N', strlen($ini)) . $ini . file_get_contents($archive);
         $staged = tempnam(realpath($dir), '.myphp-');
         if (file_put_contents($staged, $bytes) !== strlen($bytes) || !chmod($staged, 0755) || !rename($staged, $target)) {
             return myphpError("cannot write $output");

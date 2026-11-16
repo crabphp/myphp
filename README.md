@@ -113,7 +113,8 @@ myphp run gallery.php     # also: dashboard, desktop, logs, notes, player, todo
 
 ## Status
 
-Early. Screen readers are not supported yet. Linux is the main platform; macOS and Windows are experimental (built and
+Early. Screen readers: VoiceOver on macOS (experimental), not yet on Linux or
+Windows. Linux is the main platform; macOS and Windows are experimental (built and
 smoke-tested by CI, not yet tested on real hardware). Not yet: tray icons, menus,
 multiple windows, global shortcuts.
 

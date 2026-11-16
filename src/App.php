@@ -37,6 +37,9 @@ final class App
     private bool $building = false;
     /** Focus came from the keyboard, so the focused control shows a ring. */
     private bool $keyboardFocus = false;
+    public string $title;
+    private ?AccessKit $accessKit = null;
+    private bool $accessKitTried = false;
     private float $zoom = 1.0;
     /** Caret, selection and scroll of each input by id, with the text they belong to. */
     private array $edits = [];
@@ -61,6 +64,7 @@ final class App
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
         glfwWindowHint(GLFW_SCALE_TO_MONITOR, GL_TRUE);
         glfwWindowHint(GLFW_STENCIL_BITS, 8);
+        $this->title = $title;
         $window = glfwCreateWindow($width, $height, $title);
         if (!$window) {
             glfwTerminate();
@@ -229,6 +233,7 @@ final class App
     {
         // Timers keep a press in progress: their changes redraw without cancelling it.
         if ($this->runTimers()) $this->stale = $this->dirty = true;
+        if ($this->accessKit?->runActions()) $this->stale = $this->dirty = true;
         foreach ($this->pollers as $poll) {
             if ($poll()) {
                 $this->stale = $this->dirty = true;
@@ -247,6 +252,12 @@ final class App
         $this->draw($w, $h, $w > 0 ? $fbw / $w : 1, fmod(glfwGetTime(), 1.0) < 0.5);
         glfwSwapBuffers($this->window);
         $this->dirty = $this->painter->animating;
+        // Screen readers: attach once the window is on screen, then publish changes.
+        if (!$this->accessKitTried) {
+            $this->accessKitTried = true;
+            $this->accessKit = AccessKit::attach($this);
+        }
+        $this->accessKit?->sync();
     }
 
     /**
@@ -452,6 +463,7 @@ final class App
 
     public function title(string $title): self
     {
+        $this->title = $title;
         glfwSetWindowTitle($this->window, $title);
         return $this;
     }
@@ -815,7 +827,8 @@ final class App
         };
         // Controls are named by their content: their text is not repeated as children.
         if (in_array($role, ['text', 'button', 'tab', 'menuitem', 'checkbox', 'switch', 'combobox', 'textbox', 'link'], true)) $children = [];
-        return [['role' => $role, 'name' => $name, 'state' => $state, 'children' => $children]];
+        return [['role' => $role, 'name' => $name, 'state' => $state, 'children' => $children, 'id' => $e->id,
+            'bounds' => [$e->x, $e->y, $e->w, $e->h], 'focusable' => $this->isFocusable($e), 'clickable' => $e->onClick !== null]];
     }
 
     /** Turn transitions and fade-ins off or on; by default this follows the system setting. */
@@ -824,6 +837,14 @@ final class App
         $this->painter->reduceMotion = $on;
         $this->dirty = true;
         return $this;
+    }
+
+    /** Window pixels per layout unit: the display's scale (2 on Retina) times zoom. */
+    public function scale(): float
+    {
+        glfwGetWindowSize($this->window, $w, $h);
+        glfwGetFramebufferSize($this->window, $fw, $fh);
+        return ($w > 0 ? $fw / $w : 1.0) * $this->zoom;
     }
 
     /** Scale the whole interface, 0.5 to 3; Ctrl/Cmd + and - do the same. */

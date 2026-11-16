@@ -55,7 +55,13 @@ menus, dialogs and text boxes. Give icon-only buttons a name with
 
 ## Screen readers
 
-Not yet. VoiceOver, NVDA, Narrator and Orca do not see MyPHP's controls: each
-operating system needs a native bridge (AccessKit is the likely route, and Linux could
-use AT-SPI over the existing D-Bus code). The roles, names, states and focus order
-above are what that bridge will publish.
+**macOS (VoiceOver), experimental.** The macOS `myphp` includes
+[AccessKit](https://accesskit.dev) and loads it with PHP's FFI. Every window publishes
+the tree above to VoiceOver: each control's role, name, state, position and the
+keyboard focus. VoiceOver can then read the window, follow focus as you Tab, and act:
+press buttons, check boxes, pick tabs and menu items, and step sliders. Apps built
+with `myphp build` on a Mac include it too. Turn it off with `PHPUI_ACCESSKIT=0`.
+
+Linux (Orca, through AT-SPI) and Windows (Narrator and NVDA, through UI Automation)
+are next; the bridge in `src/AccessKit.php` already has the tree they need. On those
+systems MyPHP apps are still invisible to screen readers.

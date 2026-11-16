@@ -16,7 +16,8 @@ on:
     branches-ignore: [main]
     paths:
       - .github/workflows/macos.yml
-      - build/craft.yml
+      - build/craft-macos.yml
+      - src/AccessKit.php
       - build/make-myphp.*
       - cli/**
       - install.sh
@@ -44,7 +45,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: spc/buildroot/bin
-          key: runtime-macos-${{ matrix.arch }}-${{ hashFiles('build/craft.yml') }}
+          key: runtime-macos-${{ matrix.arch }}-${{ hashFiles('build/craft-macos.yml') }}
 
       - name: Build the PHP runtime with static-php-cli
         if: steps.runtime.outputs.cache-hit != 'true'
@@ -54,11 +55,22 @@ jobs:
           SPC_EXTRA_LIBS: -lc++
         run: |
           mkdir -p spc && cd spc
-          cp ../build/craft.yml .
+          cp ../build/craft-macos.yml craft.yml
           curl -fsSL -o spc https://dl.static-php.dev/static-php-cli/spc-bin/nightly/spc-macos-${{ matrix.spc }}
           chmod +x spc
           ./spc doctor --auto-fix
           ./spc craft || { grep -n -B3 -A12 -E 'error[: ]|Undefined symbols|ld: ' log/spc.shell.log | tail -200; exit 1; }
+
+      # Screen readers: AccessKit's macOS library goes into the binary (assets/native),
+      # and so into every app built with it.
+      - name: Bundle AccessKit
+        run: |
+          gh release download 0.23.2 --repo AccessKit/accesskit-c --pattern '*.zip' --dir accesskit
+          unzip -q accesskit/*.zip -d accesskit
+          mkdir -p assets/native/macos-${{ matrix.arch }}
+          cp accesskit/accesskit-c-*/lib/macos/${{ matrix.arch }}/shared/libaccesskit.dylib assets/native/macos-${{ matrix.arch }}/
+          cp accesskit/accesskit-c-*/LICENSE-MIT assets/native/ACCESSKIT-LICENSE-MIT
+          cp accesskit/accesskit-c-*/LICENSE-APACHE assets/native/ACCESSKIT-LICENSE-APACHE
 
       - name: Build myphp
         run: |
@@ -67,6 +79,8 @@ jobs:
           PHP=$PWD/spc/buildroot/bin/php MYPHP_VERSION=$VERSION build/make-myphp.sh spc/buildroot/bin/micro.sfx
           file build/myphp
           build/myphp version
+          # FFI works in the binary and the AccessKit bindings build a tree.
+          build/myphp run tests/accesskit.php
 
       - name: Smoke test (init, build, install)
         run: |

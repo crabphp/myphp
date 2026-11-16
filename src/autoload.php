@@ -16,6 +16,7 @@ require __DIR__ . '/State.php';
 require __DIR__ . '/QuadRenderer.php';
 require __DIR__ . '/Painter.php';
 require __DIR__ . '/Layout.php';
+require __DIR__ . '/AccessKit.php';
 require __DIR__ . '/App.php';
 require __DIR__ . '/functions.php';
 require __DIR__ . '/components.php';
