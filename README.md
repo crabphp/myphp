@@ -73,7 +73,8 @@ composer require guzzlehttp/guzzle
 ```
 
 `vendor/` loads by itself and is packed into `myphp build`. `composer install` also
-gives your editor autocompletion for the toolkit. HTTPS, SQLite and XML are built in.
+gives your editor autocompletion for the toolkit. Apps that use HTTPS, SQLite or XML
+run on a larger runtime that myphp picks and downloads by itself.
 
 ## What's inside
 

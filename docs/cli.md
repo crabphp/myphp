@@ -40,12 +40,20 @@ Ctrl+C stops watching.
 ```sh
 myphp build
 myphp build app.php -o build/custom
+myphp build --full
 ```
 
 Defaults to `app.php`; the project is the entry file's directory, not necessarily
 the working directory. Default output: `<project>/build/<project-name>`.
 The result is one executable with the runtime, toolkit, assets, and project.
-No download, PHP subprocess, or second runtime file is needed to build.
+
+**Runtime:** plain apps get the core runtime (about 12 MB). Apps that need HTTPS,
+SQLite, XML and the like (found from `composer.json` `ext-*` requirements and the code)
+are built with the full runtime (about 35 MB): myphp hands the command to
+`myphp-full`, downloaded once to the user cache. `--full` and `--core` choose
+explicitly, as does `"extra": {"myphp": {"runtime": "full"}}` in `composer.json`.
+`run` makes the same choice. `MYPHP_FULL=/path/to/myphp-full` uses a local one.
+See [Getting started](getting-started.md#two-runtimes).
 
 Packing skips `build/`, `.git/`, every dot-prefixed path component, symlinks, and
 the output file itself. A hidden entry file is rejected. All other project files are

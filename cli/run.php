@@ -32,10 +32,16 @@ function myphpRun(string $file, array $args): int
 
 function cmdRun(array $args): int
 {
+    $runtime = myphpRuntimeFlag($args);
     $watch = in_array($args[0] ?? '', ['--watch', '-w'], true);
     if ($watch) array_shift($args);
     $file = array_shift($args) ?? 'app.php';
     if (!is_file($file)) return myphpError("$file not found. Create an app with \"myphp init <name>\".");
+    // The core runtime hands apps that need HTTPS, SQLite, XML... to myphp-full.
+    if (myphpFlavor() !== 'full' && !getenv('MYPHP_DELEGATED') && $runtime !== 'core') {
+        $reason = $runtime === 'full' ? 'asked with --full' : myphpNeedsFull(dirname((string) realpath($file)));
+        if ($reason !== null) return myphpDelegate(['run', ...($watch ? ['--watch'] : []), $file, ...$args], $reason);
+    }
     return $watch ? myphpWatch($file, $args) : myphpRun($file, $args);
 }
 

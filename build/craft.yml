@@ -1,6 +1,7 @@
-# static-php-cli recipe for the myphp runtime (see docs/contributing.md).
+# static-php-cli recipe for the core myphp runtime (see docs/contributing.md): PHP and
+# the UI toolkit. build/craft-full.yml adds HTTPS, SQLite, XML and more (myphp-full).
 php-version: 8.4
-extensions: glfw,opcache,phar,mbstring,ctype,tokenizer,zlib,posix,pcntl,openssl,curl,pdo,pdo_sqlite,sqlite3,filter,fileinfo,iconv,dom,xml,simplexml,xmlreader,xmlwriter,bcmath,sockets
+extensions: glfw,opcache,phar,mbstring,ctype,tokenizer,zlib,posix,pcntl,filter
 sapi:
   - cli
   - micro

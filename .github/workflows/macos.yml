@@ -16,7 +16,7 @@ on:
     branches-ignore: [main]
     paths:
       - .github/workflows/macos.yml
-      - build/craft-macos.yml
+      - build/craft-macos*.yml
       - src/AccessKit.php
       - build/make-myphp.*
       - cli/**
@@ -31,12 +31,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runner: macos-15, arch: arm64, spc: aarch64 }
-          - { runner: macos-15-intel, arch: x86_64, spc: x86_64 }
+          # Two runtimes: myphp (core, small) and myphp-full (HTTPS, SQLite, XML...), see cli/runtime.php.
+          - { runner: macos-15, arch: arm64, spc: aarch64, flavor: core, name: myphp, recipe: build/craft-macos.yml }
+          - { runner: macos-15-intel, arch: x86_64, spc: x86_64, flavor: core, name: myphp, recipe: build/craft-macos.yml }
+          - { runner: macos-15, arch: arm64, spc: aarch64, flavor: full, name: myphp-full, recipe: build/craft-macos-full.yml }
+          - { runner: macos-15-intel, arch: x86_64, spc: x86_64, flavor: full, name: myphp-full, recipe: build/craft-macos-full.yml }
     runs-on: ${{ matrix.runner }}
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      ASSET: myphp-macos-${{ matrix.arch }}
+      ASSET: ${{ matrix.name }}-macos-${{ matrix.arch }}
+      MYPHP: build/${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +49,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: spc/buildroot/bin
-          key: runtime-macos-${{ matrix.arch }}-${{ hashFiles('build/craft-macos.yml') }}
+          key: runtime-macos-${{ matrix.arch }}-${{ matrix.flavor }}-${{ hashFiles(matrix.recipe) }}
 
       - name: Build the PHP runtime with static-php-cli
         if: steps.runtime.outputs.cache-hit != 'true'
@@ -55,7 +59,7 @@ jobs:
           SPC_EXTRA_LIBS: -lc++
         run: |
           mkdir -p spc && cd spc
-          cp ../build/craft-macos.yml craft.yml
+          cp ../${{ matrix.recipe }} craft.yml
           curl -fsSL -o spc https://dl.static-php.dev/static-php-cli/spc-bin/nightly/spc-macos-${{ matrix.spc }}
           chmod +x spc
           ./spc doctor --auto-fix
@@ -76,21 +80,21 @@ jobs:
         run: |
           VERSION=${{ inputs.version || 'dev' }}
           if [ "${{ github.event_name }}" = release ]; then VERSION=${{ github.event.release.tag_name }}; VERSION=${VERSION#v}; fi
-          PHP=$PWD/spc/buildroot/bin/php MYPHP_VERSION=$VERSION build/make-myphp.sh spc/buildroot/bin/micro.sfx
-          file build/myphp
-          build/myphp version
+          PHP=$PWD/spc/buildroot/bin/php MYPHP_FLAVOR=${{ matrix.flavor }} MYPHP_VERSION=$VERSION build/make-myphp.sh spc/buildroot/bin/micro.sfx
+          file $MYPHP
+          $MYPHP version
           # FFI works in the binary and the AccessKit bindings build a tree.
-          build/myphp run tests/accesskit.php
+          $MYPHP run tests/accesskit.php
 
       - name: Smoke test (init, build, install)
         run: |
           WORK=$(mktemp -d)
           cd "$WORK"
-          "$GITHUB_WORKSPACE/build/myphp" init smoke
+          "$GITHUB_WORKSPACE/$MYPHP" init smoke
           cd smoke
-          "$GITHUB_WORKSPACE/build/myphp" build
+          "$GITHUB_WORKSPACE/$MYPHP" build
           file build/smoke
-          MYPHP_DOWNLOAD_URL=file://$GITHUB_WORKSPACE/build/myphp MYPHP_INSTALL_DIR=$WORK/bin sh "$GITHUB_WORKSPACE/install.sh"
+          MYPHP_DOWNLOAD_URL=file://$GITHUB_WORKSPACE/$MYPHP MYPHP_INSTALL_DIR=$WORK/bin sh "$GITHUB_WORKSPACE/install.sh"
           echo "SMOKE=$WORK/smoke" >> "$GITHUB_ENV"
 
       # Hosted runners may not offer an OpenGL 3.3 context, so a failure here is reported but not fatal.
@@ -99,13 +103,13 @@ jobs:
         run: |
           mkdir -p shots
           PHPUI_SCREENSHOT=$PWD/shots/built-app.png "$SMOKE/build/smoke"
-          PHPUI_SCREENSHOT=$PWD/shots/demo.png build/myphp run examples/dashboard.php
+          PHPUI_SCREENSHOT=$PWD/shots/demo.png $MYPHP run examples/dashboard.php
           ls -l shots
 
       - name: Package
         run: |
           mkdir -p dist
-          cp build/myphp dist/$ASSET
+          cp $MYPHP dist/$ASSET
           (cd dist && shasum -a 256 $ASSET > $ASSET.sha256)
 
       - uses: actions/upload-artifact@v4

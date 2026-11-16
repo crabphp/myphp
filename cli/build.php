@@ -55,6 +55,8 @@ function myphpRuntime(int $size): string
 
 function cmdBuild(array $args): int
 {
+    $runtime = myphpRuntimeFlag($args);
+    $original = $args;
     $file = null;
     $output = null;
     for ($i = 0; $i < count($args); $i++) {
@@ -63,7 +65,7 @@ function cmdBuild(array $args): int
         } elseif (!str_starts_with($args[$i], '-') && $file === null) {
             $file = $args[$i];
         } else {
-            return myphpError('usage: myphp build [file] [-o output]', 2);
+            return myphpError('usage: myphp build [file] [-o output] [--full | --core]', 2);
         }
     }
     $file ??= 'app.php';
@@ -72,6 +74,11 @@ function cmdBuild(array $args): int
     if (str_starts_with(basename($entry), '.')) return myphpError('entry file cannot be a dotfile');
     $project = dirname($entry);
     $output ??= (dirname($file) === '.' ? '' : dirname($file) . '/') . 'build/' . basename($project);
+    // Apps that need HTTPS, SQLite, XML... are built by myphp-full, with its runtime.
+    if (myphpFlavor() !== 'full' && !getenv('MYPHP_DELEGATED') && $runtime !== 'core') {
+        $reason = $runtime === 'full' ? 'asked with --full' : myphpNeedsFull($project);
+        if ($reason !== null) return myphpDelegate(['build', ...$original], $reason);
+    }
     if (PHP_OS_FAMILY === 'Windows' && !str_ends_with(strtolower($output), '.exe')) $output .= '.exe';
     if (PHP_SAPI === 'micro') {
         $size = (int) file_get_contents(MYPHP_ROOT . '/sfx-size');
@@ -122,7 +129,7 @@ function cmdBuild(array $args): int
             return myphpError("cannot write $output");
         }
         clearstatcache();
-        printf("Built %s (%.1f MB)\n", $output, filesize($target) / 1000000);
+        printf("Built %s (%.1f MB, %s runtime)\n", $output, filesize($target) / 1000000, myphpFlavor());
         return 0;
     } finally {
         unset($phar);

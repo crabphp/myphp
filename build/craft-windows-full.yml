@@ -1,0 +1,6 @@
+# static-php-cli recipe for the full Windows myphp runtime (myphp-full).
+php-version: 8.4
+extensions: glfw,phar,mbstring,ctype,tokenizer,zlib,filter,openssl,curl,pdo,pdo_sqlite,sqlite3,fileinfo,iconv,dom,xml,simplexml,xmlreader,xmlwriter,bcmath,sockets
+sapi:
+  - cli
+  - micro

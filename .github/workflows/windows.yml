@@ -16,7 +16,7 @@ on:
     branches-ignore: [main]
     paths:
       - .github/workflows/windows.yml
-      - build/craft-windows.yml
+      - build/craft-windows*.yml
       - build/make-myphp.*
       - cli/**
       - install.ps1
@@ -25,11 +25,19 @@ permissions:
   contents: write
 
 jobs:
+  # Two runtimes: myphp (core, small) and myphp-full (HTTPS, SQLite, XML...), see cli/runtime.php.
   build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { flavor: core, name: myphp, recipe: build/craft-windows.yml }
+          - { flavor: full, name: myphp-full, recipe: build/craft-windows-full.yml }
     runs-on: windows-2022
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      ASSET: myphp-windows-x86_64.exe
+      ASSET: ${{ matrix.name }}-windows-x86_64.exe
+      MYPHP: build/${{ matrix.name }}.exe
     defaults:
       run:
         shell: bash
@@ -41,7 +49,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: spc/buildroot/bin
-          key: runtime-windows-x86_64-${{ hashFiles('build/craft-windows.yml') }}
+          key: runtime-windows-x86_64-${{ matrix.flavor }}-${{ hashFiles(matrix.recipe) }}
 
       - name: Build the PHP runtime with static-php-cli
         if: steps.runtime.outputs.cache-hit != 'true'
@@ -49,7 +57,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force spc | Out-Null
           Set-Location spc
-          Copy-Item ..\build\craft-windows.yml craft.yml
+          Copy-Item ..\${{ matrix.recipe }} craft.yml
           curl.exe -fsSL -o spc.exe https://dl.static-php.dev/static-php-cli/spc-bin/nightly/spc-windows-x64.exe
           .\spc.exe doctor --auto-fix
           .\spc.exe craft
@@ -65,8 +73,8 @@ jobs:
         run: |
           VERSION=${{ inputs.version || 'dev' }}
           if [ "${{ github.event_name }}" = release ]; then VERSION=${{ github.event.release.tag_name }}; VERSION=${VERSION#v}; fi
-          PHP=$PWD/spc/buildroot/bin/php.exe MYPHP_VERSION=$VERSION build/make-myphp.sh spc/buildroot/bin/micro.sfx
-          build/myphp.exe version
+          PHP=$PWD/spc/buildroot/bin/php.exe MYPHP_FLAVOR=${{ matrix.flavor }} MYPHP_VERSION=$VERSION build/make-myphp.sh spc/buildroot/bin/micro.sfx
+          $MYPHP version
 
       - name: Smoke test (init, build, install)
         run: |
@@ -74,13 +82,13 @@ jobs:
           WORK=$(cygpath -u "$RUNNER_TEMP")/myphp-smoke
           mkdir -p "$WORK"
           cd "$WORK"
-          "$GITHUB_WORKSPACE/build/myphp.exe" init smoke
+          "$GITHUB_WORKSPACE/$MYPHP" init smoke
           cd smoke
-          "$GITHUB_WORKSPACE/build/myphp.exe" build
+          "$GITHUB_WORKSPACE/$MYPHP" build
           ls -l build
           test -f build/smoke.exe
           echo "SMOKE=$WORK/smoke" >> "$GITHUB_ENV"
-          MYPHP_DOWNLOAD_URL=$(cygpath -w "$GITHUB_WORKSPACE/build/myphp.exe") MYPHP_INSTALL_DIR=$(cygpath -w "$WORK/bin") MYPHP_NO_PATH=1 \
+          MYPHP_DOWNLOAD_URL=$(cygpath -w "$GITHUB_WORKSPACE/$MYPHP") MYPHP_INSTALL_DIR=$(cygpath -w "$WORK/bin") MYPHP_NO_PATH=1 \
             pwsh -NoProfile -File "$GITHUB_WORKSPACE/install.ps1"
 
       # Hosted runners have no GPU, so a software OpenGL (Mesa llvmpipe) is placed next to the binaries.
@@ -92,8 +100,8 @@ jobs:
           for dir in build "$SMOKE/build"; do cp mesa/out/x64/*.dll "$dir/"; done
           export GALLIUM_DRIVER=llvmpipe
           PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/built-app.png") "$SMOKE/build/smoke.exe"
-          PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/demo.png") build/myphp.exe run examples/dashboard.php
-          PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/desktop.png") build/myphp.exe run examples/desktop.php
+          PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/demo.png") $MYPHP run examples/dashboard.php
+          PHPUI_SCREENSHOT=$(cygpath -w "$PWD/shots/desktop.png") $MYPHP run examples/desktop.php
           ls -l shots
           test -s shots/built-app.png && test -s shots/demo.png && test -s shots/desktop.png
           rm -f build/*.dll
@@ -101,12 +109,12 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp build/myphp.exe dist/$ASSET
+          cp $MYPHP dist/$ASSET
           (cd dist && sha256sum $ASSET > $ASSET.sha256)
 
       - uses: actions/upload-artifact@v4
         with:
-          name: myphp-windows-x86_64
+          name: ${{ matrix.name }}-windows-x86_64
           path: |
             dist/
             shots/

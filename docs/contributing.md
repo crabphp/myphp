@@ -16,8 +16,9 @@ build/myphp run examples/desktop.php
 build/release.sh --dry-run 0.1.0
 ```
 
-`build/make-myphp.sh [micro.sfx]` uses `$PHP`, then `php84`, then `php`; default
-runtime: `~/.cache/spc/buildroot/bin/micro.sfx`. Build artifacts are ignored.
+`build/make-myphp.sh [core micro.sfx] [full micro.sfx]` uses `$PHP`, then `php84`,
+then `php`, and writes `build/myphp` and `build/myphp-full`; default runtimes:
+`~/.cache/spc/runtimes/core/micro.sfx` and `~/.cache/spc/runtimes/full/micro.sfx`. Build artifacts are ignored.
 `build/make-binary.sh` still makes the legacy `build/dashboard` test fixture.
 `PHPUI_SCREENSHOT=/tmp/app.png` saves one frame at window size and exits.
 `PHPUI_RENDERER=quads` is the default; alternatives: `nanovg-fast`, `nanovg`.
@@ -33,10 +34,11 @@ does not need GLFW. Do not commit `vendor/` or the root `composer.lock`.
 ## Build the runtime
 
 Use [static-php-cli](https://github.com/crazywhalecc/static-php-cli), targeting glibc
-(glfw cannot be fully static). In its checkout, use `build/craft.yml` (PHP 8.4,
-extensions as listed there: the toolkit's, plus `openssl`, `curl`, `pdo_sqlite`, XML
-and friends for apps), SAPIs `cli`
-and `micro`). On Fedora, supply the X11 library paths:
+(glfw cannot be fully static). In its checkout, build twice: `build/craft.yml`
+(the core runtime: PHP 8.4 with the toolkit's extensions) and `build/craft-full.yml`
+(plus `openssl`, `curl`, `pdo_sqlite`, XML and friends; keep `cli/runtime.php` in sync),
+copying `buildroot/bin/micro.sfx` and `php` to `~/.cache/spc/runtimes/core/` and
+`.../full/` after each. On Fedora, supply the X11 library paths:
 
 ```sh
 mkdir -p x11libs

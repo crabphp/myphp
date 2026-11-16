@@ -9,6 +9,7 @@ require __DIR__ . '/run.php';
 require __DIR__ . '/init.php';
 require __DIR__ . '/build.php';
 require __DIR__ . '/upgrade.php';
+require __DIR__ . '/runtime.php';
 
 function myphpVersion(): string
 {
@@ -28,6 +29,7 @@ function myphpHelp(): int
     foreach ([
         'init' => '  myphp init <name>     create a new app',
         'run' => '  myphp run [file]      run an app (default: app.php); --watch reloads on save',
+        'runtime' => '                        apps needing HTTPS, SQLite or XML use the full runtime; --full/--core choose',
         'build' => '  myphp build [file]    build one executable (default: app.php)',
         'upgrade' => '  myphp upgrade         update myphp (--nightly: newest build from main, --stable: releases)',
     ] as $name => $line) {
@@ -57,5 +59,6 @@ function myphpMain(array $args): int
 try {
     exit(myphpMain(array_slice($argv, 1)));
 } catch (Throwable $e) {
-    exit(myphpError(get_class($e) . ': ' . $e->getMessage() . "\n" . $e->getTraceAsString()));
+    $hint = myphpMissingExtensionHint($e);
+    exit(myphpError(get_class($e) . ': ' . $e->getMessage() . ($hint ? "\n$hint" : '') . "\n" . $e->getTraceAsString()));
 }

@@ -18,11 +18,12 @@ if (!getenv('MYPHP_BIN')) {
     check($code === 0, "build CLI: $out$err");
     if ($code !== 0) exit(1);
     putenv("MYPHP_BIN=$buildDir/myphp");
-    $sfx = file_get_contents(getenv('HOME') . '/.cache/spc/buildroot/bin/micro.sfx');
+    if (is_file("$buildDir/myphp-full")) putenv("MYPHP_FULL=$buildDir/myphp-full");
+    $sfx = file_get_contents(getenv('HOME') . '/.cache/spc/runtimes/core/micro.sfx');
     same(hash('sha256', $sfx), hash('sha256', file_get_contents(getenv('MYPHP_BIN'), length: strlen($sfx))),
         'CLI starts with the clean sfx');
     [$code, $out, $err] = cliProcess([__DIR__ . '/../build/make-myphp.sh'], env: [
-        'MYPHP_BUILD_DIR' => "$buildDir/versioned", 'MYPHP_VERSION' => '9.9.9', 'PHP' => PHP_BINARY,
+        'MYPHP_BUILD_DIR' => "$buildDir/versioned", 'MYPHP_VERSION' => '9.9.9', 'PHP' => PHP_BINARY, 'MYPHP_FULL_SFX' => '/nonexistent',
     ]);
     same(0, $code, "versioned build: $err");
     [$code, $out] = cliProcess(["$buildDir/versioned/myphp", 'version']);
@@ -100,8 +101,37 @@ file_put_contents("$project/other.php", '<?php file_put_contents("args.json", js
 same(0, $code, "run accepts arguments: $err");
 same([['other.php', 'a', 'b'], 3, ['other.php', 'a', 'b'], 3, false],
     json_decode(file_get_contents("$project/args.json"), true), 'app gets argv/argc, not CLI locals');
-// The runtime has what apps need: HTTPS, SQLite, XML; and a CA bundle for HTTPS.
-$probe = getenv('PHPUI_TEST_TMP') . '/runtime-probe.php';
+// Two runtimes: the core one is small; apps that need HTTPS, SQLite, XML... run with
+// myphp-full, chosen from composer.json and the code.
+$runtimes = getenv('PHPUI_TEST_TMP') . '/runtimes';
+mkdir("$runtimes/core", 0777, true);
+file_put_contents("$runtimes/core/app.php", "<?php function curl_like() {} \$site = 'https://example.com'; echo json_encode([extension_loaded('openssl'), extension_loaded('filter'), filter_var('a@b.co', FILTER_VALIDATE_EMAIL)]);");
+[$code, $out, $err] = cli(['run', "$runtimes/core/app.php"]);
+same([0, [false, true, 'a@b.co'], ''], [$code, json_decode($out, true), $err], 'a plain app runs on the core runtime, which has filter');
+[$code, $out, $err] = cli(['run', '--full', "$runtimes/core/app.php"]);
+check($code === 0 && json_decode($out, true)[0] === true && str_contains($err, 'full runtime: asked with --full'), "--full runs with the full runtime: $err");
+mkdir("$runtimes/composer");
+file_put_contents("$runtimes/composer/composer.json", '{"require": {"ext-curl": "*"}}');
+file_put_contents("$runtimes/composer/app.php", "<?php echo json_encode(function_exists('curl_init'));");
+[$code, $out, $err] = cli(['run', "$runtimes/composer/app.php"]);
+check($code === 0 && $out === 'true' && str_contains($err, 'composer.json requires ext-curl'), "composer ext-* requirements pick the full runtime: $err");
+[$code, $out, $err] = cli(['run', '--core', "$runtimes/composer/app.php"]);
+same([0, 'false'], [$code, $out], '--core keeps the core runtime');
+file_put_contents("$runtimes/composer/composer.json", '{"require": {"ext-curl": "*"}, "extra": {"myphp": {"runtime": "core"}}}');
+same('false', cli(['run', "$runtimes/composer/app.php"])[1], 'composer.json extra.myphp.runtime overrides detection');
+mkdir("$runtimes/missing");
+file_put_contents("$runtimes/missing/app.php", "<?php \$f = 'curl_' . 'init'; \$f();");
+[$code, $out, $err] = cli(['run', "$runtimes/missing/app.php"]);
+check($code !== 0 && str_contains($err, 'myphp run --full'), "a missed extension explains how to get the full runtime: $err");
+[$code, $out, $err] = cli(['build', '--full', 'app.php'], "$runtimes/core");
+check($code === 0 && str_contains($out, 'full runtime'), "build --full uses the full runtime: $out$err");
+same('[true,true,"a@b.co"]', cliProcess(["$runtimes/core/build/core"])[1], 'an app built with --full has the extensions');
+[$code, $out, $err] = cli(['build', 'app.php'], "$runtimes/core");
+check($code === 0 && str_contains($out, 'core runtime') && filesize("$runtimes/core/build/core") < 20000000, "plain apps build small: $out$err");
+
+// The full runtime has what apps need: HTTPS, SQLite, XML; and a CA bundle for HTTPS.
+$probe = getenv('PHPUI_TEST_TMP') . '/runtime-probe/app.php';
+mkdir(dirname($probe));
 file_put_contents($probe, <<<'PHP'
 <?php
 $missing = array_values(array_filter(['openssl', 'curl', 'pdo_sqlite', 'sqlite3', 'dom', 'simplexml', 'xmlwriter', 'fileinfo', 'iconv', 'bcmath', 'sockets', 'filter'],
@@ -113,7 +143,8 @@ $ca = getenv('SSL_CERT_FILE');
 echo json_encode([$missing, $db->query('select title from notes')->fetchColumn(), is_file($ca) && str_contains(file_get_contents($ca), 'BEGIN CERTIFICATE')]);
 PHP);
 [$code, $out, $err] = cli(['run', $probe]);
-same([[], 'hello', true], json_decode($out, true), "the runtime has HTTPS, SQLite and XML, and a CA bundle: $err");
+same([[], 'hello', true], json_decode($out, true), "the full runtime has HTTPS, SQLite and XML, and a CA bundle: $err");
+check(str_contains($err, 'app.php uses sqlite'), "code using SQLite picks the full runtime: $err");
 
 // Composer packages: vendor/ loads automatically with run, and is packed by build.
 $composed = getenv('PHPUI_TEST_TMP') . '/composed';
@@ -202,7 +233,7 @@ check(str_contains(cli(['help'])[1], 'myphp init <name>'), 'help now lists init'
 [$code, $out, $err] = cli(['build'], $hello, ['PATH' => '', 'TMPDIR' => $workspace]);
 same(0, $code, "build offline with no PHP on PATH: $err");
 check(is_executable("$hello/build/hello"), 'built app is executable');
-$sfx = file_get_contents(getenv('HOME') . '/.cache/spc/buildroot/bin/micro.sfx');
+$sfx = file_get_contents(getenv('HOME') . '/.cache/spc/runtimes/core/micro.sfx');
 same(hash('sha256', $sfx), hash('sha256', file_get_contents("$hello/build/hello", length: strlen($sfx))), 'app has clean runtime prefix');
 $standalone = "$workspace/standalone";
 mkdir($standalone);

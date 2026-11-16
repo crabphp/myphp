@@ -20,26 +20,31 @@ REMOTE=$(git ls-remote --tags origin "refs/tags/$TAG")
 gh auth status >/dev/null 2>&1 || fail 'sign in with gh auth login first'
 tests/run.sh
 MYPHP_VERSION=$VERSION MYPHP_BUILD_DIR=$ROOT/build build/make-myphp.sh
+[ -f build/myphp-full ] || fail 'myphp-full was not built: build the full runtime (build/craft-full.yml) into ~/.cache/spc/runtimes/full'
+[ "$(build/myphp-full version)" = "$(build/myphp version)" ] || fail 'myphp and myphp-full versions differ'
 ACTUAL=$(build/myphp version)
 case $ACTUAL in
     "myphp $VERSION (PHP "*) ;;
     *) fail "unexpected built version: $ACTUAL" ;;
 esac
 mkdir -p build/release
-cp build/myphp build/release/myphp-linux-x86_64
-(cd build/release && sha256sum myphp-linux-x86_64 > myphp-linux-x86_64.sha256)
+for NAME in myphp myphp-full; do
+    cp build/$NAME build/release/$NAME-linux-x86_64
+    (cd build/release && sha256sum $NAME-linux-x86_64 > $NAME-linux-x86_64.sha256)
+done
 SMOKE=$(mktemp -d)
 trap 'rm -rf "$SMOKE"' 0
 trap 'exit 1' HUP INT TERM
 MYPHP_DOWNLOAD_URL=file://$ROOT/build/release/myphp-linux-x86_64 MYPHP_INSTALL_DIR=$SMOKE sh install.sh
 if [ "$DRY" = 1 ]; then
     echo "Dry run: $TAG (no tag or release created)"
-    ls -lh build/release/myphp-linux-x86_64 build/release/myphp-linux-x86_64.sha256
+    ls -lh build/release/
     exit 0
 fi
 git tag "$TAG"
 git push origin "$TAG"
 gh release create "$TAG" build/release/myphp-linux-x86_64 build/release/myphp-linux-x86_64.sha256 \
+    build/release/myphp-full-linux-x86_64 build/release/myphp-full-linux-x86_64.sha256 \
     --repo crabphp/myphp --verify-tag --title "myphp $VERSION" --generate-notes
 echo "https://github.com/crabphp/myphp/releases/tag/$TAG"
 echo 'curl -fsSL https://raw.githubusercontent.com/crabphp/myphp/main/install.sh | sh'

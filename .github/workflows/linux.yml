@@ -14,15 +14,24 @@ on:
     paths:
       - .github/workflows/linux.yml
       - build/craft.yml
+      - build/craft-full.yml
 
 permissions:
   contents: read
 
 jobs:
+  # Two runtimes: myphp (core, small) and myphp-full (HTTPS, SQLite, XML...), see cli/runtime.php.
   build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { flavor: core, name: myphp, recipe: build/craft.yml }
+          - { flavor: full, name: myphp-full, recipe: build/craft-full.yml }
     runs-on: ubuntu-22.04
     env:
-      ASSET: myphp-linux-x86_64
+      ASSET: ${{ matrix.name }}-linux-x86_64
+      MYPHP: build/${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +50,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: spc/buildroot/bin
-          key: runtime-linux-x86_64-${{ hashFiles('build/craft.yml') }}
+          key: runtime-linux-x86_64-${{ matrix.flavor }}-${{ hashFiles(matrix.recipe) }}
 
       - uses: shivammathur/setup-php@v2
         if: steps.runtime.outputs.cache-hit != 'true'
@@ -65,7 +74,7 @@ jobs:
           composer install -q --no-dev --no-interaction
           mkdir -p x11libs
           for l in X11 Xrandr Xinerama Xcursor Xi; do ln -sf /usr/lib/x86_64-linux-gnu/lib$l.so x11libs/; done
-          cp ../build/craft.yml .
+          cp ../${{ matrix.recipe }} craft.yml
           bin/spc doctor --auto-fix || true
           SPC_TOOLCHAIN='StaticPHP\Toolchain\GccNativeToolchain' SPC_TARGET=native-native-gnu SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft -v \
             || { tail -n 80 craft.log 2>/dev/null; grep -rn -B3 -A12 -E 'error[: ]|undefined reference|ld: ' log 2>/dev/null | tail -200; exit 1; }
@@ -73,33 +82,33 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: spc-logs
+          name: spc-logs-${{ matrix.flavor }}
           path: spc/log/
 
       - name: Build myphp
         run: |
-          PHP=$PWD/spc/buildroot/bin/php MYPHP_VERSION=${{ inputs.version || 'dev' }} build/make-myphp.sh spc/buildroot/bin/micro.sfx
-          build/myphp version
+          PHP=$PWD/spc/buildroot/bin/php MYPHP_FLAVOR=${{ matrix.flavor }} MYPHP_VERSION=${{ inputs.version || 'dev' }} build/make-myphp.sh spc/buildroot/bin/micro.sfx
+          $MYPHP version
 
       - name: Smoke test (init, build, install, open windows)
         run: |
           WORK=$(mktemp -d)
           cd "$WORK"
-          "$GITHUB_WORKSPACE/build/myphp" init smoke
+          "$GITHUB_WORKSPACE/$MYPHP" init smoke
           cd smoke
-          "$GITHUB_WORKSPACE/build/myphp" build
-          MYPHP_DOWNLOAD_URL=file://$GITHUB_WORKSPACE/build/myphp MYPHP_INSTALL_DIR=$WORK/bin sh "$GITHUB_WORKSPACE/install.sh"
+          "$GITHUB_WORKSPACE/$MYPHP" build
+          MYPHP_DOWNLOAD_URL=file://$GITHUB_WORKSPACE/$MYPHP MYPHP_INSTALL_DIR=$WORK/bin sh "$GITHUB_WORKSPACE/install.sh"
           mkdir -p "$GITHUB_WORKSPACE/shots"
           xvfb-run -a -s '-screen 0 1600x1000x24' sh -c "
             PHPUI_SCREENSHOT=$GITHUB_WORKSPACE/shots/built-app.png ./build/smoke &&
-            PHPUI_SCREENSHOT=$GITHUB_WORKSPACE/shots/gallery.png $GITHUB_WORKSPACE/build/myphp run $GITHUB_WORKSPACE/examples/gallery.php"
+            PHPUI_SCREENSHOT=$GITHUB_WORKSPACE/shots/gallery.png $GITHUB_WORKSPACE/$MYPHP run $GITHUB_WORKSPACE/examples/gallery.php"
           ls -l "$GITHUB_WORKSPACE/shots"
           test -s "$GITHUB_WORKSPACE/shots/gallery.png"
 
       - name: Package
         run: |
           mkdir -p dist
-          cp build/myphp dist/$ASSET
+          cp $MYPHP dist/$ASSET
           (cd dist && sha256sum $ASSET > $ASSET.sha256)
 
       - uses: actions/upload-artifact@v4

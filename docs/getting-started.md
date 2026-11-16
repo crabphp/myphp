@@ -75,10 +75,26 @@ packages into the app. The generated `composer.json` also installs the toolkit's
 sources and GLFW stubs, so your editor autocompletes everything. Composer needs a
 separate PHP installation; built apps never do.
 
-The runtime includes HTTPS (`openssl`, `curl`), SQLite (`pdo_sqlite`, `sqlite3`),
-XML, `fileinfo`, `iconv`, `bcmath` and `sockets`, so HTTP clients and databases work
-as in any PHP app. Certificates come from the system, or from a bundled Mozilla CA
-list where there is none (Windows).
+### Two runtimes
+
+myphp itself is the small **core** runtime: PHP with the UI toolkit (`mbstring`,
+`ctype`, `filter`, `zlib`, `tokenizer`...). A plain app builds to about 12 MB.
+
+Apps that need HTTPS (`openssl`, `curl`), SQLite (`pdo_sqlite`, `sqlite3`), XML,
+`fileinfo`, `iconv`, `bcmath` or `sockets` use the **full** runtime (about 35 MB).
+You don't choose: `myphp run` and `myphp build` look at your project and switch on
+their own, downloading the full runtime once:
+
+- `composer.json` (and `composer.lock`) requirements such as `"ext-curl": "*"`;
+- your code: calls like `curl_init()`, classes like `PDO` with `sqlite:` or `DOMDocument`,
+  `https://` URLs; and a quick search of `vendor/`.
+
+To decide yourself, add `"extra": {"myphp": {"runtime": "full"}}` (or `"core"`) to
+`composer.json`, or pass `--full` / `--core` to `run` and `build`. If detection misses
+something, the error tells you which of these to use.
+
+Certificates come from the system, or from a bundled Mozilla CA list where there is
+none (Windows).
 
 ## Explore
 
