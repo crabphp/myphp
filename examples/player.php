@@ -7,7 +7,7 @@ require __DIR__ . '/../src/autoload.php';
 use GL\Audio\{Engine, Sound};
 use GL\Buffer\FloatBuffer;
 use PhpUi\{App, Desktop, Element, Painter, Theme};
-use function PhpUi\{button, canvas, col, dataDir, div, icon, row, slider, spacer, state, t, text, textInput};
+use function PhpUi\{button, canvas, col, dataDir, icon, row, slider, spacer, state, t, text, textInput};
 
 // A music player: MP3, FLAC and WAV through the audio engine inside PHP-GLFW.
 // Drop files or folders on the window, or add a folder. Three demo tracks are made on first run.
@@ -222,18 +222,21 @@ $cover = function (array $track, float $size) {
 
 $render = function () use ($state, $audio, $play, $toggle, $step, $seek, $setVolume, $add, $clock, $cover) {
     $query = mb_strtolower(trim($state->search));
-    $list = col()->gap(2)->scroll('tracks')->grow();
+    $rows = [];
     foreach ($state->tracks as $i => $track) {
         if ($query !== '' && !str_contains(mb_strtolower("{$track['title']} {$track['artist']}"), $query)) continue;
         $on = $i === $state->current;
-        $list->child(row()->itemsCenter()->gap(10)->h(52)->px(8)->rounded(8)->id("track-$i")->transition()
+        $rows[] = row()->itemsCenter()->gap(10)->h(52)->px(8)->rounded(8)->id("track-$i")->transition()
             ->when($on, fn ($e) => $e->bg(t('accent')), fn ($e) => $e->hover(fn ($s) => $s->bg(t('muted', 0.6))))
             ->onClick(fn () => $play($i))
-            ->child($cover($track, 36))
-            ->child(col()->flex1()
-                ->child(text($track['title'])->medium()->truncate()->when($on, fn ($e) => $e->textColor(t('chart-2'))))
-                ->child(text($track['artist'])->textSize(12)->textColor(t('muted-foreground'))->truncate()))
-            ->child($on && $state->playing ? icon('volume-2', 16, t('chart-2')) : text($clock($track['length']))->textSize(12)->textColor(t('muted-foreground'))));
+            ->schema([
+                $cover($track, 36),
+                col()->flex1()->schema([
+                    text($track['title'])->medium()->truncate()->when($on, fn ($e) => $e->textColor(t('chart-2'))),
+                    text($track['artist'])->textSize(12)->textColor(t('muted-foreground'))->truncate(),
+                ]),
+                $on && $state->playing ? icon('volume-2', 16, t('chart-2')) : text($clock($track['length']))->textSize(12)->textColor(t('muted-foreground')),
+            ]);
     }
 
     $track = $state->tracks[$state->current ?? 0] ?? null;
@@ -257,40 +260,50 @@ $render = function () use ($state, $audio, $play, $toggle, $step, $seek, $setVol
     $control = fn (string $ico, callable $fn, string $id, bool $on = false) => row()->size(40)->center()->rounded(20)->id($id)
         ->label(ucfirst($id))->role('button', $id === 'shuffle' || $id === 'repeat' ? ['pressed' => $on] : [])
         ->transition()->hover(fn ($s) => $s->bg(t('accent')))->onClick($fn)
-        ->child(icon($ico, 20, $on ? t('chart-2') : t('foreground')));
+        ->schema([icon($ico, 20, $on ? t('chart-2') : t('foreground'))]);
     $repeatNext = ['off' => 'all', 'all' => 'one', 'one' => 'off'];
 
-    $now = col()->flex1()->center()->gap(20)->p(40)
-        ->when($track !== null, fn ($e) => $e
-            ->child($cover($track, 220)->shadow('lg'))
-            ->child(col()->itemsCenter()->gap(4)
-                ->child(text($track['title'])->textSize(24)->bold()->id('now-title'))
-                ->child(text($track['artist'])->textColor(t('muted-foreground'))))
-            ->child(col()->w(460)->gap(6)
-                ->child($wave)
-                ->child(row()->textSize(12)->textColor(t('muted-foreground'))->child(text($clock($position))->mono())->child(spacer())->child(text($clock($length))->mono())))
-            ->child(row()->itemsCenter()->gap(12)
-                ->child($control('shuffle', function () use ($state) { $state->shuffle = !$state->shuffle; }, 'shuffle', $state->shuffle))
-                ->child($control('skip-back', fn () => $step(-1), 'previous'))
-                ->child(button('', $toggle, 'default', 'icon', $state->playing ? 'pause' : 'play')->size(52)->rounded(26)->id('play')->label($state->playing ? 'Pause' : 'Play'))
-                ->child($control('skip-forward', fn () => $step(1), 'next'))
-                ->child($control($state->repeat === 'one' ? 'repeat-1' : 'repeat', function () use ($state, $repeatNext) { $state->repeat = $repeatNext[$state->repeat]; }, 'repeat', $state->repeat !== 'off')))
-            ->child(row()->itemsCenter()->gap(10)->w(240)
-                ->child(icon($state->volume > 0 ? 'volume-2' : 'volume-x', 16, t('muted-foreground')))
-                ->child(slider($state->volume, $setVolume)->flex1()->id('volume')->label('Volume'))));
+    $now = col()->flex1()->center()->gap(20)->p(40)->when($track !== null, fn ($e) => $e->schema([
+        $cover($track, 220)->shadow('lg'),
+        col()->itemsCenter()->gap(4)->schema([
+            text($track['title'])->textSize(24)->bold()->id('now-title'),
+            text($track['artist'])->textColor(t('muted-foreground')),
+        ]),
+        col()->w(460)->gap(6)->schema([
+            $wave,
+            row()->textSize(12)->textColor(t('muted-foreground'))->schema([text($clock($position))->mono(), spacer(), text($clock($length))->mono()]),
+        ]),
+        row()->itemsCenter()->gap(12)->schema([
+            $control('shuffle', function () use ($state) { $state->shuffle = !$state->shuffle; }, 'shuffle', $state->shuffle),
+            $control('skip-back', fn () => $step(-1), 'previous'),
+            button()->size('icon')->icon($state->playing ? 'pause' : 'play')->label($state->playing ? 'Pause' : 'Play')
+                ->onClick($toggle)->w(52)->h(52)->rounded(26)->id('play'),
+            $control('skip-forward', fn () => $step(1), 'next'),
+            $control($state->repeat === 'one' ? 'repeat-1' : 'repeat', function () use ($state, $repeatNext) { $state->repeat = $repeatNext[$state->repeat]; }, 'repeat', $state->repeat !== 'off'),
+        ]),
+        row()->itemsCenter()->gap(10)->w(240)->schema([
+            icon($state->volume > 0 ? 'volume-2' : 'volume-x', 16, t('muted-foreground')),
+            slider()->bind($state->volume)->afterStateUpdated($setVolume)->flex1()->id('volume')->label('Volume'),
+        ]),
+    ]));
 
-    return row()->full()->bg(t('background'))
-        ->onDrop(fn (array $paths) => $add($paths))
-        ->child(col()->w(300)->gap(12)->p(14)->bg(t('muted', 0.4))->borderR(1, t('border'))
-            ->child(row()->itemsCenter()->gap(8)->px(4)
-                ->child(icon('list-music', 18))->child(text('Library')->textSize(16)->semibold())
-                ->child(spacer())
-                ->child(button('', fn () => Desktop::pickFolder(fn ($dir) => $dir && $add([$dir]), 'Add a music folder'), 'ghost', 'icon-sm', 'folder-open')->id('add-folder')->label('Add a music folder'))
-                ->child(button('', fn () => Theme::toggle(), 'ghost', 'icon-sm', Theme::dark() ? 'sun' : 'moon')->id('theme')->label('Switch theme')))
-            ->child(textInput('search', $state->search, fn ($v) => $state->search = $v, 'Search', 'search'))
-            ->child($list)
-            ->child(text($state->notice)->wrap()->textSize(12)->textColor(t('muted-foreground'))->id('notice')))
-        ->child($now);
+    return row()->full()->bg(t('background'))->onDrop(fn (array $paths) => $add($paths))->schema([
+        col()->w(300)->gap(12)->p(14)->bg(t('muted', 0.4))->borderR(1, t('border'))->schema([
+            row()->itemsCenter()->gap(8)->px(4)->schema([
+                icon('list-music', 18),
+                text('Library')->textSize(16)->semibold(),
+                spacer(),
+                button()->color('ghost')->size('icon-sm')->icon('folder-open')->label('Add a music folder')->id('add-folder')
+                    ->onClick(fn () => Desktop::pickFolder(fn ($dir) => $dir && $add([$dir]), 'Add a music folder')),
+                button()->color('ghost')->size('icon-sm')->icon(Theme::dark() ? 'sun' : 'moon')->label('Switch theme')
+                    ->onClick(fn () => Theme::toggle())->id('theme'),
+            ]),
+            textInput('search')->placeholder('Search')->prefixIcon('search')->bind($state->search),
+            col()->gap(2)->scroll('tracks')->grow()->schema($rows),
+            text($state->notice)->wrap()->textSize(12)->textColor(t('muted-foreground'))->id('notice'),
+        ]),
+        $now,
+    ]);
 };
 
 Theme::use('dark');

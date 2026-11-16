@@ -180,63 +180,82 @@ $render = function () use ($state, $audio, $screen, $rows, $turn, $choose, $back
     $titles = ['menu' => 'Pocket', 'songs' => 'Songs', 'artists' => 'Artists', 'now' => 'Now Playing', 'about' => 'About'];
 
     // Status bar: title, and a play or pause mark while music is loaded.
-    $status = row()->h(26)->px(10)->itemsCenter()->borderB(1, '#d2d2d7')->gradient('#fbfbfd', '#e8e8ed')
-        ->child(row()->w(18)->child($state->current !== null ? icon($state->playing ? 'play' : 'pause', 12, $ink) : text('')))
-        ->child(spacer())->child(text($titles[$name])->textSize(13)->semibold()->textColor($ink))->child(spacer())
-        ->child(row()->w(18)->justifyEnd()->itemsCenter()->label('Battery full')
-            ->child(row()->w(16)->h(9)->rounded(2)->border(1, $ink)->p(1)->child(row()->grow()->rounded(1)->gradient('#7ad46a', '#34a853')))
-            ->child(row()->w(1.5)->h(4)->bg($ink)));
+    $status = row()->h(26)->px(10)->itemsCenter()->borderB(1, '#d2d2d7')->gradient('#fbfbfd', '#e8e8ed')->schema([
+        row()->w(18)->schema([$state->current !== null ? icon($state->playing ? 'play' : 'pause', 12, $ink) : text('')]),
+        spacer(),
+        text($titles[$name])->textSize(13)->semibold()->textColor($ink),
+        spacer(),
+        row()->w(18)->justifyEnd()->itemsCenter()->label('Battery full')->schema([
+            row()->w(16)->h(9)->rounded(2)->border(1, $ink)->p(1)->schema([row()->grow()->rounded(1)->gradient('#7ad46a', '#34a853')]),
+            row()->w(1.5)->h(4)->bg($ink),
+        ]),
+    ]);
 
     if ($name === 'now' && $state->current !== null) {
         $track = $state->tracks[$state->current];
         $position = $audio->sound?->getCursor() ?? 0.0;
         $length = max(0.001, $track['length']);
         $volume = microtime(true) - $state->volumeShown < 1.5;
-        $bar = fn (float $fraction, ?string $icon = null) => row()->itemsCenter()->gap(6)
-            ->when($icon !== null, fn ($e) => $e->child(icon($icon, 12, $soft)))
-            ->child(row()->flex1()->h(6)->rounded(3)->bg('#e5e5ea')
-                ->child(row()->w(max(6, 196 * min(1, $fraction)))->h(6)->rounded(3)->gradient('#5aa2ff', $blue)));
-        $body = col()->flex1()->px(16)->py(10)->gap(10)
-            ->child(text(($state->current + 1) . ' of ' . count($state->tracks))->textSize(11)->textColor($soft))
-            ->child(row()->gap(12)->itemsCenter()
-                ->child(row()->size(64)->center()->rounded(6)->gradient('#ff5f6d', '#5b3cc4')
-                    ->child(text(mb_strtoupper(mb_substr($track['title'], 0, 1)))->textSize(28)->bold()->textColor('#ffffff')))
-                ->child(col()->flex1()->gap(2)
-                    ->child(text($track['title'])->textSize(15)->bold()->textColor($ink)->truncate()->id('now-title'))
-                    ->child(text($track['artist'])->textSize(12)->textColor($soft)->truncate())))
-            ->child(spacer())
-            ->child($volume
+        $bar = fn (float $fraction, ?string $icon = null) => row()->itemsCenter()->gap(6)->schema([
+            ...($icon !== null ? [icon($icon, 12, $soft)] : []),
+            row()->flex1()->h(6)->rounded(3)->bg('#e5e5ea')->schema([
+                row()->w(max(6, 196 * min(1, $fraction)))->h(6)->rounded(3)->gradient('#5aa2ff', $blue),
+            ]),
+        ]);
+        $body = col()->flex1()->px(16)->py(10)->gap(10)->schema([
+            text(($state->current + 1) . ' of ' . count($state->tracks))->textSize(11)->textColor($soft),
+            row()->gap(12)->itemsCenter()->schema([
+                row()->size(64)->center()->rounded(6)->gradient('#ff5f6d', '#5b3cc4')->schema([
+                    text(mb_strtoupper(mb_substr($track['title'], 0, 1)))->textSize(28)->bold()->textColor('#ffffff'),
+                ]),
+                col()->flex1()->gap(2)->schema([
+                    text($track['title'])->textSize(15)->bold()->textColor($ink)->truncate()->id('now-title'),
+                    text($track['artist'])->textSize(12)->textColor($soft)->truncate(),
+                ]),
+            ]),
+            spacer(),
+            $volume
                 ? $bar($state->volume / 100, 'volume-2')->id('volume')
-                : col()->gap(4)->child($bar($position / $length))
-                    ->child(row()->textSize(10)->textColor($soft)->child(text($clock($position))->mono())->child(spacer())
-                        ->child(text('-' . $clock(max(0, $length - $position)))->mono())));
+                : col()->gap(4)->schema([
+                    $bar($position / $length),
+                    row()->textSize(10)->textColor($soft)->schema([
+                        text($clock($position))->mono(),
+                        spacer(),
+                        text('-' . $clock(max(0, $length - $position)))->mono(),
+                    ]),
+                ]),
+        ]);
     } elseif ($name === 'about') {
-        $body = col()->flex1()->center()->gap(4)->p(16)
-            ->child(text('Pocket')->textSize(18)->bold()->textColor($ink))
-            ->child(text(count($state->tracks) . ' songs')->textSize(12)->textColor($soft))
-            ->child(text('Written in PHP')->textSize(12)->textColor($soft));
+        $body = col()->flex1()->center()->gap(4)->p(16)->schema([
+            text('Pocket')->textSize(18)->bold()->textColor($ink),
+            text(count($state->tracks) . ' songs')->textSize(12)->textColor($soft),
+            text('Written in PHP')->textSize(12)->textColor($soft),
+        ]);
     } else {
         $items = $rows($name);
         $at = $state->selected[$name] ?? 0;
         // Six rows fit: scroll so the highlighted one stays on screen.
         $first = max(0, min($at - 5, count($items) - 6));
-        $body = col()->flex1();
-        foreach (array_slice($items, $first, 6, true) as $i => $item) {
+        $line = function (int $i, array $item) use ($at, $name, $ink, $soft, $blue) {
             $on = $i === $at;
-            $body->child(row()->h(26)->px(10)->itemsCenter()->id("item-$i")
-                ->when($on, fn ($e) => $e->gradient('#5aa2ff', $blue))
-                ->child(text($item[0])->textSize(13)->medium()->truncate()->flex1()->textColor($on ? '#ffffff' : $ink))
-                ->when(isset($item[2]), fn ($e) => $e->child(text($item[2] ?? '')->textSize(12)->textColor($on ? '#ffffff' : $soft)))
-                ->when(!isset($item[2]) && $name !== 'songs', fn ($e) => $e->child(icon('chevron-right', 14, $on ? '#ffffff' : $soft))));
-        }
+            $color = $on ? '#ffffff' : $soft;
+            return row()->h(26)->px(10)->itemsCenter()->id("item-$i")->when($on, fn ($e) => $e->gradient('#5aa2ff', $blue))->schema([
+                text($item[0])->textSize(13)->medium()->truncate()->flex1()->textColor($on ? '#ffffff' : $ink),
+                ...(isset($item[2]) ? [text($item[2])->textSize(12)->textColor($color)]
+                    : ($name !== 'songs' ? [icon('chevron-right', 14, $color)] : [])),
+            ]);
+        };
+        $shown = array_slice($items, $first, 6, true);
+        $body = col()->flex1()->schema(array_map($line, array_keys($shown), $shown));
     }
 
-    $screenBox = row()->p(3)->rounded(10)->bg('#1c1c1e')->shadow('sm')
-        ->child(col()->w(236)->h(184)->rounded(7)->bg('#ffffff')->clip()->child($status)->child($body));
+    $screenBox = row()->p(3)->rounded(10)->bg('#1c1c1e')->shadow('sm')->schema([
+        col()->w(236)->h(184)->rounded(7)->bg('#ffffff')->clip()->schema([$status, $body]),
+    ]);
 
     // The wheel: drag around it to turn; its four labels and the center are buttons.
     $label = fn ($child, string $id, string $side) => row()->absolute()->size(48)->center()->id($id)
-        ->{$side === 'top' || $side === 'bottom' ? 'left' : 'top'}(81)->{$side}(4)->child($child);
+        ->{$side === 'top' || $side === 'bottom' ? 'left' : 'top'}(81)->{$side}(4)->schema([$child]);
     $wheel = row()->size(210)->rounded(105)->gradient('#ffffff', '#ececf0')->border(1, '#d2d2d7')->shadow('sm')->id('wheel')
         ->label('Click wheel')
         ->onDrag(function (float $x, float $y, $e) use ($audio, $turn) {
@@ -271,18 +290,19 @@ $render = function () use ($state, $audio, $screen, $rows, $turn, $choose, $back
                 default => $skip(-1),
             };
         })
-        ->child($label(text('MENU')->textSize(12)->bold()->textColor($soft), 'menu', 'top'))
-        ->child($label(icon('skip-back', 16, $soft), 'previous', 'left'))
-        ->child($label(icon('skip-forward', 16, $soft), 'next', 'right'))
-        ->child($label(row()->gap(1)->child(icon('play', 12, $soft))->child(icon('pause', 12, $soft)), 'play-pause', 'bottom'))
-        ->child(row()->absolute()->top(67)->left(67)->size(76)->rounded(38)->gradient('#f2f2f5', '#ffffff')
-            ->border(1, '#d2d2d7')->id('select')->label('Select')->onClick(fn () => $choose()));
+        ->schema([
+            $label(text('MENU')->textSize(12)->bold()->textColor($soft), 'menu', 'top'),
+            $label(icon('skip-back', 16, $soft), 'previous', 'left'),
+            $label(icon('skip-forward', 16, $soft), 'next', 'right'),
+            $label(row()->gap(1)->schema([icon('play', 12, $soft), icon('pause', 12, $soft)]), 'play-pause', 'bottom'),
+            row()->absolute()->top(67)->left(67)->size(76)->rounded(38)->gradient('#f2f2f5', '#ffffff')
+                ->border(1, '#d2d2d7')->id('select')->label('Select')->onClick(fn () => $choose()),
+        ]);
 
-    return col()->full()->center()->bg('#d9d9de')
-        ->child(col()->w(276)->h(500)->rounded(28)->gradient('#fdfdfd', '#e4e4e9')->border(1, '#c7c7cc')->shadow('lg')
-            ->itemsCenter()->pt(20)->gap(34)
-            ->child($screenBox)
-            ->child($wheel));
+    return col()->full()->center()->bg('#d9d9de')->schema([
+        col()->w(276)->h(500)->rounded(28)->gradient('#fdfdfd', '#e4e4e9')->border(1, '#c7c7cc')->shadow('lg')
+            ->itemsCenter()->pt(20)->gap(34)->schema([$screenBox, $wheel]),
+    ]);
 };
 
 Theme::use('light');

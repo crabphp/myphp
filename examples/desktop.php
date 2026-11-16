@@ -5,10 +5,10 @@ declare(strict_types=1);
 require __DIR__ . '/../src/autoload.php';
 
 use PhpUi\{App, Desktop, Theme};
-use function PhpUi\{button, card, cardContent, cardHeader, col, row, t, text, textInput};
+use function PhpUi\{button, card, col, row, state, t, text, textInput};
 
 Desktop::$appName = 'MyPHP Desktop';
-$state = (object) ['log' => [], 'clipboard' => 'Hello from PHP ✓', 'target' => 'https://example.com', 'notification' => null];
+$state = state(['log' => [], 'clipboard' => 'Hello from PHP ✓', 'target' => 'https://example.com', 'notification' => null]);
 $log = function (string $event, mixed $value = null) use ($state) {
     $state->log[] = $event . ': ' . json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($value === null && Desktop::lastError()) $state->log[] = 'Error: ' . Desktop::lastError();
@@ -38,28 +38,30 @@ $actions = [
     }],
     'theme' => ['Toggle theme', function () use ($log) { Theme::toggle(); $log('Theme source', Theme::$source); }],
 ];
-$render = function () use ($state, $actions, $log) {
-    $controls = col()->gap(8);
-    foreach (array_chunk($actions, 3, true) as $group) {
-        $line = row()->gap(8);
-        foreach ($group as $id => [$label, $click]) $line->child(button($label, $click, 'outline')->flex1()->id($id));
-        $controls->child($line);
-    }
-    return col()->full()->p(24)->bg(t('muted'))->textColor(t('foreground'))->center()
-        ->child(card(
-            cardHeader('Desktop'),
-            cardContent(col()->gap(16)
-                ->child($controls)
-                ->child(row()->gap(8)
-                    ->child(textInput('clipboard-text', $state->clipboard, fn ($v) => $state->clipboard = $v)->flex1())
-                    ->child(button('Copy', function () use ($state, $log) { Desktop::setClipboard($state->clipboard); $log('Copy', $state->clipboard); }, 'outline')->id('copy'))
-                    ->child(button('Paste', function () use ($state, $log) { $state->clipboard = Desktop::clipboard(); $log('Paste', $state->clipboard); }, 'outline')->id('paste')))
-                ->child(row()->gap(8)
-                    ->child(textInput('open-target', $state->target, fn ($v) => $state->target = $v, 'URL or file path')->flex1())
-                    ->child(button('Open URL/file', fn () => Desktop::open($state->target, fn ($ok) => $log('Open target', $ok)), 'outline')->id('open-url')))
-                ->child(col()->h(220)->scroll('log')->gap(4)->children(array_map(fn ($line) => text($line)->textSize(12)->truncate(), array_reverse($state->log))))),
-        )->w(720));
-};
+$render = fn () => col()->full()->p(24)->bg(t('muted'))->textColor(t('foreground'))->center()->schema([
+    card()->heading('Desktop')->w(720)->schema([
+        col()->gap(8)->schema(array_map(
+            fn ($group) => row()->gap(8)->schema(array_map(
+                fn ($id, $action) => button($action[0])->outlined()->onClick($action[1])->flex1()->id($id),
+                array_keys($group), $group,
+            )),
+            array_chunk($actions, 3, true),
+        )),
+        row()->gap(8)->schema([
+            textInput('clipboard-text')->bind($state->clipboard)->flex1(),
+            button('Copy')->outlined()->id('copy')
+                ->onClick(function () use ($state, $log) { Desktop::setClipboard($state->clipboard); $log('Copy', $state->clipboard); }),
+            button('Paste')->outlined()->id('paste')
+                ->onClick(function () use ($state, $log) { $state->clipboard = Desktop::clipboard(); $log('Paste', $state->clipboard); }),
+        ]),
+        row()->gap(8)->schema([
+            textInput('open-target')->placeholder('URL or file path')->bind($state->target)->flex1(),
+            button('Open URL/file')->outlined()->id('open-url')
+                ->onClick(fn () => Desktop::open($state->target, fn ($ok) => $log('Open target', $ok))),
+        ]),
+        col()->h(220)->scroll('log')->gap(4)->schema(array_map(fn ($line) => text($line)->textSize(12)->truncate(), array_reverse($state->log))),
+    ]),
+]);
 $app = new App('MyPHP Desktop', 800, 700, $render);
 $app->onDrop(fn ($paths) => $log('Drop', $paths));
 

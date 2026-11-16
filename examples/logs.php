@@ -148,62 +148,77 @@ $render = function () use ($state, $load, $pick, $colors) {
         $matches[] = $i;
     }
 
-    $chips = row()->gap(6)->itemsCenter();
-    foreach (['all' => 'All'] + LEVELS as $key => $name) {
-        $n = $key === 'all' ? count($state->entries) : $counts[$key];
+    $chip = function (string $key, string $name) use ($state, $counts, $colors) {
         $on = $state->level === $key;
-        $chips->child(row()->itemsCenter()->gap(6)->h(30)->px(10)->rounded(15)->id("level-$key")->transition()->textSize(13)->medium()
+        return row()->itemsCenter()->gap(6)->h(30)->px(10)->rounded(15)->id("level-$key")->transition()->textSize(13)->medium()
             ->border(1, $on ? t('foreground') : t('border'))->when($on, fn ($e) => $e->bg(t('accent')), fn ($e) => $e->hover(fn ($s) => $s->bg(t('muted', 0.6))))
             ->onClick(fn () => [$state->level, $state->open] = [$key, null])
-            ->when($key !== 'all', fn ($e) => $e->child(row()->size(8)->rounded(4)->bg($colors[$key])))
-            ->child($name)->child(text((string) $n)->textColor(t('muted-foreground'))));
-    }
+            ->schema([
+                ...($key === 'all' ? [] : [row()->size(8)->rounded(4)->bg($colors[$key])]),
+                text($name),
+                text((string) ($key === 'all' ? count($state->entries) : $counts[$key]))->textColor(t('muted-foreground')),
+            ]);
+    };
 
-    $list = col()->gap(6)->scroll('entries')->grow()->px(20)->pb(20);
-    foreach (array_slice($matches, 0, SHOWN) as $i) {
+    $entry = function (int $i) use ($state, $colors) {
         $e = $state->entries[$i];
         [$message, $detail] = splitMessage($e);
         $open = $state->open === $i;
         $fresh = $i >= count($state->entries) - $state->newest;
-        $list->child(col()->rounded(8)->border(1, $open ? t('ring') : t('border'))->bg(t('card'))->clip()->id("entry-$i")->transition()
-            ->child(row()->itemsCenter()->gap(10)->h(40)->px(12)->hover(fn ($s) => $s->bg(t('muted', 0.4)))
+        return col()->rounded(8)->border(1, $open ? t('ring') : t('border'))->bg(t('card'))->clip()->id("entry-$i")->transition()->schema([
+            row()->itemsCenter()->gap(10)->h(40)->px(12)->hover(fn ($s) => $s->bg(t('muted', 0.4)))
                 ->onClick(fn () => $state->open = $open ? null : $i)
-                ->child(row()->w(4)->h(20)->rounded(2)->bg($colors[$e['level']]))
-                ->child(text($e['time'] === '' ? '—' : substr($e['time'], 11))->mono()->textSize(12)->textColor(t('muted-foreground'))->w(64))
-                ->child(text($message)->truncate()->flex1()->when($e['level'] === 'error', fn ($x) => $x->medium()))
-                ->when($fresh, fn ($x) => $x->child(badge('new', 'secondary')))
-                ->when($detail !== '', fn ($x) => $x->child(icon($open ? 'chevron-down' : 'chevron-right', 16, t('muted-foreground')))))
-            ->when($open, fn ($x) => $x->child(col()->gap(10)->px(16)->py(12)->borderT(1, t('border'))->bg(t('muted', 0.35))->animateIn(120)
-                ->child(row()->itemsCenter()->gap(8)
-                    ->child(text(trim("{$e['time']} {$e['env']}"))->textSize(12)->textColor(t('muted-foreground')))
-                    ->child(spacer())
-                    ->child(button('Copy', fn () => Desktop::setClipboard(trim($message . "\n" . $detail)), 'outline', 'sm', 'copy')->id("copy-$i")))
-                ->child(text($message . ($detail === '' ? '' : "\n\n" . $detail))->wrap()->mono()->textSize(12)->selectable()->id("detail-$i")))));
-    }
+                ->schema([
+                    row()->w(4)->h(20)->rounded(2)->bg($colors[$e['level']]),
+                    text($e['time'] === '' ? '—' : substr($e['time'], 11))->mono()->textSize(12)->textColor(t('muted-foreground'))->w(64),
+                    text($message)->truncate()->flex1()->when($e['level'] === 'error', fn ($x) => $x->medium()),
+                    ...($fresh ? [badge('new')->color('secondary')] : []),
+                    ...($detail !== '' ? [icon($open ? 'chevron-down' : 'chevron-right', 16, t('muted-foreground'))] : []),
+                ]),
+        ])->when($open, fn ($x) => $x->child(col()->gap(10)->px(16)->py(12)->borderT(1, t('border'))->bg(t('muted', 0.35))->animateIn(120)->schema([
+            row()->itemsCenter()->gap(8)->schema([
+                text(trim("{$e['time']} {$e['env']}"))->textSize(12)->textColor(t('muted-foreground')),
+                spacer(),
+                button('Copy')->outlined()->size('sm')->icon('copy')->id("copy-$i")
+                    ->onClick(fn () => Desktop::setClipboard(trim($message . "\n" . $detail))),
+            ]),
+            text($message . ($detail === '' ? '' : "\n\n" . $detail))->wrap()->mono()->textSize(12)->selectable()->id("detail-$i"),
+        ])));
+    };
+
+    $list = col()->gap(6)->scroll('entries')->grow()->px(20)->pb(20)->schema(array_map($entry, array_slice($matches, 0, SHOWN)));
     if (count($matches) > SHOWN) {
         $list->child(text('Showing the newest ' . SHOWN . ' of ' . count($matches) . ' entries; search or filter to find older ones.')
             ->textSize(12)->textColor(t('muted-foreground'))->textCenter()->py(8));
     }
     if (!$matches) {
-        $list->child(col()->itemsCenter()->gap(6)->py(48)->child(icon('search', 24, t('muted-foreground')))
-            ->child(text($state->entries ? 'Nothing matches' : 'This log is empty')->textColor(t('muted-foreground'))));
+        $list->child(col()->itemsCenter()->gap(6)->py(48)->schema([
+            icon('search', 24, t('muted-foreground')),
+            text($state->entries ? 'Nothing matches' : 'This log is empty')->textColor(t('muted-foreground')),
+        ]));
     }
 
-    return col()->full()->bg(t('background'))
-        ->onDrop(fn (array $paths) => $load($paths[0]))
-        ->child(row()->itemsCenter()->gap(12)->h(56)->px(20)->borderB(1, t('border'))
-            ->child(icon('file-text', 18))
-            ->child(col()->flex1()
-                ->child(text(basename($state->file))->semibold()->truncate()->id('file-name'))
-                ->child(text(dirname($state->file) . ' · ' . number_format($state->size / 1024, 1) . ' KB')->textSize(12)->textColor(t('muted-foreground'))->truncate()))
-            ->child(row()->itemsCenter()->gap(8)->child(switchToggle($state->follow, fn () => $state->follow = !$state->follow)->id('follow'))->child(text('Follow')->textSize(13)))
-            ->child(button('Open', $pick, 'outline', 'sm', 'folder-open')->id('open'))
-            ->child(button('', fn () => Theme::toggle(), 'ghost', 'icon-sm', Theme::dark() ? 'sun' : 'moon')->id('theme')->label('Switch theme')))
-        ->child(row()->itemsCenter()->gap(12)->px(20)->py(14)
-            ->child($chips)->child(spacer())
-            ->child(textInput('search', $state->search, fn ($v) => [$state->search, $state->open] = [$v, null], 'Search messages and traces', 'search')->w(280)))
-        ->when($state->notice !== '', fn ($x) => $x->child(text($state->notice)->textSize(12)->textColor(t('muted-foreground'))->px(20)->pb(8)->id('notice')))
-        ->child($list);
+    return col()->full()->bg(t('background'))->onDrop(fn (array $paths) => $load($paths[0]))->schema([
+        row()->itemsCenter()->gap(12)->h(56)->px(20)->borderB(1, t('border'))->schema([
+            icon('file-text', 18),
+            col()->flex1()->schema([
+                text(basename($state->file))->semibold()->truncate()->id('file-name'),
+                text(dirname($state->file) . ' · ' . number_format($state->size / 1024, 1) . ' KB')->textSize(12)->textColor(t('muted-foreground'))->truncate(),
+            ]),
+            switchToggle()->label('Follow')->bind($state->follow)->id('follow'),
+            button('Open')->outlined()->size('sm')->icon('folder-open')->onClick($pick)->id('open'),
+            button()->color('ghost')->size('icon-sm')->icon(Theme::dark() ? 'sun' : 'moon')->label('Switch theme')
+                ->onClick(fn () => Theme::toggle())->id('theme'),
+        ]),
+        row()->itemsCenter()->gap(12)->px(20)->py(14)->schema([
+            row()->gap(6)->itemsCenter()->schema(array_map($chip, array_keys(['all' => 'All'] + LEVELS), ['all' => 'All'] + LEVELS)),
+            spacer(),
+            textInput('search')->placeholder('Search messages and traces')->prefixIcon('search')->w(280)
+                ->bind($state->search)->afterStateUpdated(fn () => $state->open = null),
+        ]),
+        ...($state->notice !== '' ? [text($state->notice)->textSize(12)->textColor(t('muted-foreground'))->px(20)->pb(8)->id('notice')] : []),
+        $list,
+    ]);
 };
 
 $app = new App('MyPHP Logs', 1000, 680, $render);

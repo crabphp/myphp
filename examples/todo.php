@@ -5,18 +5,18 @@ declare(strict_types=1);
 require __DIR__ . '/../src/autoload.php';
 
 use PhpUi\App;
-use function PhpUi\{button, card, cardContent, cardHeader, checkbox, col, row, t, tabs, text, textInput};
+use function PhpUi\{button, card, checkbox, col, row, state, t, tabs, text, textInput};
 
 // State lives in plain PHP; render() turns it into a tree on every frame.
-$state = (object) [
+$state = state([
     'draft' => '',
     'filter' => 'all',
     'todos' => [
-        ['text' => 'Draw boxes with NanoVG', 'done' => true],
+        ['text' => 'Draw boxes on the GPU', 'done' => true],
         ['text' => 'Write a tiny flexbox', 'done' => true],
         ['text' => 'Route clicks by hit-testing', 'done' => false],
     ],
-];
+]);
 
 $add = function () use ($state) {
     $text = trim($state->draft);
@@ -35,27 +35,26 @@ $render = function () use ($state, $add) {
 
     $item = fn (int $i, array $t) => row()->itemsCenter()->gap(12)->h(40)->px(8)->rounded(8)
         ->hover(fn ($s) => $s->bg(t('muted', 0.5)))
-        ->child(checkbox($t['done'], function () use ($state, $i) {
-            $state->todos[$i]['done'] = !$state->todos[$i]['done'];
-        })->id("check-$i"))
-        ->child(text($t['text'])->grow()->when($t['done'], fn ($e) => $e->textColor(t('muted-foreground'))))
-        ->child(button('', function () use ($state, $i) { array_splice($state->todos, $i, 1); }, 'ghost', 'icon-sm', 'x')
-            ->id("delete-$i")->textColor(t('muted-foreground')));
+        ->schema([
+            checkbox()->bind($state->todos[$i]['done'])->id("check-$i"),
+            text($t['text'])->grow()->when($t['done'], fn ($e) => $e->textColor(t('muted-foreground'))),
+            button()->color('ghost')->size('icon-sm')->icon('x')->label('Delete')
+                ->onClick(function () use ($state, $i) { array_splice($state->todos, $i, 1); })
+                ->id("delete-$i")->textColor(t('muted-foreground')),
+        ]);
 
-    return col()->full()->bg(t('muted'))->p(24)->itemsCenter()->justifyCenter()
-        ->child(card(
-            cardHeader('Todos', "$left left"),
-            cardContent(col()->gap(16)
-                ->child(row()->gap(8)
-                    ->child(textInput('draft', $state->draft, function (string $v) use ($state) { $state->draft = $v; }, 'What needs doing?')
-                        ->grow()->onSubmit($add))
-                    ->child(button('Add', $add)->id('add')))
-                ->child(col()->h(220)->gap(2)->clip()
-                    ->children(array_map($item, array_keys($visible), $visible))
-                    ->when(!$visible, fn ($e) => $e->center()->child(text('Nothing here')->textColor(t('muted-foreground')))))
-                ->child(tabs(['all' => 'All', 'open' => 'Open', 'done' => 'Done'], $state->filter,
-                    function (string $v) use ($state) { $state->filter = $v; }, 'filter'))),
-        )->w(440));
+    return col()->full()->bg(t('muted'))->p(24)->itemsCenter()->justifyCenter()->schema([
+        card()->heading('Todos')->description("$left left")->w(440)->schema([
+            row()->gap(8)->schema([
+                textInput('draft')->placeholder('What needs doing?')->bind($state->draft)->onSubmit($add)->grow(),
+                button('Add')->onClick($add)->id('add'),
+            ]),
+            col()->h(220)->gap(2)->clip()
+                ->schema(array_map($item, array_keys($visible), $visible))
+                ->when(!$visible, fn ($e) => $e->center()->child(text('Nothing here')->textColor(t('muted-foreground')))),
+            tabs()->options(['all' => 'All', 'open' => 'Open', 'done' => 'Done'])->bind($state->filter)->idPrefix('filter'),
+        ]),
+    ]);
 };
 
 $app = new App('PHP UI: Todos', 640, 560, $render);
