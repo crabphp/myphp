@@ -1,0 +1,86 @@
+name: Linux binary
+
+# Builds myphp for Linux x86-64 on CI. Releases still attach the binary built by
+# build/release.sh; nightly.yml uses this one.
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        default: dev
+  push:
+    branches-ignore: [main]
+    paths:
+      - .github/workflows/linux.yml
+      - build/craft.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      ASSET: myphp-linux-x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install X11 and OpenGL development files
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev \
+            libgl-dev xvfb libgl1-mesa-dri imagemagick > /dev/null
+
+      - name: Restore the PHP runtime
+        id: runtime
+        uses: actions/cache@v4
+        with:
+          path: spc/buildroot/bin
+          key: runtime-linux-x86_64-${{ hashFiles('build/craft.yml') }}
+
+      # glfw links X11 dynamically; the runtime targets glibc 2.17 so it runs on old distributions.
+      - name: Build the PHP runtime with static-php-cli
+        if: steps.runtime.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p spc/x11libs && cd spc
+          for l in X11 Xrandr Xinerama Xcursor Xi; do ln -sf /usr/lib/x86_64-linux-gnu/lib$l.so x11libs/; done
+          cp ../build/craft.yml .
+          curl -fsSL -o spc https://dl.static-php.dev/static-php-cli/spc-bin/nightly/spc-linux-x86_64
+          chmod +x spc
+          ./spc doctor --auto-fix
+          SPC_TARGET=native-native-gnu.2.17 SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" ./spc craft \
+            || { grep -n -B3 -A12 -E 'error[: ]|undefined reference|ld: ' log/spc.shell.log | tail -200; exit 1; }
+
+      - name: Build myphp
+        run: |
+          PHP=$PWD/spc/buildroot/bin/php MYPHP_VERSION=${{ inputs.version || 'dev' }} build/make-myphp.sh spc/buildroot/bin/micro.sfx
+          build/myphp version
+
+      - name: Smoke test (init, build, install, open windows)
+        run: |
+          WORK=$(mktemp -d)
+          cd "$WORK"
+          "$GITHUB_WORKSPACE/build/myphp" init smoke
+          cd smoke
+          "$GITHUB_WORKSPACE/build/myphp" build
+          MYPHP_DOWNLOAD_URL=file://$GITHUB_WORKSPACE/build/myphp MYPHP_INSTALL_DIR=$WORK/bin sh "$GITHUB_WORKSPACE/install.sh"
+          mkdir -p "$GITHUB_WORKSPACE/shots"
+          xvfb-run -a -s '-screen 0 1600x1000x24' sh -c "
+            PHPUI_SCREENSHOT=$GITHUB_WORKSPACE/shots/built-app.png ./build/smoke &&
+            PHPUI_SCREENSHOT=$GITHUB_WORKSPACE/shots/gallery.png $GITHUB_WORKSPACE/build/myphp demo gallery"
+          ls -l "$GITHUB_WORKSPACE/shots"
+          test -s "$GITHUB_WORKSPACE/shots/gallery.png"
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp build/myphp dist/$ASSET
+          (cd dist && sha256sum $ASSET > $ASSET.sha256)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET }}
+          path: |
+            dist/
+            shots/

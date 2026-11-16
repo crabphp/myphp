@@ -28,6 +28,35 @@ if (!getenv('MYPHP_BIN')) {
     [$code, $out] = cliProcess(["$buildDir/versioned/myphp", 'version']);
     check($code === 0 && str_starts_with($out, 'myphp 9.9.9 '), 'version is embedded at build time');
 }
+// upgrade: replace the installed binary from a release folder (file:// stands in for GitHub).
+if (is_file("$buildDir/versioned/myphp")) {
+    $rel = getenv('PHPUI_TEST_TMP') . '/releases';
+    $installed = getenv('PHPUI_TEST_TMP') . '/installed';
+    foreach (['latest/download', 'download/nightly'] as $path) {
+        mkdir("$rel/$path", 0777, true);
+        copy("$buildDir/versioned/myphp", "$rel/$path/myphp-linux-x86_64");
+        file_put_contents("$rel/$path/myphp-linux-x86_64.sha256", hash_file('sha256', "$buildDir/versioned/myphp") . "  myphp-linux-x86_64\n");
+    }
+    mkdir($installed);
+    copy(getenv('MYPHP_BIN'), "$installed/myphp");
+    chmod("$installed/myphp", 0755);
+    $env = ['MYPHP_RELEASES' => "file://$rel"];
+    [$code, $out, $err] = cliProcess(["$installed/myphp", 'upgrade'], env: $env);
+    same(0, $code, "upgrade succeeds: $err");
+    check(str_contains($out, 'Upgraded myphp dev -> 9.9.9'), "upgrade reports the change: $out");
+    check(str_starts_with(cliProcess(["$installed/myphp", 'version'])[1], 'myphp 9.9.9 '), 'upgrade replaces the binary');
+    [$code, $out] = cliProcess(["$installed/myphp", 'upgrade'], env: $env);
+    check($code === 0 && str_contains($out, 'Already up to date'), 'upgrading again changes nothing');
+    [$code, $out] = cliProcess(["$installed/myphp", 'upgrade', '--nightly'], env: $env);
+    same(0, $code, 'upgrade --nightly uses the nightly build');
+    file_put_contents("$rel/latest/download/myphp-linux-x86_64.sha256", str_repeat('0', 64) . "\n");
+    copy(getenv('MYPHP_BIN'), "$installed/myphp");
+    [$code, , $err] = cliProcess(["$installed/myphp", 'upgrade'], env: $env);
+    check($code === 1 && str_contains($err, 'checksum mismatch'), 'a bad checksum stops the upgrade');
+    check(str_starts_with(cliProcess(["$installed/myphp", 'version'])[1], 'myphp dev '), 'a failed upgrade keeps the old binary');
+    same([], glob("$installed/.myphp-upgrade-*"), 'upgrade leaves no temporary files');
+    same(2, cliProcess(["$installed/myphp", 'upgrade', 'soon'], env: $env)[0], 'upgrade rejects unknown arguments');
+}
 [$code, $out, $err] = cliProcess(['/usr/bin/env', '-i', getenv('MYPHP_BIN'), 'help']);
 same(0, $code, "binary runs with an empty environment: $err");
 

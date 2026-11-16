@@ -4,9 +4,16 @@ name: Windows binary
 # On a published release the binary is attached to it.
 on:
   workflow_dispatch:
+  # nightly.yml builds main and passes a version.
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        default: dev
   release:
     types: [published]
   push:
+    branches-ignore: [main]
     paths:
       - .github/workflows/windows.yml
       - build/craft-windows.yml
@@ -56,7 +63,7 @@ jobs:
 
       - name: Build myphp
         run: |
-          VERSION=dev
+          VERSION=${{ inputs.version || 'dev' }}
           if [ "${{ github.event_name }}" = release ]; then VERSION=${{ github.event.release.tag_name }}; VERSION=${VERSION#v}; fi
           PHP=$PWD/spc/buildroot/bin/php.exe MYPHP_VERSION=$VERSION build/make-myphp.sh spc/buildroot/bin/micro.sfx
           build/myphp.exe version

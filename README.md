@@ -15,6 +15,8 @@ Linux x86-64 (X11 or XWayland, OpenGL), or macOS on Apple Silicon or Intel (expe
 curl -fsSL https://raw.githubusercontent.com/crabphp/myphp/main/install.sh | sh
 ```
 
+Later, `myphp upgrade` updates it (`myphp upgrade --nightly` for unreleased work).
+
 Windows x86-64 (experimental), in PowerShell:
 
 ```powershell

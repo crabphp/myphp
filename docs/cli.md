@@ -115,6 +115,18 @@ PHPUI_SCREENSHOT=/tmp/hello.png myphp run
 On a headless development machine, provide Xvfb and `DISPLAY` first. Parent
 folders for screenshots must already exist.
 
+## upgrade
+
+```sh
+myphp upgrade            # the latest release
+myphp upgrade 0.1.2      # a specific version
+myphp upgrade --nightly  # the newest build from main, not released yet
+```
+
+Downloads the build for this system with `curl` or `wget`, checks its SHA-256 and
+that it runs, then replaces the `myphp` you ran. Nothing changes if any step fails.
+Nightly builds come from every push to `main` and may be less stable.
+
 ## Exit codes and limits
 
 - `0`: success (help and version write to stdout).
