@@ -108,7 +108,7 @@ jobs:
             MYPHP_GPU=1 PHPUI_SCREENSHOT=$GITHUB_WORKSPACE/shots/showcase-vulkan.png $GITHUB_WORKSPACE/$MYPHP run $GITHUB_WORKSPACE/examples/showcase.php"
           ls -l "$GITHUB_WORKSPACE/shots"
           test -s "$GITHUB_WORKSPACE/shots/showcase.png"
-          # SDL_GPU on Mesa's software Vulkan draws what OpenGL draws (canvases aside, for now).
+          # SDL_GPU on Mesa's software Vulkan, canvases (NanoVG) included.
           test -s "$GITHUB_WORKSPACE/shots/showcase-vulkan.png"
 
       - name: Package

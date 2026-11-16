@@ -373,10 +373,14 @@ static struct {
     SDL_GPUTexture *target;
     SDL_GPUTexture *offscreen;
     SDL_GPUTextureFormat format;
-    int width, height;
+    int width, height;          /* asked for */
+    Uint32 target_w, target_h;  /* what the target is */
     bool clear;
     SDL_FColor color;
 } frame;
+static SDL_GPUTexture *gpu_stencil = NULL;
+static Uint32 gpu_stencil_w = 0, gpu_stencil_h = 0;
+static SDL_GPUTextureFormat gpu_stencil_format = SDL_GPU_TEXTUREFORMAT_INVALID;
 
 const char *phpsdl_backend(void)
 {
@@ -548,6 +552,59 @@ static SDL_GPUTexture *gpu_texture_rgba(int w, int h, const unsigned char *pixel
     SDL_SubmitGPUCommandBuffer(cmd);
     SDL_ReleaseGPUTransferBuffer(device, upload);
     return texture;
+}
+
+/* For nanovg_sdlgpu.c: the device, and the frame being drawn. */
+SDL_GPUDevice *phpsdl_gpu_device(void) { return device; }
+SDL_GPUCommandBuffer *phpsdl_gpu_frame_cmd(void) { return frame.target ? frame.cmd : NULL; }
+SDL_GPUTextureFormat phpsdl_gpu_frame_format(void) { return frame.format; }
+
+SDL_GPUTextureFormat phpsdl_gpu_stencil_format(void)
+{
+    if (gpu_stencil_format == SDL_GPU_TEXTUREFORMAT_INVALID && device) {
+        gpu_stencil_format = SDL_GPUTextureSupportsFormat(device, SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
+            SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)
+            ? SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT : SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT;
+    }
+    return gpu_stencil_format;
+}
+
+/* A render pass into the frame: cleared first if nothing was drawn yet, and with a
+ * stencil buffer (cleared to 0) when $stencil. */
+SDL_GPURenderPass *phpsdl_gpu_begin_pass(bool stencil)
+{
+    if (!frame.cmd || !frame.target) return NULL;
+    SDL_GPUColorTargetInfo target = {0};
+    target.texture = frame.target;
+    target.clear_color = frame.color;
+    target.load_op = frame.clear ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
+    target.store_op = SDL_GPU_STOREOP_STORE;
+    frame.clear = false;
+    if (!stencil) return SDL_BeginGPURenderPass(frame.cmd, &target, 1, NULL);
+    if (!gpu_stencil || gpu_stencil_w != frame.target_w || gpu_stencil_h != frame.target_h) {
+        if (gpu_stencil) SDL_ReleaseGPUTexture(device, gpu_stencil);
+        SDL_GPUTextureCreateInfo t = {0};
+        t.type = SDL_GPU_TEXTURETYPE_2D;
+        t.format = phpsdl_gpu_stencil_format();
+        t.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
+        t.width = frame.target_w;
+        t.height = frame.target_h;
+        t.layer_count_or_depth = 1;
+        t.num_levels = 1;
+        gpu_stencil = SDL_CreateGPUTexture(device, &t);
+        gpu_stencil_w = frame.target_w; gpu_stencil_h = frame.target_h;
+        if (!gpu_stencil) return NULL;
+    }
+    SDL_GPUDepthStencilTargetInfo ds = {0};
+    ds.texture = gpu_stencil;
+    ds.clear_depth = 1;
+    ds.load_op = SDL_GPU_LOADOP_CLEAR;
+    ds.store_op = SDL_GPU_STOREOP_DONT_CARE;
+    ds.stencil_load_op = SDL_GPU_LOADOP_CLEAR;
+    ds.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+    ds.cycle = true;
+    ds.clear_stencil = 0;
+    return SDL_BeginGPURenderPass(frame.cmd, &target, 1, &ds);
 }
 
 /* Images ------------------------------------------------------------------ */
@@ -865,17 +922,12 @@ static void renderer_flush_gpu(pr_renderer *r)
     }
     SDL_EndGPUCopyPass(copy);
 
-    SDL_GPUColorTargetInfo target = {0};
-    target.texture = frame.target;
-    target.clear_color = frame.color;
-    target.load_op = frame.clear ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
-    target.store_op = SDL_GPU_STOREOP_STORE;
-    frame.clear = false;
     float view[4] = {r->width, r->height, 0, 0};
     float scale[4] = {r->ratio, 0, 0, 0};
     SDL_PushGPUVertexUniformData(frame.cmd, 0, view, sizeof view);
     SDL_PushGPUFragmentUniformData(frame.cmd, 0, scale, sizeof scale);
-    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(frame.cmd, &target, 1, NULL);
+    SDL_GPURenderPass *pass = phpsdl_gpu_begin_pass(false);
+    if (!pass) { r->count = r->command_count = 0; return; }
     SDL_GPUViewport viewport = {0, 0, r->width * r->ratio, r->height * r->ratio, 0, 1};
     SDL_SetGPUViewport(pass, &viewport);
     SDL_BindGPUGraphicsPipeline(pass, pipeline);
@@ -978,6 +1030,7 @@ bool phpsdl_frame_begin(SDL_Window *window, int width, int height, const float c
     if (window) {
         Uint32 w, h;
         if (!SDL_WaitAndAcquireGPUSwapchainTexture(frame.cmd, window, &frame.target, &w, &h)) frame.target = NULL;
+        frame.target_w = w; frame.target_h = h;
         frame.format = SDL_GetGPUSwapchainTextureFormat(device, window);
     } else {
         SDL_GPUTextureCreateInfo t = {0};
@@ -989,6 +1042,7 @@ bool phpsdl_frame_begin(SDL_Window *window, int width, int height, const float c
         t.layer_count_or_depth = 1;
         t.num_levels = 1;
         frame.target = frame.offscreen = SDL_CreateGPUTexture(device, &t);
+        frame.target_w = (Uint32) width; frame.target_h = (Uint32) height;
     }
     /* Nothing to draw into (a minimized window): the frame is still ended. */
     return frame.target != NULL;
@@ -1464,6 +1518,9 @@ void phpsdl_render_shutdown(void)
         if (gpu_instances) SDL_ReleaseGPUBuffer(device, gpu_instances);
         if (gpu_instances_upload) SDL_ReleaseGPUTransferBuffer(device, gpu_instances_upload);
         if (gpu_atlas_upload) SDL_ReleaseGPUTransferBuffer(device, gpu_atlas_upload);
+        if (gpu_stencil) SDL_ReleaseGPUTexture(device, gpu_stencil);
+        gpu_stencil = NULL; gpu_stencil_w = gpu_stencil_h = 0;
+        gpu_stencil_format = SDL_GPU_TEXTUREFORMAT_INVALID;
         SDL_DestroyGPUDevice(device);
         device = NULL;
         gpu_vs = gpu_fs = NULL; gpu_sampler = NULL; gpu_pipeline_count = 0;

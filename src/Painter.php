@@ -19,8 +19,7 @@ final class Painter
 {
     public static ?self $shared = null;
     /** NanoVG, for canvas() drawing. */
-    /** NanoVG, for canvases; null on SDL_GPU until it has a NanoVG backend there. */
-    public ?VGContext $vg = null;
+    public VGContext $vg;
     private \PhpSdl\Renderer $r;
     private static bool $fontsLoaded = false;
     /** @var array<string, array{float, float}> Ascender and descender by font and size. */
@@ -87,7 +86,7 @@ final class Painter
 
     public function __construct()
     {
-        if (\PhpSdl\Sdl::backend() === 'opengl') $this->vg = new VGContext(VGContext::ANTIALIAS);
+        $this->vg = new VGContext(VGContext::ANTIALIAS);
         $this->r = new \PhpSdl\Renderer();
         $assets = dirname(__DIR__) . '/assets';
         $this->iconDir = "$assets/icons";
@@ -97,7 +96,7 @@ final class Painter
         ] as $name => $file) {
             $path = realFile("$assets/fonts/$file.ttf");
             // NanoVG keeps the fonts too, for text drawn in canvases.
-            if (($this->vg && $this->vg->createFont($name, $path) < 0) || (!self::$fontsLoaded && !\PhpSdl\Text::addFont($name, $path))) {
+            if ($this->vg->createFont($name, $path) < 0 || (!self::$fontsLoaded && !\PhpSdl\Text::addFont($name, $path))) {
                 throw new \RuntimeException("Cannot load font $file");
             }
         }
@@ -309,9 +308,8 @@ final class Painter
     /** A canvas draws with NanoVG, between what is queued before and after it. */
     private function canvas(Element $e): void
     {
-        $vg = $this->vg;
-        if (!$vg) return;
         $this->r->flush();
+        $vg = $this->vg;
         $vg->beginFrame($this->frameW, $this->frameH, $this->ratio);
         if ($this->clip !== self::NO_CLIP) $vg->scissor(...$this->clip);
         if ($this->alpha < 1) $vg->globalAlpha($this->alpha);

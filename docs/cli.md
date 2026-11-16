@@ -102,7 +102,7 @@ Lists commands. No arguments, `-h`, and `--help` also print help.
 | `PHPUI_SCREENSHOT=/tmp/app.png` | Render one frame at window size, save PNG, clean up, and exit; still needs a display |
 | `PHPUI_SCREENSHOTS=/tmp/shots` | Examples only: run their existing scripted screenshot flows |
 | `PHPUI_DESKTOP=auto` | Bus first, then tools; `portal` disables tool fallbacks, `fallback` skips D-Bus |
-| `PHPUI_RENDERER=quads` | Default renderer; alternatives: `nanovg-fast`, `nanovg` |
+| `MYPHP_GPU=1` | Draw with SDL_GPU (Vulkan, Metal, Direct3D 12) instead of OpenGL 3.3 |
 | `MYPHP_INSTALL_DIR` | Installer destination; default `$HOME/.local/bin` |
 | `MYPHP_VERSION` | Installer: release number without `v`, empty means latest; build script: embedded CLI version |
 | `MYPHP_DOWNLOAD_URL` | Installer binary URL override, including `file://` for local testing |

@@ -21,6 +21,7 @@ if test "$PHP_PHPSDL" != "no"; then
 
   PHPSDL_SOURCES="phpsdl.c \
     render.c \
+    nanovg_sdlgpu.c \
     gl/phpglfw_constants.c \
     gl/phpglfw_functions.c \
     gl/phpglfw_math.c \

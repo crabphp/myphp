@@ -12,7 +12,7 @@ if (PHP_PHPSDL != "no") {
             "uuid.lib", "advapi32.lib", "setupapi.lib", "shell32.lib", "cfgmgr32.lib", "opengl32.lib"];
         for (var i = 0; i < libs.length; i++) CHECK_LIB(libs[i], "phpsdl");
 
-        EXTENSION("phpsdl", "phpsdl.c render.c", PHP_PHPSDL_SHARED, "/DNVG_NO_STB=1 /DNANOVG_GL_USE_STATE_FILTER=0 /DZEND_ENABLE_STATIC_TSRMLS_CACHE=1");
+        EXTENSION("phpsdl", "phpsdl.c render.c nanovg_sdlgpu.c", PHP_PHPSDL_SHARED, "/DNVG_NO_STB=1 /DNANOVG_GL_USE_STATE_FILTER=0 /DZEND_ENABLE_STATIC_TSRMLS_CACHE=1");
         ADD_SOURCES(configure_module_dirname + "\\gl", "phpglfw_constants.c phpglfw_functions.c phpglfw_math.c phpglfw_buffer.c " +
             "phpglfw_texture.c phpglfw_svgparser.c phpglfw_vg.c phpglfw_audio.c", "phpsdl");
         ADD_SOURCES(configure_module_dirname + "\\vendor\\glad\\src", "glad.c", "phpsdl");

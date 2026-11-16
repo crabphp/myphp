@@ -21,4 +21,12 @@ void phpsdl_gpu_vsync(SDL_Window *window, bool on);
 bool phpsdl_frame_begin(SDL_Window *window, int width, int height, const float clear[4]);
 bool phpsdl_frame_end(SDL_Window *window, const char *png);
 
+/* For NanoVG on SDL_GPU (nanovg_sdlgpu.c). The frame's command buffer is NULL when
+ * no frame is open or it has nothing to draw into. */
+SDL_GPUDevice *phpsdl_gpu_device(void);
+SDL_GPUCommandBuffer *phpsdl_gpu_frame_cmd(void);
+SDL_GPUTextureFormat phpsdl_gpu_frame_format(void);
+SDL_GPUTextureFormat phpsdl_gpu_stencil_format(void);
+SDL_GPURenderPass *phpsdl_gpu_begin_pass(bool stencil);
+
 #endif

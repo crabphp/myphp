@@ -22,7 +22,8 @@ then `php`, and writes `build/myphp` and `build/myphp-full`; default runtimes:
 `~/.cache/spc/runtimes/core/micro.sfx` and `~/.cache/spc/runtimes/full/micro.sfx`. Build artifacts are ignored.
 `build/make-binary.sh` still makes the legacy `build/dashboard` test fixture.
 `PHPUI_SCREENSHOT=/tmp/app.png` saves one frame at window size and exits.
-`PHPUI_RENDERER=quads` is the default; alternatives: `nanovg-fast`, `nanovg`.
+`MYPHP_GPU=1` draws with SDL_GPU (Vulkan, Metal, Direct3D 12) instead of OpenGL 3.3;
+`tests/run.sh` runs either way (on Linux, Mesa's lavapipe is a software Vulkan).
 
 Release preparation needs `gh` on PATH, a clean pushed `main`, and a new version.
 Only a maintainer should run `build/release.sh X.Y.Z` without `--dry-run`: it tags,

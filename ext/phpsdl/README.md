@@ -12,11 +12,13 @@ myphp's native layer, compiled into the myphp runtime. It replaces PHP-GLFW.
   fallback font per character (variable fallbacks follow the requested weight) and
   rasterizes glyphs with HarfBuzz into an atlas shared with icons, which are SVG masks
   tinted when drawn. Frames start and end here too, on screen or off (screenshots).
-- **SDL_GPU** (`render.c`, `shaders/`): with `MYPHP_GPU=1` the renderer draws with
-  SDL_GPU, on Vulkan, Metal or Direct3D 12, instead of OpenGL 3.3. `shaders/ui.hlsl` is
-  compiled to SPIR-V, DXIL and MSL by `shaders/build.sh` (DXC and SPIRV-Cross) into
-  `shaders/ui_shaders.h`, which is committed. NanoVG (`canvas()`) still needs OpenGL;
-  on SDL_GPU canvases are skipped until NanoVG gets an SDL_GPU backend.
+- **SDL_GPU** (`render.c`, `nanovg_sdlgpu.c`, `shaders/`): with `MYPHP_GPU=1` everything
+  draws with SDL_GPU, on Vulkan, Metal or Direct3D 12, instead of OpenGL 3.3: the
+  renderer, and NanoVG through a port of its GL3 backend (fills, even-odd fills,
+  strokes, stencil strokes, clips, images, text). `shaders/*.hlsl` are compiled to
+  SPIR-V, DXIL and MSL by `shaders/build.sh` (DXC and SPIRV-Cross) into
+  `shaders/*_shaders.h`, which are committed. On SDL_GPU the `gl*()` functions and
+  `VGContext::imageFromHandle()` (a GL texture) have nothing to draw into.
 - **OpenGL 3.3, NanoVG (for `canvas()`), SVG, textures, buffers, math and audio** (`gl/`, `vendor/`):
   PHP-GLFW's modules, generated without GLFW by `tools/generate.sh` (MIT, see
   `gl/LICENSE-php-glfw`). The PHP API is the same: `GL\VectorGraphics\VGContext`,
@@ -72,6 +74,6 @@ phpize && ./configure --enable-phpsdl --with-sdl3-dir=$HOME/.cache/phpsdl/sdl3 &
 php -d extension=modules/phpsdl.so ...   # without the glfw extension loaded
 ```
 
-After changing `shaders/ui.hlsl`, run `shaders/build.sh` (keep the GLSL in `render.c`
-doing the same). After changing `phpsdl.stub.php`, regenerate `phpsdl_arginfo.h` with PHP's
+After changing a shader in `shaders/`, run `shaders/build.sh` (keep the GLSL in
+`render.c` and NanoVG's in `vendor/nanovg/src/nanovg_gl.h` doing the same). After changing `phpsdl.stub.php`, regenerate `phpsdl_arginfo.h` with PHP's
 `build/gen_stub.php`.

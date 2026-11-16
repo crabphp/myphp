@@ -38,6 +38,8 @@
 
 #define NANOVG_GL3_IMPLEMENTATION
 #include "nanovg_gl.h"
+#include "nanovg_sdlgpu.h"
+#include "render.h"
 
 #define DEFINE_STATIC_VGCOLOR_METHOD(name, r, g, b, a) \
     PHP_METHOD(GL_VectorGraphics_VGColor, name) \
@@ -867,6 +869,10 @@ PHP_METHOD(GL_VectorGraphics_VGContext, imageFromHandle)
         image_flags |= NVG_IMAGE_NEAREST;
     }
 
+    if (phpsdl_gpu) {
+        zend_throw_error(NULL, "A VGImage from an OpenGL texture needs OpenGL; phpsdl draws with SDL_GPU");
+        return;
+    }
     image->nvgimage_handle = nvglCreateImageFromHandleGL3(intern->nvgctx, texture, w, h, image_flags);
 }
 
@@ -1024,7 +1030,9 @@ PHP_METHOD(GL_VectorGraphics_VGContext, __construct)
         return;
     }
 
-    intern->nvgctx = nvgCreateGL3(flags);
+    /* phpsdl: NanoVG draws with SDL_GPU when phpsdl does. */
+    intern->nvgctx = phpsdl_gpu ? nvgCreateSDLGPU(flags) : nvgCreateGL3(flags);
+    if (!intern->nvgctx) zend_throw_error(NULL, "Could not create the VGContext: %s", phpsdl_gpu ? "no window draws with SDL_GPU yet" : "no OpenGL context");
 }
 
 /**
