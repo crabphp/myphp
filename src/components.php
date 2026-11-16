@@ -388,7 +388,7 @@ function alert(string $title, string $description, string $icon = 'circle-alert'
         ->child(col()->pt(2)->child(icon($icon, 16, $fg)))
         ->child(col()->gap(4)->flex1()
             ->child(text($title)->textSize(14)->medium()->textColor($fg))
-            ->child(text($description)->textSize(14)->textColor($variant === 'destructive' ? t('destructive', 0.9) : t('muted-foreground'))->truncate()));
+            ->child(paragraph($description)->selectable()->textColor($variant === 'destructive' ? t('destructive', 0.9) : t('muted-foreground'))));
 }
 
 /** A keyboard key: bg-muted text-muted-foreground h-5 rounded-sm px-1 text-xs. */

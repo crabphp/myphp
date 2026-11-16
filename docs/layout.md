@@ -125,6 +125,10 @@ state on every call, so a component function can keep its own state between rend
 
 ## Text
 
+`->selectable()` on text, or on a container for all text inside, lets the user drag to
+select, double-click a word, and copy with Ctrl/Cmd+C (Ctrl/Cmd+A selects all of it).
+A selection stays within one text element. Message boxes and alerts are selectable.
+
 `text()` stays on one line. `->wrap()` breaks it onto as many lines as its width
 allows, and lets it shrink in a row; give its container a width (or `flex1()`) so it
 has something to wrap to. `paragraph($text, $width = null, $size = 14)` is wrapping
