@@ -20,12 +20,19 @@ constraint is `dev-main` for a development CLI or `^X.Y` for version `X.Y.Z`.
 ```sh
 myphp run
 myphp run app.php first second
+myphp run --watch
 ```
 
 Defaults to `app.php` in the current directory. The toolkit is already loaded.
 `$argv` and `$_SERVER['argv']` contain `[file, ...args]`; `argc` is updated too.
 The working directory does not change. Exceptions print their class, message,
 and trace to stderr.
+
+`--watch` (or `-w`, before the file) restarts the app whenever you save a PHP,
+image or font file in its folder; `vendor/`, `build/` and dotfiles are ignored, and
+so is data the app writes (JSON, text, databases). State starts fresh on each reload.
+If the app crashes, the watcher waits for your next save. Closing the window or
+Ctrl+C stops watching.
 
 ## build
 
@@ -114,9 +121,8 @@ folders for screenshots must already exist.
 
 Apps can print their own output or explicitly exit with their own code.
 Linux x86-64 (glibc 2.17+, X11/XWayland, OpenGL), experimental macOS (arm64,
-x86-64) and experimental Windows (x86-64). No hot reload, Composer dependency
-packing, or cross-compilation: `myphp build` targets the platform it runs on (on
-Windows it writes `build/<name>.exe`). Windows limits: built apps also open a
+x86-64) and experimental Windows (x86-64). No Composer dependency packing or
+cross-compilation: `myphp build` targets the platform it runs on (on Windows it writes `build/<name>.exe`). Windows limits: built apps also open a
 console window, and a binary started through an 8.3 short path (`C:\Users\LONGNA~1\...`)
 does not work; use the full path.
 Source CLI runs use `php84 bin/myphp`; source builds also need `MYPHP_SFX` and

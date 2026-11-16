@@ -1,7 +1,7 @@
 # {{name}}
 
 ```sh
-myphp run
+myphp run --watch   # reloads when you save
 myphp build
 composer install # optional: editor autocomplete
 ```

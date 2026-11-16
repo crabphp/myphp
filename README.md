@@ -26,7 +26,7 @@ irm https://raw.githubusercontent.com/crabphp/myphp/main/install.ps1 | iex
 ```sh
 myphp init hello
 cd hello
-myphp run
+myphp run --watch    # reloads when you save
 ```
 
 `app.php`:

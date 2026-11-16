@@ -69,6 +69,24 @@ file_put_contents("$project/other.php", '<?php file_put_contents("args.json", js
 same(0, $code, "run accepts arguments: $err");
 same([['other.php', 'a', 'b'], 3, ['other.php', 'a', 'b'], 3, false],
     json_decode(file_get_contents("$project/args.json"), true), 'app gets argv/argc, not CLI locals');
+// run --watch restarts on a change and stops when the app ends by itself.
+$watched = getenv('PHPUI_TEST_TMP') . '/watched';
+mkdir($watched);
+file_put_contents("$watched/app.php", "<?php file_put_contents(__DIR__ . '/runs.txt', \"run\\n\", FILE_APPEND); exit(3);\n");
+$command = getenv('MYPHP_BIN') ? [getenv('MYPHP_BIN')] : [PHP_BINARY, __DIR__ . '/../bin/myphp'];
+$watch = proc_open([...$command, 'run', '--watch'], [1 => ['file', '/dev/null', 'w'], 2 => ['file', "$watched/stderr.txt", 'w']],
+    $pipes, $watched, ['MYPHP_WATCH_INTERVAL' => '0.05'] + getenv());
+$runs = fn () => is_file("$watched/runs.txt") ? substr_count(file_get_contents("$watched/runs.txt"), 'run') : 0;
+check(until(fn () => $runs() === 1, 10, fn () => null), 'watch starts the app');
+usleep(200000);
+same(true, proc_get_status($watch)['running'], 'watch keeps waiting after the app fails');
+file_put_contents("$watched/app.php", "<?php file_put_contents(__DIR__ . '/runs.txt', \"run\\n\", FILE_APPEND); // fixed\n");
+check(until(fn () => !proc_get_status($watch)['running'], 10, fn () => null), 'watch ends when the reloaded app exits normally');
+same(2, $runs(), 'a saved change reloads the app');
+check(str_contains(file_get_contents("$watched/stderr.txt"), 'reloading'), 'watch reports reloads');
+if (proc_get_status($watch)['running']) proc_terminate($watch, 9);
+proc_close($watch);
+
 [$code, $out, $err] = cli(['run']);
 same(1, $code, 'missing app fails');
 check(str_contains($err, 'app.php not found'), 'missing app diagnostic');

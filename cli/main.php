@@ -26,7 +26,7 @@ function myphpHelp(): int
     echo "myphp - native desktop apps in PHP\n\nUsage:\n";
     foreach ([
         'init' => '  myphp init <name>     create a new app',
-        'run' => '  myphp run [file]      run an app (default: app.php)',
+        'run' => '  myphp run [file]      run an app (default: app.php); --watch reloads on save',
         'build' => '  myphp build [file]    build one executable (default: app.php)',
         'demo' => '  myphp demo [name]     run a bundled example: dashboard, desktop, todo',
     ] as $name => $line) {
