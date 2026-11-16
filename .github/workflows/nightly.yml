@@ -50,8 +50,10 @@ jobs:
     with:
       version: ${{ needs.version.outputs.version }}
 
+  # Publishes the platforms that built, so one failing platform does not hold back the others.
   publish:
     needs: [version, linux, macos, windows]
+    if: ${{ !cancelled() && needs.version.result == 'success' }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -66,6 +68,7 @@ jobs:
           mkdir files
           find artifacts -path '*/dist/*' -type f -exec cp {} files/ \;
           ls -l files
+          [ -n "$(ls files)" ] || { echo 'No platform built'; exit 1; }
           git tag -f nightly "$GITHUB_SHA"
           git push -f origin refs/tags/nightly
           NOTES="Built from ${GITHUB_SHA::7} ($VERSION). Unreleased work from main: install with \`myphp upgrade --nightly\`."

@@ -57,8 +57,12 @@ jobs:
           git -C spc checkout -q b8de36c
           cd spc
           composer install -q --no-dev --no-interaction
-          mkdir -p x11libs
+          mkdir -p x11libs x11root/include
           for l in X11 Xrandr Xinerama Xcursor Xi; do ln -sf /usr/lib/x86_64-linux-gnu/lib$l.so x11libs/; done
+          # Only the X11 headers: CMake would otherwise add /usr/include, and Ubuntu's newer
+          # libc headers there clash with the glibc 2.17 headers the build targets.
+          ln -s /usr/include/X11 x11root/include/X11
+          export CMAKE_PREFIX_PATH=$PWD/x11root
           cp ../build/craft.yml .
           bin/spc doctor --auto-fix || true
           SPC_TARGET=native-native-gnu.2.17 SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft -v \
