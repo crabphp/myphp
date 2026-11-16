@@ -45,6 +45,24 @@ function state(object|array $initial = [], ?string $key = null): object
     return is_array($initial) ? new State($initial) : $initial;
 }
 
+/**
+ * A folder for an app's own files (settings, saved data), created if needed:
+ * ~/.local/share/<app> on Linux, ~/Library/Application Support/<app> on macOS,
+ * %APPDATA%\<app> on Windows.
+ */
+function dataDir(string $app): string
+{
+    if ($app === '' || preg_match('#[/\\\\]|^\.\.?$#', $app)) throw new \InvalidArgumentException('App name must be a plain folder name');
+    $base = match (PHP_OS_FAMILY) {
+        'Windows' => getenv('APPDATA') ?: sys_get_temp_dir(),
+        'Darwin' => (getenv('HOME') ?: sys_get_temp_dir()) . '/Library/Application Support',
+        default => getenv('XDG_DATA_HOME') ?: (getenv('HOME') ?: sys_get_temp_dir()) . '/.local/share',
+    };
+    $dir = "$base/$app";
+    if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) throw new \RuntimeException("Cannot create $dir");
+    return $dir;
+}
+
 // Primitives ----------------------------------------------------------------
 
 function div(): Element

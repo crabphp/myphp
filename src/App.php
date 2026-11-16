@@ -38,6 +38,10 @@ final class App
     /** Caret, selection and scroll of each input by id, with the text they belong to. */
     private array $edits = [];
     private ?string $dragId = null;
+    /** Id of the element whose onDrag follows the pointer until release. */
+    private ?string $dragging = null;
+    private array $timers = [];
+    private int $timerId = 0;
     /** Undo and redo stacks of each input by id. */
     private array $history = [];
     private array $lastPress = [0.0, null, 0.0, 0.0];
@@ -72,6 +76,7 @@ final class App
 
         glfwSetCursorPosCallback($this->window, fn (float $x, float $y) => $this->pointer($x, $y));
         glfwSetMouseButtonCallback($this->window, function (int $button, int $action) {
+            if ($button === GLFW_MOUSE_BUTTON_RIGHT && $action === GLFW_PRESS) $this->rightClick($this->mouseX, $this->mouseY);
             if ($button !== GLFW_MOUSE_BUTTON_LEFT) return;
             $action === GLFW_PRESS ? $this->press($this->mouseX, $this->mouseY) : $this->release($this->mouseX, $this->mouseY);
         });
@@ -85,6 +90,7 @@ final class App
         glfwSetWindowRefreshCallback($this->window, fn () => $this->dirty = true);
         // Keep drawing at display rate while something is animating.
         $this->waitHint(fn () => $this->painter->animating ? 1 / 120 : 0.5);
+        $this->waitHint(fn () => $this->nextTimer());
         $this->poller(Desktop::poll(...));
         $this->waitHint(Desktop::waitHint(...));
         $this->onShutdown(Desktop::shutdown(...));
@@ -214,6 +220,8 @@ final class App
     /** One loop turn, without waiting. */
     public function step(): void
     {
+        // Timers keep a press in progress: their changes redraw without cancelling it.
+        if ($this->runTimers()) $this->stale = $this->dirty = true;
         foreach ($this->pollers as $poll) {
             if ($poll()) {
                 $this->stale = $this->dirty = true;
@@ -295,6 +303,10 @@ final class App
         if ($this->dragId !== null && ($input = $this->find($this->dragId))) {
             $this->moveCaret($input, $this->offsetAt($input, $x, $y), true);
         }
+        if ($this->dragging !== null && ($target = $this->find($this->dragging)) && $target->onDrag) {
+            ($target->onDrag)($x, $y, $target);
+            $this->stale = true;
+        }
         $this->dirty = true;
     }
 
@@ -311,6 +323,12 @@ final class App
             }
         }
         $this->pressed = $this->handler($top, fn (Element $e) => $e->onClick !== null);
+        $drag = $this->handler($top, fn (Element $e) => $e->onDrag !== null);
+        if ($drag) {
+            $this->dragging = $drag->id;
+            ($drag->onDrag)($x, $y, $drag);
+            $this->stale = true;
+        }
         $input = $this->handler($top, fn (Element $e) => $e->kind === 'input');
         $this->focusId = $input?->id;
         if ($input) {
@@ -339,8 +357,70 @@ final class App
             $this->stale = true;
         }
         $this->pressed = null;
-        $this->dragId = null;
+        $this->dragId = $this->dragging = null;
         $this->dirty = true;
+    }
+
+    /** A right click at a point: the nearest onRightClick handler under it. */
+    public function rightClick(float $x, float $y): void
+    {
+        $this->fresh();
+        $this->pointer($x, $y);
+        $target = $this->handler($this->top($x, $y), fn (Element $e) => $e->onRightClick !== null);
+        if ($target) {
+            ($target->onRightClick)($x, $y, $target);
+            $this->stale = true;
+        }
+        $this->dirty = true;
+    }
+
+    // Timers and window ---------------------------------------------------
+
+    /** Call $fn every $seconds while the app runs; returns an id for cancel(). */
+    public function every(float $seconds, callable $fn): int
+    {
+        $this->timers[++$this->timerId] = [max(0.001, $seconds), microtime(true) + $seconds, $fn(...), true];
+        return $this->timerId;
+    }
+
+    /** Call $fn once after $seconds; returns an id for cancel(). */
+    public function after(float $seconds, callable $fn): int
+    {
+        $this->timers[++$this->timerId] = [max(0.0, $seconds), microtime(true) + $seconds, $fn(...), false];
+        return $this->timerId;
+    }
+
+    public function cancel(int $timer): void
+    {
+        unset($this->timers[$timer]);
+    }
+
+    /** Run timers that are due; the window redraws after any of them ran. */
+    private function runTimers(): bool
+    {
+        $now = microtime(true);
+        $ran = false;
+        foreach ($this->timers as $id => [$every, $due, $fn, $repeat]) {
+            if ($now < $due) continue;
+            if ($repeat) $this->timers[$id][1] = max($due + $every, $now);
+            else unset($this->timers[$id]);
+            $fn();
+            $ran = true;
+        }
+        return $ran;
+    }
+
+    private function nextTimer(): float
+    {
+        $next = 0.5;
+        foreach ($this->timers as [, $due]) $next = min($next, max(0.0001, $due - microtime(true)));
+        return $next;
+    }
+
+    public function title(string $title): self
+    {
+        glfwSetWindowTitle($this->window, $title);
+        return $this;
     }
 
     /** Click at a point, as the mouse would, and redraw. */
@@ -405,6 +485,10 @@ final class App
                 default => null,
             };
             if ($index !== null) $this->clickId('message-button-' . $index);
+            return;
+        }
+        if ($key === GLFW_KEY_TAB && $this->focusNext(($mods & GLFW_MOD_SHIFT) ? -1 : 1)) {
+            $this->stale = $this->dirty = true;
             return;
         }
         $input = $this->focused();
@@ -532,6 +616,26 @@ final class App
     {
         $this->fresh();
         return $this->focusId === null ? null : $this->find($this->focusId);
+    }
+
+    /** Move focus to the next (or previous) input in the tree, selecting its text. */
+    private function focusNext(int $direction): bool
+    {
+        $inputs = [];
+        $collect = function (Element $e) use (&$collect, &$inputs) {
+            if (!empty($e->style['hidden'])) return;
+            if ($e->kind === 'input' && $e->id !== null) $inputs[] = $e;
+            foreach ($e->children as $c) $collect($c);
+        };
+        $collect($this->modalTree ?? $this->tree);
+        if (!$inputs) return false;
+        $ids = array_map(fn (Element $e) => $e->id, $inputs);
+        $at = array_search($this->focusId, $ids, true);
+        $next = $inputs[$at === false ? ($direction > 0 ? 0 : count($inputs) - 1) : (($at + $direction + count($inputs)) % count($inputs))];
+        $this->focusId = $next->id;
+        $this->moveCaret($next, 0, false);
+        $this->moveCaret($next, mb_strlen($next->text), true);
+        return true;
     }
 
     // Text editing ---------------------------------------------------------

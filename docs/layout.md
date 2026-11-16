@@ -67,9 +67,26 @@ focus ring between states (hover, focus, or a style that changed in the next ren
 with an ease-out curve. `->animateIn($ms = 150)` fades an element in each time it
 appears. Buttons, inputs, tabs, toggles, checkboxes, switches, menus, dialogs, tooltips
 and toasts use them already. Animations follow elements by `id()` (or their position
-in the tree), and screenshots always show the finished state. `when($condition, $then, $else = null)` conditionally changes the node;
+in the tree), and screenshots always show the finished state.
+
+`when($condition, $then, $else = null)` conditionally changes the node;
 callbacks must return it. Use stable, unique `id()` values for inputs and scrolling.
 IDs also support scripted input through `$app->clickId('add')` and `$app->find('add')`.
+
+## Events and the app
+
+- `->onClick(fn ($x, $y, $e) => ...)` runs on release over the element it was pressed on.
+- `->onDrag(fn ($x, $y, $e) => ...)` runs on press and on every move until release
+  (sliders, splitters); `->onRightClick(fn ($x, $y, $e) => ...)` for context menus.
+- `->onClickOutside(fn () => ...)` closes menus; `->stopClicks()` keeps clicks inside.
+- `->onDrop(fn (array $paths) => ...)` receives files dropped on the element.
+- `$app->onKey(fn ($key, $mods) => ...)` gets keys that no focused input used.
+  Tab and Shift+Tab move between inputs.
+- `$app->every(1, fn () => ...)` and `$app->after(0.5, fn () => ...)` run timers on the
+  UI loop and redraw afterwards; `$app->cancel($id)` stops one.
+- `$app->title('New title')` renames the window.
+- `dataDir('my-app')` returns (and creates) the folder for your app's own files:
+  `~/.local/share/my-app`, `~/Library/Application Support/my-app` or `%APPDATA%\my-app`.
 
 Other primitives: `text($string)`, controlled `input($id, $value, $onInput)`,
 `icon($name, $size = 16, $color = null)`, `spacer()`, `image($path)` and `canvas($draw)`.

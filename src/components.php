@@ -351,7 +351,7 @@ function slider(float $value, ?callable $onChange = null): Element
         $vg->strokeColor($p->color(t('primary')));
         $vg->stroke();
     })->h(16)
-        ->when($onChange !== null, fn ($e) => $e->onClick(fn ($x, $y, $el) => $onChange(round(max(0, min(1, ($x - $el->x - 8) / ($el->w - 16))) * 100))));
+        ->when($onChange !== null, fn ($e) => $e->onDrag(fn ($x, $y, $el) => $onChange(round(max(0, min(1, ($x - $el->x - 8) / ($el->w - 16))) * 100))));
 }
 
 /** Rounded skeleton placeholder: bg-accent rounded-md. */

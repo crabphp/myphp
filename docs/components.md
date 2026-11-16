@@ -18,7 +18,7 @@ Signatures below match `src/components.php` and `src/charts.php`.
 - `selectTrigger(string $value, callable $onClick, string $size = 'default'): Element` — Value and chevron; pair with `dropdownMenu()`; size also accepts `sm`.
 - `tabs(array $items, string $active, callable $onChange, string $idPrefix = 'tab'): Element` — `[value => label]` choices; callback receives the selected value.
 - `toggleGroup(array $items, string $active, callable $onChange, string $idPrefix = 'toggle'): Element` — Connected outlined buttons with the same choice/callback format as tabs.
-- `slider(float $value, ?callable $onChange = null): Element` — Value 0–100; clicking reports the new value (no drag support).
+- `slider(float $value, ?callable $onChange = null): Element` — Value 0–100; click or drag to report a new value.
 
 ## Containers and table
 
