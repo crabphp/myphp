@@ -487,22 +487,24 @@ class Slider extends Component
             if ($this->changed) ($this->changed)($to);
             $this->write($to);
         };
-        $draw = function ($vg, Element $e, Painter $p) use ($v) {
-            $cy = $e->y + $e->h / 2;
-            $tx = $e->x + 8 + ($e->w - 16) * $v;
-            $p->shape($e->x, $cy - 3, $e->w, 6, 3);
-            $vg->fillColor($p->color(t('muted')));
-            $vg->fill();
-            $p->shape($e->x, $cy - 3, $tx - $e->x, 6, 3);
-            $vg->fillColor($p->color(t('primary')));
-            $vg->fill();
-            $vg->beginPath();
-            $vg->circle($tx, $cy, 7.5);
-            $vg->fillColor($p->color(t('background')));
-            $vg->fill();
-            $vg->strokeWidth(1);
-            $vg->strokeColor($p->color(t('primary')));
-            $vg->stroke();
+        $draw = function (Canvas $c) use ($v) {
+            $cy = $c->height / 2;
+            $tx = 8 + ($c->width - 16) * $v;
+            $c->fillStyle = t('muted');
+            $c->beginPath();
+            $c->roundRect(0, $cy - 3, $c->width, 6, 3);
+            $c->fill();
+            $c->fillStyle = t('primary');
+            $c->beginPath();
+            $c->roundRect(0, $cy - 3, $tx, 6, 3);
+            $c->fill();
+            $c->beginPath();
+            $c->arc($tx, $cy, 7.5, 0, 2 * M_PI);
+            $c->fillStyle = t('background');
+            $c->fill();
+            $c->lineWidth = 1;
+            $c->strokeStyle = t('primary');
+            $c->stroke();
         };
         $interactive = $this->changed !== null || $this->isBound || $this->afterUpdate !== null;
         return canvas($draw)->h(16)->role('slider', ['value' => $value])

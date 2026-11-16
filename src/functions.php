@@ -91,7 +91,7 @@ function input(string $id, string $value, callable $onInput): Element
     return (new Element('input', $value))->id($id)->onInput($onInput);
 }
 
-/** A box you draw yourself: $draw(VGContext $vg, Element $box, Painter $painter). */
+/** A box you draw yourself, with the HTML canvas API: $draw(Canvas $c, Element $box, Painter $painter), in the box's own pixels. */
 function canvas(callable $draw): Element
 {
     $e = new Element('canvas');

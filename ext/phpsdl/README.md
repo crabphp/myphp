@@ -13,17 +13,24 @@ draws with SDL_GPU: Vulkan, Metal or Direct3D 12. There is no OpenGL.
   fallback font per character (variable fallbacks follow the requested weight) and
   rasterizes glyphs with HarfBuzz into an atlas shared with icons, which are SVG masks
   tinted when drawn. Frames start and end here too, on screen or off (screenshots).
-- **SDL_GPU** (`render.c`, `nanovg_sdlgpu.c`, `shaders/`): the renderer, and NanoVG
-  through a port of its GL3 backend (fills, even-odd fills, strokes, stencil strokes,
-  clips, images, text). `shaders/*.hlsl` are compiled to SPIR-V, DXIL and MSL by
-  `shaders/build.sh` (DXC and SPIRV-Cross) into `shaders/*_shaders.h`, which are
+- **Canvas paths** (`path.c`, `raster.c`): what `PhpUi\Canvas` (the HTML canvas 2D API)
+  draws. `PhpSdl\Path` is a Path2D (lines, Béziers, arcs, arcTo, ellipses, rounded
+  rectangles, text outlines). `Renderer::path()` fills or strokes one: a lone
+  rectangle, rounded rectangle or circle in a color is an exact box; anything else is
+  rasterized on the CPU (non-zero with HarfBuzz's exact-area rasterizer, even-odd with
+  16 sub-scanlines), clipped (rectangles and any path), painted (linear, radial and
+  conic gradients with any number of stops, patterns), shadowed (Gaussian blur), and
+  kept as a texture while it is drawn. Strokes: miter, round and bevel joins, butt,
+  round and square caps, dashes; they follow the transform.
+- **SDL_GPU** (`render.c`, `shaders/`): everything draws with SDL_GPU, on Vulkan, Metal
+  or Direct3D 12. `shaders/ui.hlsl` is compiled to SPIR-V, DXIL and MSL by
+  `shaders/build.sh` (DXC and SPIRV-Cross) into `shaders/ui_shaders.h`, which is
   committed.
-- **NanoVG (for `canvas()`), SVG, textures, buffers, math and audio** (`gl/`, `vendor/`):
-  PHP-GLFW's modules, generated without GLFW or OpenGL by `tools/generate.sh` (MIT, see
-  `gl/LICENSE-php-glfw`). The PHP API is the same: `GL\VectorGraphics\VGContext`,
-  `GL\Texture\Texture2D`, `GL\Buffer\FloatBuffer`, `GL\Audio\Engine`. The `gl*()`
-  functions and `VGContext::imageFromHandle()` (an OpenGL texture) are gone; a
-  `VGContext` draws into the frame a window has begun.
+- **Textures, buffers, math and audio** (`gl/`, `vendor/`): PHP-GLFW's modules,
+  generated without GLFW, OpenGL or NanoVG by `tools/generate.sh` (MIT, see
+  `gl/LICENSE-php-glfw`). The PHP API is the same: `GL\Texture\Texture2D`,
+  `GL\Buffer\FloatBuffer`, `GL\Math\Vec2`, `GL\Audio\Engine`. There are no `gl*()`
+  functions and no `GL\VectorGraphics`: canvases draw with `PhpUi\Canvas`.
 
 Keys, modifiers and mouse buttons use GLFW's numbering, and the `GLFW_KEY_*`,
 `GLFW_MOD_*` and `GLFW_MOUSE_BUTTON_*` constants exist, so apps written for
@@ -52,6 +59,9 @@ $r = new PhpSdl\Renderer();
 $r->begin($width, $height, $pixelRatio);
 $r->box(10, 10, 200, 80, [8, 8, 8, 8], [1, 1, 1, 1], null, [0.9, 0.9, 0.9, 1], 1);
 $r->text('Hello 日本語', 'regular', 14, 20, 50, [0, 0, 0, 1]);
+$p = new PhpSdl\Path();
+$p->arc(60, 60, 40, 0, M_PI);
+$r->path($p, ['stroke' => [4, 1, 1], 'paint' => ['linear', 20, 0, 100, 0, [[0, [1, 0, 0, 1]], [1, [0, 0, 1, 1]]]]]);
 $r->flush();
 ```
 

@@ -1,7 +1,7 @@
 /*
  * phpsdl: myphp's native layer. SDL3 for the window, input and input methods, SDL_GPU
- * (Vulkan, Metal, Direct3D 12) for drawing; NanoVG, textures, buffers and audio from
- * PHP-GLFW's modules (gl/), without OpenGL.
+ * (Vulkan, Metal, Direct3D 12) for drawing, canvas paths (path.c, raster.c); textures,
+ * buffers, math and audio from PHP-GLFW's modules (gl/).
  *
  * Keys, modifiers and mouse buttons are reported in GLFW's numbering, and the
  * GLFW_KEY_* constants are defined, so code written for PHP-GLFW keeps working.
@@ -24,8 +24,6 @@
 #include "phpglfw_math.h"
 #include "phpglfw_buffer.h"
 #include "phpglfw_texture.h"
-#include "phpglfw_svgparser.h"
-#include "phpglfw_vg.h"
 #include "phpglfw_audio.h"
 
 #include "php_phpsdl.h"
@@ -528,8 +526,6 @@ PHP_MINIT_FUNCTION(phpsdl)
     phpglfw_register_math_module(INIT_FUNC_ARGS_PASSTHRU);
     phpglfw_register_buffer_module(INIT_FUNC_ARGS_PASSTHRU);
     phpglfw_register_texture_module(INIT_FUNC_ARGS_PASSTHRU);
-    phpglfw_register_svgparser_module(INIT_FUNC_ARGS_PASSTHRU);
-    phpglfw_register_vg_module(INIT_FUNC_ARGS_PASSTHRU);
     phpglfw_register_audio_module(INIT_FUNC_ARGS_PASSTHRU);
     for (int i = 0; phpsdl_glfw_constants[i].name; i++) {
         zend_register_long_constant(phpsdl_glfw_constants[i].name, strlen(phpsdl_glfw_constants[i].name),
@@ -544,7 +540,8 @@ PHP_MINIT_FUNCTION(phpsdl)
     phpsdl_sdl_ce = register_class_PhpSdl_Sdl();
 
     register_class_PhpSdl_Text();
-    phpsdl_render_register(register_class_PhpSdl_Renderer());
+    zend_class_entry *renderer_ce = register_class_PhpSdl_Renderer();
+    phpsdl_render_register(renderer_ce, register_class_PhpSdl_Path());
     return SUCCESS;
 }
 

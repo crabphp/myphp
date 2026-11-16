@@ -277,8 +277,8 @@ final class App
         $this->stale = false;
         $this->updateCursor();
 
-        $bg = $this->painter->color($this->tree->get('bg', t('background')));
-        $clear = [$bg->r, $bg->g, $bg->b, 1];
+        $bg = CssColor::parse($this->tree->get('bg', t('background')));
+        $clear = [$bg[0], $bg[1], $bg[2], 1];
         $capture ? $this->window->beginCapture($capture[0], $capture[1], $clear) : $this->window->begin($clear);
         $this->painter->render($this->tree, $w, $h, $ratio, $caretOn);
     }

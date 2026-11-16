@@ -1,10 +1,11 @@
 <?php
-// phpsdl has no OpenGL: after generate.sh copies PHP-GLFW's modules into ext/phpsdl,
-// drop the gl*() functions and GL_* constants, glad, and NanoVG's GL backend. Buffers
-// keep OpenGL's scalar types from phpsdl_gltypes.h. Run with the ext/phpsdl folder.
+// phpsdl has no OpenGL and no NanoVG: after generate.sh copies PHP-GLFW's modules into
+// ext/phpsdl, drop the gl*() functions and GL_* constants, glad, NanoVG and its
+// GL\VectorGraphics bindings (VGContext, SVGImage). Buffers keep OpenGL's scalar types
+// from phpsdl_gltypes.h. Run with the ext/phpsdl folder.
 $ext = rtrim($argv[1], '/');
 foreach (['gl/phpglfw_functions.c', 'gl/phpglfw_functions.h', 'gl/phpglfw_constants.c',
-    'vendor/nanovg/src/nanovg_gl.h', 'vendor/nanovg/src/nanovg_gl_utils.h'] as $file) {
+    'gl/phpglfw_vg.c', 'gl/phpglfw_vg.h', 'gl/phpglfw_svgparser.c', 'gl/phpglfw_svgparser.h'] as $file) {
     if (is_file("$ext/$file")) unlink("$ext/$file");
 }
 $remove = function (string $dir) use (&$remove) {
@@ -16,6 +17,7 @@ $remove = function (string $dir) use (&$remove) {
     rmdir($dir);
 };
 $remove("$ext/vendor/glad");
+$remove("$ext/vendor/nanovg");
 // The constants header only carries the GL types to the other modules now.
 $h = "$ext/gl/phpglfw_constants.h";
 $s = file_get_contents($h);

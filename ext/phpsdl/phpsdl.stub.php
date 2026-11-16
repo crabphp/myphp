@@ -43,6 +43,8 @@ namespace PhpSdl {
         public static function carets(string $text, string $font, float $size, float $tracking = 0): array {}
         /** [ascender, descender, line gap] at $size; the descender is negative. */
         public static function metrics(string $font, float $size): array {}
+        /** Canvas measureText: ['width', 'left', 'right', 'ascent', 'descent'] of the ink around the pen. */
+        public static function measure(string $text, string $font, float $size, float $tracking = 0): array {}
     }
 
     /**
@@ -60,10 +62,50 @@ namespace PhpSdl {
         /** An SVG drawn as a mask in $color: its own colors are ignored. */
         public function icon(string $svg, float $x, float $y, float $size, array $color, ?array $clip = null): void {}
         /** A picture at x, y, w, h, cut to $box with its corner $radii. */
-        public function image(string $path, float $x, float $y, float $width, float $height, array $box, array $radii, float $opacity = 1, ?array $clip = null): void {}
+        public function image(string $path, float $x, float $y, float $width, float $height, array $box, array $radii, float $opacity = 1, ?array $clip = null, ?array $source = null): void {}
+        /**
+         * A canvas path (in the canvas's pixels, placed by 'transform'; 'ctm' is the current transform, which
+         * strokes and paints follow), filled, or stroked with 'stroke' => [width, join, cap, miterLimit, dashes, dashOffset]
+         * (joins 0 miter, 1 round, 2 bevel; caps 0 butt, 1 round, 2 square). Also: 'rule' (0 non-zero, 1 even-odd),
+         * 'transform' => [a, b, c, d, e, f], 'paint' => [r, g, b, a] or ['linear', x0, y0, x1, y1, stops],
+         * ['radial', x0, y0, r0, x1, y1, r1, stops], ['conic', angle, x, y, stops], ['pattern', file, repetition, matrix]
+         * (stops [[offset, [r, g, b, a]], ...]), 'alpha', 'smooth', 'clip' => [x, y, w, h],
+         * 'clipPaths' => [[Path, matrix, rule], ...], 'shadow' => [[r, g, b, a], blur, offsetX, offsetY].
+         */
+        public function path(Path $path, array $style): void {}
         public function flush(): void {}
         /** @return array{int, int} */
         public static function imageSize(string $path): array {}
+    }
+
+    /** A vector path, as canvas's Path2D. Angles in radians. */
+    final class Path
+    {
+        public function moveTo(float $x, float $y): void {}
+        public function lineTo(float $x, float $y): void {}
+        public function quadraticCurveTo(float $cpx, float $cpy, float $x, float $y): void {}
+        public function bezierCurveTo(float $cp1x, float $cp1y, float $cp2x, float $cp2y, float $x, float $y): void {}
+        public function arc(float $x, float $y, float $radius, float $startAngle, float $endAngle, bool $counterclockwise = false): void {}
+        public function arcTo(float $x1, float $y1, float $x2, float $y2, float $radius): void {}
+        public function ellipse(float $x, float $y, float $radiusX, float $radiusY, float $rotation, float $startAngle, float $endAngle, bool $counterclockwise = false): void {}
+        public function rect(float $x, float $y, float $width, float $height): void {}
+        /** Radii: a number, or 1 to 4 of them as canvas takes them. */
+        public function roundRect(float $x, float $y, float $width, float $height, float|array $radii = 0): void {}
+        public function closePath(): void {}
+        /** Another path, under [a, b, c, d, e, f]. */
+        public function addPath(Path $path, ?array $transform = null): void {}
+        /** The outlines of text (shaped, with fallback fonts) at the pen ($x, $y on the baseline). */
+        public function text(string $text, string $font, float $size, float $x, float $y, float $tracking = 0): void {}
+        /** Points added from now on go through [a, b, c, d, e, f], as a canvas's current transform does. */
+        public function setTransform(?array $matrix = null): void {}
+        public function clear(): void {}
+        public function isEmpty(): bool {}
+        /** Rule 0 non-zero, 1 even-odd. */
+        public function contains(float $x, float $y, int $rule = 0): bool {}
+        /** $stroke as Renderer::path() takes it. */
+        public function containsStroke(float $x, float $y, array $stroke): bool {}
+        /** [x0, y0, x1, y1], control points included. */
+        public function bounds(): ?array {}
     }
 
     final class Sdl

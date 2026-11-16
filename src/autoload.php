@@ -14,6 +14,7 @@ require __DIR__ . '/Theme.php';
 require __DIR__ . '/Element.php';
 require __DIR__ . '/Component.php';
 require __DIR__ . '/State.php';
+require __DIR__ . '/Canvas.php';
 require __DIR__ . '/Painter.php';
 require __DIR__ . '/Layout.php';
 require __DIR__ . '/AccessKit.php';

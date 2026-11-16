@@ -1,7 +1,7 @@
 #!/bin/sh
-# Regenerate phpsdl's NanoVG, texture, buffer, math, SVG and audio bindings from
-# PHP-GLFW (MIT, Mario Döring) without GLFW or OpenGL, and copy them with the C
-# libraries they use into ext/phpsdl/gl and ext/phpsdl/vendor.
+# Regenerate phpsdl's texture, buffer, math and audio bindings from PHP-GLFW (MIT,
+# Mario Döring) without GLFW, OpenGL or NanoVG, and copy them with the C libraries
+# they use into ext/phpsdl/gl and ext/phpsdl/vendor.
 #   tools/generate.sh [php-glfw checkout]
 set -eu
 EXT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -28,8 +28,6 @@ for d in glad nanovg nanosvg stb miniaudio cvector; do cp -r "vendor/$d" "$EXT/v
 find "$EXT/vendor" \( -name '*.o' -o -name '*.lo' -o -name '*.dep' \) -delete
 # phpsdl rasterizes icons with nanosvg's rasterizer, which PHP-GLFW does not ship.
 curl -fsSL -o "$EXT/vendor/nanosvg/src/nanosvgrast.h" https://raw.githubusercontent.com/memononen/nanosvg/239e102ec2c6/src/nanosvgrast.h
-# No OpenGL: drop the gl*() functions and constants, glad and NanoVG's GL backend.
+# No OpenGL and no NanoVG: drop the gl*() functions and constants, glad, NanoVG and VGContext.
 "$PHP" "$EXT/tools/strip-gl.php" "$EXT"
-# VGContext draws with SDL_GPU (nanovg_sdlgpu.c).
-"$PHP" "$EXT/tools/patch-vg.php" "$EXT/gl/phpglfw_vg.c"
 echo "Generated from php-glfw $REV into $EXT/gl and $EXT/vendor"

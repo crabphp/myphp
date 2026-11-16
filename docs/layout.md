@@ -97,7 +97,15 @@ Other primitives: `text($string)`, controlled `input($id, $value, $onInput)`,
 aspect ratio; with neither it shows at its pixel size. `->fit('cover')` fills the box
 and crops, `'contain'` (the default) shows the whole picture, `'fill'` stretches it.
 `->rounded()` clips the corners. Use `__DIR__` paths so built apps find their files.
-Canvas callbacks receive `(VGContext $vg, Element $box, Painter $painter)`.
+`canvas(fn (Canvas $c) => ...)` draws with the HTML canvas 2D API, in the box's own
+pixels (`$c->width`, `$c->height`): paths (`arc`, `bezierCurveTo`, `roundRect`,
+`Path2D`, also from SVG path data), `fill`/`stroke` with even-odd, joins, caps and
+dashes, linear, radial and conic gradients, patterns, `clip`, shadows, transforms,
+`fillText`/`strokeText`/`measureText` (the toolkit's text: shaped, with fallback
+fonts), `drawImage`, `save`/`restore`. Colors take CSS (`'#ff0000'`, `'rgb(...)'`,
+`'hsl(...)'`, names) and theme colors (`t('primary')`). Not supported: `clearRect`,
+pixel access and composite operations other than source-over. The callback also
+gets the `Element` and the `Painter`.
 
 ## State
 

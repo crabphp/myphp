@@ -6,7 +6,7 @@ require __DIR__ . '/../src/autoload.php';
 
 use GL\Audio\{Engine, Sound};
 use GL\Buffer\FloatBuffer;
-use PhpUi\{App, Desktop, Element, Painter, Theme};
+use PhpUi\{App, Canvas, Desktop, Element, Theme};
 use function PhpUi\{button, canvas, col, dataDir, icon, row, slider, spacer, state, t, text, textInput};
 
 // A music player: MP3, FLAC and WAV through the audio engine inside PHP-GLFW.
@@ -244,15 +244,15 @@ $render = function () use ($state, $audio, $play, $toggle, $step, $seek, $setVol
     $length = $track['length'] ?? 0.0;
     $done = $length > 0 ? min(1, $position / $length) : 0;
     $peaks = $state->peaks;
-    $wave = canvas(function ($vg, Element $e, Painter $p) use ($peaks, $done) {
+    $wave = canvas(function (Canvas $c) use ($peaks, $done) {
         $n = max(1, count($peaks) ?: 140);
-        $w = $e->w / $n;
+        $w = $c->width / $n;
         for ($i = 0; $i < $n; $i++) {
-            $h = max(3, ($peaks[$i] ?? 0.08) * $e->h);
-            $vg->beginPath();
-            $vg->roundedRect($e->x + $i * $w + 1, $e->y + ($e->h - $h) / 2, max(1, $w - 2), $h, 1.5);
-            $vg->fillColor($p->color(($i + 0.5) / $n <= $done ? t('chart-2') : t('muted-foreground', 0.35)));
-            $vg->fill();
+            $h = max(3, ($peaks[$i] ?? 0.08) * $c->height);
+            $c->beginPath();
+            $c->roundRect($i * $w + 1, ($c->height - $h) / 2, max(1, $w - 2), $h, 1.5);
+            $c->fillStyle = ($i + 0.5) / $n <= $done ? t('chart-2') : t('muted-foreground', 0.35);
+            $c->fill();
         }
     })->h(64)->id('wave')->onDrag(fn ($x, $y, $e) => $seek(($x - $e->x) / max(1, $e->w)));
 

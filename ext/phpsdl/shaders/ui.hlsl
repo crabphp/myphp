@@ -11,7 +11,7 @@ struct Instance
     float4 border : TEXCOORD4; // the box an image fills
     float4 clip   : TEXCOORD5;
     float4 params : TEXCOORD6; // border width, blur, spread, shadow offset
-    float4 kind   : TEXCOORD7; // 0 box, 1 mask, 2 image
+    float4 kind   : TEXCOORD7; // 0 box, 1 mask (y: 1 when color), 2 image
 };
 
 struct Varyings
@@ -78,7 +78,12 @@ float4 premul(float4 c) { return float4(c.rgb * c.a, c.a); }
 
 float4 PSMain(Varyings v) : SV_Target0
 {
-    if (v.kind.x == 1.0) return premul(v.top) * tex.Sample(texSampler, v.uv).r;
+    if (v.kind.x == 1.0) {
+        // A coverage mask (glyph, icon, path) in a color, or (kind.y 1) a canvas drawing
+        // already in premultiplied color, faded by the color's alpha.
+        float4 t = tex.Sample(texSampler, v.uv);
+        return v.kind.y == 1.0 ? t * v.top.a : premul(v.top) * t.r;
+    }
     if (v.kind.x == 2.0) {
         // An image: its corners follow the box it fills, and it fades with the top color's alpha.
         float2 bh = v.border.zw * 0.5;

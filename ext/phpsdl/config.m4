@@ -1,4 +1,4 @@
-dnl phpsdl: SDL3 window and input, SDL_GPU drawing, NanoVG, textures, buffers and audio for myphp.
+dnl phpsdl: SDL3 window and input, SDL_GPU drawing, canvas paths, textures, buffers and audio for myphp.
 
 PHP_ARG_ENABLE([phpsdl], [whether to enable phpsdl],
   [AS_HELP_STRING([--enable-phpsdl], [Enable phpsdl (needs SDL3)])])
@@ -21,28 +21,24 @@ if test "$PHP_PHPSDL" != "no"; then
 
   PHPSDL_SOURCES="phpsdl.c \
     render.c \
-    nanovg_sdlgpu.c \
+    path.c \
+    raster.c \
     gl/phpglfw_math.c \
     gl/phpglfw_buffer.c \
     gl/phpglfw_texture.c \
-    gl/phpglfw_svgparser.c \
-    gl/phpglfw_vg.c \
-    gl/phpglfw_audio.c \
-    vendor/nanovg/src/nanovg.c"
+    gl/phpglfw_audio.c"
 
   dnl stb is implemented once, in gl/phpglfw_texture.c; the generated arginfo has
   dnl class names that trip -Wunicode.
-  PHPSDL_CFLAGS="-DNVG_NO_STB=1 -Wno-unicode -Wno-unknown-warning-option"
+  PHPSDL_CFLAGS="-Wno-unicode -Wno-unknown-warning-option"
 
   PHP_NEW_EXTENSION(phpsdl, $PHPSDL_SOURCES, $ext_shared,, $PHPSDL_CFLAGS)
   PHP_ADD_BUILD_DIR($ext_builddir/gl)
-  PHP_ADD_BUILD_DIR($ext_builddir/vendor/nanovg/src)
   PHP_ADD_INCLUDE([$ext_srcdir])
   PHP_ADD_INCLUDE([$ext_srcdir/gl])
   PHP_ADD_INCLUDE([$ext_srcdir/vendor/cvector])
   PHP_ADD_INCLUDE([$ext_srcdir/vendor/stb])
   PHP_ADD_INCLUDE([$ext_srcdir/vendor/nanosvg/src])
-  PHP_ADD_INCLUDE([$ext_srcdir/vendor/nanovg/src])
   PHP_ADD_INCLUDE([$ext_srcdir/vendor/miniaudio])
   PHP_ADD_LIBRARY(m,, PHPSDL_SHARED_LIBADD)
   PHP_SUBST(PHPSDL_SHARED_LIBADD)

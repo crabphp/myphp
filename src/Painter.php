@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace PhpUi;
 
-use GL\VectorGraphics\VGColor;
-use GL\VectorGraphics\VGContext;
 
 /**
  * Draws a laid-out tree with phpsdl's renderer: boxes, borders, gradients and
  * shadows as quads with signed-distance corners, text shaped by HarfBuzz, icons and
- * images, queued in order and drawn in a few calls. Canvases draw with NanoVG.
+ * images, queued in order and drawn in a few calls. Canvases draw with the HTML canvas API (Canvas).
  *
  * Each layer (the tree, then each overlay) queues its boxes first and its text,
  * icons and images after, as GPUI does: within a layer, text is never covered by a box.
@@ -18,13 +16,10 @@ use GL\VectorGraphics\VGContext;
 final class Painter
 {
     public static ?self $shared = null;
-    /** NanoVG, for canvas() drawing. */
-    public VGContext $vg;
     private \PhpSdl\Renderer $r;
     private static bool $fontsLoaded = false;
     /** @var array<string, array{float, float}> Ascender and descender by font and size. */
     private array $metrics = [];
-    private array $colors = [];
     private array $floats = [];
     /** @var array<string, string> Icon SVGs by name. */
     private array $icons = [];
@@ -86,7 +81,6 @@ final class Painter
 
     public function __construct()
     {
-        $this->vg = new VGContext(VGContext::ANTIALIAS);
         $this->r = new \PhpSdl\Renderer();
         $assets = dirname(__DIR__) . '/assets';
         $this->iconDir = "$assets/icons";
@@ -95,8 +89,7 @@ final class Painter
             'bold' => 'Geist-Bold', 'mono' => 'GeistMono-Regular', 'mono-semibold' => 'GeistMono-SemiBold',
         ] as $name => $file) {
             $path = realFile("$assets/fonts/$file.ttf");
-            // NanoVG keeps the fonts too, for text drawn in canvases.
-            if ($this->vg->createFont($name, $path) < 0 || (!self::$fontsLoaded && !\PhpSdl\Text::addFont($name, $path))) {
+            if (!self::$fontsLoaded && !\PhpSdl\Text::addFont($name, $path)) {
                 throw new \RuntimeException("Cannot load font $file");
             }
         }
@@ -260,17 +253,17 @@ final class Painter
             array_push($layers, ...$this->overlays);
             $this->clip = self::NO_CLIP;
             $this->alpha = 1.0;
-            $this->walk($layers[$i], 'vg', $i > 0);
+            $this->walk($layers[$i], 'content', $i > 0);
         }
         $this->r->flush();
     }
 
-    /** Pass 'quads' queues boxes; 'vg' text, icons, images and canvases. */
+    /** Pass 'quads' queues boxes; 'content' text, icons, images and canvases. */
     /** $color is the parent's painted text color: hover and animated colors reach child text. */
     private function walk(Element $e, string $pass, bool $asOverlay = false, ?string $color = null): void
     {
         if ($e->isAbsolute() && !$asOverlay) {
-            if ($pass !== 'vg' && empty($e->style['hidden'])) $this->overlays[] = $e;
+            if ($pass !== 'content' && empty($e->style['hidden'])) $this->overlays[] = $e;
             return;
         }
         if (!empty($e->style['hidden'])) return;
@@ -305,16 +298,11 @@ final class Painter
         [$this->clip, $this->alpha] = [$clip, $alpha];
     }
 
-    /** A canvas draws with NanoVG, between what is queued before and after it. */
+    /** A canvas draws with the HTML canvas API, in order with everything else, inside its box. */
     private function canvas(Element $e): void
     {
-        $this->r->flush();
-        $vg = $this->vg;
-        $vg->beginFrame($this->frameW, $this->frameH, $this->ratio);
-        if ($this->clip !== self::NO_CLIP) $vg->scissor(...$this->clip);
-        if ($this->alpha < 1) $vg->globalAlpha($this->alpha);
-        ($e->draw)($vg, $e, $this);
-        $vg->endFrame();
+        $clip = $this->intersect($this->clip, [$e->x, $e->y, $e->w, $e->h]);
+        ($e->draw)(new Canvas($this->r, $e->x, $e->y, $e->w, $e->h, $clip, $this->alpha), $e, $this);
     }
 
     /** Keyboard focus shows a ring around the control, as inputs show while editing. */
@@ -670,15 +658,6 @@ final class Painter
 
     // Helpers -------------------------------------------------------------------
 
-    /** Begin a path for a box with one radius or four (tl, tr, br, bl). */
-    public function shape(float $x, float $y, float $w, float $h, float|array $r): void
-    {
-        $this->vg->beginPath();
-        is_array($r)
-            ? $this->vg->roundedRectVarying($x, $y, $w, $h, ...$r)
-            : $this->vg->roundedRect($x, $y, $w, $h, $r);
-    }
-
 
     private function intersect(array $a, array $b): array
     {
@@ -702,11 +681,5 @@ final class Painter
         if (strlen($h) === 3) $h = $h[0] . $h[0] . $h[1] . $h[1] . $h[2] . $h[2];
         if (strlen($h) === 6) $h .= 'ff';
         return array_map('hexdec', str_split($h, 2));
-    }
-
-    /** '#rgb', '#rrggbb' or '#rrggbbaa'. */
-    public function color(string $hex): VGColor
-    {
-        return $this->colors[$hex] ??= VGColor::irgba(...$this->bytes($hex));
     }
 }
