@@ -12,12 +12,15 @@ if test "$PHP_PHPSDL" != "no"; then
     export PKG_CONFIG_PATH="$PHP_SDL3_DIR/lib64/pkgconfig:$PHP_SDL3_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
   fi
   PKG_CHECK_MODULES_STATIC([SDL3], [sdl3 >= 3.2.0])
-  dnl SDL3 is linked statically: take its private libraries too.
-  SDL3_STATIC_LIBS=`$PKG_CONFIG --static --libs sdl3`
+  PKG_CHECK_MODULES_STATIC([HARFBUZZ], [harfbuzz-raster >= 13.0.0])
+  dnl SDL3 and HarfBuzz are linked statically: take their private libraries too.
+  SDL3_STATIC_LIBS=`$PKG_CONFIG --static --libs sdl3 harfbuzz-raster harfbuzz`
   PHP_EVAL_INCLINE($SDL3_CFLAGS)
+  PHP_EVAL_INCLINE($HARFBUZZ_CFLAGS)
   PHP_EVAL_LIBLINE($SDL3_STATIC_LIBS, PHPSDL_SHARED_LIBADD)
 
   PHPSDL_SOURCES="phpsdl.c \
+    render.c \
     gl/phpglfw_constants.c \
     gl/phpglfw_functions.c \
     gl/phpglfw_math.c \

@@ -6,20 +6,17 @@ namespace PhpUi;
 
 /**
  * The native window under an App: events in, a GPU context to draw into. The toolkit
- * talks only to this, so the window system can change underneath (phpsdl, or
- * PHP-GLFW). Key codes and modifiers use the GLFW_KEY_* and GLFW_MOD_* numbering
- * on every backend.
+ * talks only to this, so the window system can change underneath (SdlWindow, on
+ * phpsdl). Key codes and modifiers use the GLFW_KEY_* and GLFW_MOD_* numbering.
  */
 abstract class Window
 {
     /** @var array<string, \Closure> Event handlers set by the App: see Window::on(). */
     protected array $handlers = [];
 
-    /** A window on the best backend available: phpsdl, else PHP-GLFW. PHPUI_BACKEND chooses. */
     public static function open(string $title, int $width, int $height): self
     {
-        $choice = getenv('PHPUI_BACKEND') ?: (extension_loaded('phpsdl') ? 'sdl' : 'glfw');
-        return $choice === 'sdl' ? new SdlWindow($title, $width, $height) : new GlfwWindow($title, $width, $height);
+        return new SdlWindow($title, $width, $height);
     }
 
     /**

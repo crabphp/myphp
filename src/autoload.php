@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-if (!extension_loaded('phpsdl') && !extension_loaded('glfw')) {
+if (!extension_loaded('phpsdl')) {
     fwrite(STDERR, "myphp needs its runtime (the phpsdl extension): run apps with \"myphp run\"\n");
     exit(1);
 }
@@ -14,12 +14,10 @@ require __DIR__ . '/Theme.php';
 require __DIR__ . '/Element.php';
 require __DIR__ . '/Component.php';
 require __DIR__ . '/State.php';
-require __DIR__ . '/QuadRenderer.php';
 require __DIR__ . '/Painter.php';
 require __DIR__ . '/Layout.php';
 require __DIR__ . '/AccessKit.php';
 require __DIR__ . '/Window.php';
-require __DIR__ . '/GlfwWindow.php';
 require __DIR__ . '/SdlWindow.php';
 require __DIR__ . '/App.php';
 require __DIR__ . '/functions.php';

@@ -1,0 +1,21 @@
+harfbuzz:
+  type: library
+  artifact:
+    source:
+      type: url
+      url: 'https://github.com/harfbuzz/harfbuzz/releases/download/15.1.0/harfbuzz-15.1.0.tar.xz'
+    metadata:
+      license-files: [COPYING]
+      license: MIT
+  headers:
+    - harfbuzz/hb.h
+    - harfbuzz/hb-raster.h
+  pkg-configs:
+    - harfbuzz
+    - harfbuzz-raster
+  static-libs@unix:
+    - libharfbuzz.a
+    - libharfbuzz-raster.a
+  static-libs@windows:
+    - harfbuzz.lib
+    - harfbuzz-raster.lib

@@ -9,6 +9,7 @@ ext-phpsdl:
       license: MIT
   depends:
     - sdl3
+    - harfbuzz
   php-extension:
     arg-type@unix: '--enable-phpsdl --with-sdl3-dir=@build_root_path@'
     arg-type@windows: '--enable-phpsdl'

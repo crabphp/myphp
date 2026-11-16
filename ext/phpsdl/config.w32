@@ -4,13 +4,15 @@ ARG_ENABLE("phpsdl", "Enable phpsdl (needs SDL3)", "no");
 
 if (PHP_PHPSDL != "no") {
     if (CHECK_HEADER_ADD_INCLUDE("SDL3/SDL.h", "CFLAGS_PHPSDL", PHP_PHPSDL + "\\include;" + PHP_PHP_BUILD + "\\include") &&
-        (CHECK_LIB("SDL3-static.lib", "phpsdl", PHP_PHPSDL) || CHECK_LIB("SDL3.lib", "phpsdl", PHP_PHPSDL))) {
+        CHECK_HEADER_ADD_INCLUDE("hb-raster.h", "CFLAGS_PHPSDL", PHP_PHPSDL + "\\include\\harfbuzz;" + PHP_PHP_BUILD + "\\include\\harfbuzz") &&
+        (CHECK_LIB("SDL3-static.lib", "phpsdl", PHP_PHPSDL) || CHECK_LIB("SDL3.lib", "phpsdl", PHP_PHPSDL)) &&
+        CHECK_LIB("harfbuzz-raster.lib", "phpsdl", PHP_PHPSDL) && CHECK_LIB("harfbuzz.lib", "phpsdl", PHP_PHPSDL)) {
         // SDL3's own system dependencies when linked statically.
         var libs = ["user32.lib", "gdi32.lib", "winmm.lib", "imm32.lib", "ole32.lib", "oleaut32.lib", "version.lib",
             "uuid.lib", "advapi32.lib", "setupapi.lib", "shell32.lib", "cfgmgr32.lib", "opengl32.lib"];
         for (var i = 0; i < libs.length; i++) CHECK_LIB(libs[i], "phpsdl");
 
-        EXTENSION("phpsdl", "phpsdl.c", PHP_PHPSDL_SHARED, "/DNVG_NO_STB=1 /DNANOVG_GL_USE_STATE_FILTER=0 /DZEND_ENABLE_STATIC_TSRMLS_CACHE=1");
+        EXTENSION("phpsdl", "phpsdl.c render.c", PHP_PHPSDL_SHARED, "/DNVG_NO_STB=1 /DNANOVG_GL_USE_STATE_FILTER=0 /DZEND_ENABLE_STATIC_TSRMLS_CACHE=1");
         ADD_SOURCES(configure_module_dirname + "\\gl", "phpglfw_constants.c phpglfw_functions.c phpglfw_math.c phpglfw_buffer.c " +
             "phpglfw_texture.c phpglfw_svgparser.c phpglfw_vg.c phpglfw_audio.c", "phpsdl");
         ADD_SOURCES(configure_module_dirname + "\\vendor\\glad\\src", "glad.c", "phpsdl");

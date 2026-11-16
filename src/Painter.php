@@ -4,48 +4,39 @@ declare(strict_types=1);
 
 namespace PhpUi;
 
-use GL\VectorGraphics\SVGImage;
-use GL\VectorGraphics\VGAlign;
 use GL\VectorGraphics\VGColor;
 use GL\VectorGraphics\VGContext;
 
 /**
- * Draws a laid-out tree. Three renderers, for comparison:
+ * Draws a laid-out tree with phpsdl's renderer: boxes, borders, gradients and
+ * shadows as quads with signed-distance corners, text shaped by HarfBuzz, icons and
+ * images, queued in order and drawn in a few calls. Canvases draw with NanoVG.
  *
- * - 'nanovg':      everything through NanoVG; shadows are shapes with a hole (stencil fill).
- * - 'nanovg-fast': NanoVG, but shadows are plain convex fills (no stencil) and
- *                  state is only saved where an element needs it.
- * - 'quads':       boxes, borders and shadows as instanced quads drawn by our own
- *                  shader (QuadRenderer), one draw call per layer; text, icons and
- *                  canvases through NanoVG on top.
- *
- * With quads, each layer (the tree, then each overlay) draws its boxes first and
- * its text after, as GPUI does: within a layer, text is never covered by a box.
+ * Each layer (the tree, then each overlay) queues its boxes first and its text,
+ * icons and images after, as GPUI does: within a layer, text is never covered by a box.
  */
 final class Painter
 {
     public static ?self $shared = null;
+    /** NanoVG, for canvas() drawing. */
     public VGContext $vg;
-    public string $mode;
-    private ?QuadRenderer $quads = null;
+    private \PhpSdl\Renderer $r;
+    private static bool $fontsLoaded = false;
+    /** @var array<string, array{float, float}> Ascender and descender by font and size. */
+    private array $metrics = [];
     private array $colors = [];
     private array $floats = [];
+    /** @var array<string, string> Icon SVGs by name. */
     private array $icons = [];
-    /** @var array<string, \GL\VectorGraphics\VGImage> Icons rasterized once, by name, color and pixel size. */
-    private array $iconImages = [];
-    private int $iconFbo = 0;
-    private int $iconFboSize = 0;
     /** The framebuffer the frame draws to (0 for the window, or a screenshot's). */
     public int $target = 0;
     /** @var Element[] Absolute elements, drawn after the layer that holds them. */
     private array $overlays = [];
     private string $iconDir;
-    /** System fonts for scripts Geist lacks (CJK, Hangul), loaded the first time such text appears. */
-    private bool $fallbacksLoaded = false;
-    private const FONT_FACES = ['regular', 'medium', 'semibold', 'bold', 'mono', 'mono-semibold'];
-    /** Candidates by OS, best first; each one found is a fallback. TrueType or CFF, not variable CFF2. */
+    /** Candidates by OS, best first: system fonts for scripts Geist lacks (CJK, Hangul). Each one found is a fallback. */
     private const FALLBACK_FONTS = [
         'Linux' => [
+            '/usr/share/fonts/google-noto-sans-cjk-vf-fonts/NotoSansCJK-VF.ttc',
             '/usr/share/fonts/google-droid-sans-fonts/DroidSansFallbackFull.ttf',
             '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',
             '/usr/share/fonts/google-noto-sans-cjk-fonts/NotoSansCJK-Regular.ttc',
@@ -82,6 +73,7 @@ final class Painter
     /** Current clip rectangle and opacity, for the quad pass. */
     private array $clip = [];
     private float $alpha = 1.0;
+    private float $frameW = 0, $frameH = 0;
     /** The focused input's caret in the last frame, [x, y, w, h] in layout units: input methods compose there. */
     public ?array $caretRect = null;
 
@@ -94,31 +86,50 @@ final class Painter
     ];
     private const NO_CLIP = [-1e6, -1e6, 2e6, 2e6];
 
-    public function __construct(?string $mode = null)
+    public function __construct()
     {
-        $this->mode = $mode ?? (getenv('PHPUI_RENDERER') ?: 'quads');
         $this->vg = new VGContext(VGContext::ANTIALIAS);
+        $this->r = new \PhpSdl\Renderer();
         $assets = dirname(__DIR__) . '/assets';
         $this->iconDir = "$assets/icons";
         foreach ([
             'regular' => 'Geist-Regular', 'medium' => 'Geist-Medium', 'semibold' => 'Geist-SemiBold',
             'bold' => 'Geist-Bold', 'mono' => 'GeistMono-Regular', 'mono-semibold' => 'GeistMono-SemiBold',
         ] as $name => $file) {
-            if ($this->vg->createFont($name, realFile("$assets/fonts/$file.ttf")) < 0) {
+            $path = realFile("$assets/fonts/$file.ttf");
+            // NanoVG keeps the fonts too, for text drawn in canvases.
+            if ($this->vg->createFont($name, $path) < 0 || (!self::$fontsLoaded && !\PhpSdl\Text::addFont($name, $path))) {
                 throw new \RuntimeException("Cannot load font $file");
             }
+        }
+        if (!self::$fontsLoaded) {
+            // Fallbacks are memory-mapped: listing every one costs nothing until a glyph is needed.
+            $windows = (getenv('WINDIR') ?: 'C:\\Windows') . '\\Fonts\\';
+            foreach (self::FALLBACK_FONTS[PHP_OS_FAMILY] ?? [] as $file) {
+                if (PHP_OS_FAMILY === 'Windows') $file = $windows . $file;
+                if (is_file($file)) \PhpSdl\Text::addFallback($file);
+            }
+            self::$fontsLoaded = true;
         }
         self::$shared = $this;
     }
 
     public function textWidth(string $text, string $font, float $size, float $tracking = 0): float
     {
-        if ($text === '') return 0;
-        if (!$this->fallbacksLoaded) $this->fallbacksFor($text);
-        $this->vg->fontFace($font);
-        $this->vg->fontSize($size);
-        $this->vg->textLetterSpacing($tracking);
-        return $this->vg->textBounds(0, 0, $text);
+        return $text === '' ? 0.0 : \PhpSdl\Text::width($text, $font, $size, $tracking);
+    }
+
+    /** Where each character boundary of $text is, from its start: one more than the characters. */
+    public function carets(string $text, string $font, float $size, float $tracking = 0): array
+    {
+        return $text === '' ? [0.0] : \PhpSdl\Text::carets($text, $font, $size, $tracking);
+    }
+
+    /** The baseline that centers a line of $font at $size on $cy. */
+    private function baseline(string $font, float $size, float $cy): float
+    {
+        [$ascender, $descender] = $this->metrics["$font|$size"] ??= \PhpSdl\Text::metrics($font, $size);
+        return $cy + ($ascender + $descender) / 2;
     }
 
     /** Wrap at spaces and explicit newlines; split oversized words by Unicode character. */
@@ -207,16 +218,11 @@ final class Painter
     /** The character offset in $line nearest to $x pixels from its start. */
     public function offsetAt(string $line, float $x, string $font, float $size, float $tracking = 0): int
     {
-        $n = mb_strlen($line);
-        if ($x <= 0 || $n === 0) return 0;
-        $width = fn (int $k) => $this->textWidth(mb_substr($line, 0, $k), $font, $size, $tracking);
-        [$lo, $hi] = [0, $n];
-        while ($lo < $hi) {
-            $mid = intdiv($lo + $hi + 1, 2);
-            $width($mid) <= $x ? $lo = $mid : $hi = $mid - 1;
-        }
-        if ($lo < $n && $x - $width($lo) > $width($lo + 1) - $x) $lo++;
-        return $lo;
+        if ($x <= 0 || $line === '') return 0;
+        $carets = $this->carets($line, $font, $size, $tracking);
+        $best = 0;
+        foreach ($carets as $i => $cx) if (abs($cx - $x) < abs($carets[$best] - $x)) $best = $i;
+        return $best;
     }
 
     /** Lines of a multi-line input at its current width. */
@@ -224,21 +230,6 @@ final class Painter
     {
         $iw = $e->w - $e->get('pl', 0) - $e->get('pr', 0);
         return $e->lines = $this->breakLines($e->text, max(1, $iw - 2), $e->font, $e->size, $e->get('tracking', 0));
-    }
-
-    /** Load the system's CJK and Hangul fonts as fallbacks once text needs them. */
-    private function fallbacksFor(string $text): void
-    {
-        if (!preg_match('/[\x{2E80}-\x{9FFF}\x{A960}-\x{A97F}\x{AC00}-\x{D7FF}\x{F900}-\x{FAFF}\x{FF00}-\x{FFEF}\x{20000}-\x{3FFFF}]/u', $text)) return;
-        $this->fallbacksLoaded = true;
-        $windows = (getenv('WINDIR') ?: 'C:\\Windows') . '\\Fonts\\';
-        $i = 0;
-        foreach (self::FALLBACK_FONTS[PHP_OS_FAMILY] ?? [] as $file) {
-            if (PHP_OS_FAMILY === 'Windows') $file = $windows . $file;
-            if (!is_file($file) || $this->vg->createFont("fallback$i", $file) < 0) continue;
-            foreach (self::FONT_FACES as $face) $this->vg->addFallbackFont($face, "fallback$i");
-            $i++;
-        }
     }
 
     public function lineHeight(float $size): float
@@ -259,41 +250,24 @@ final class Painter
         $this->overlays = [];
         $this->caretRect = null;
         $this->ratio = $ratio;
-        if ($this->mode !== 'nanovg') $this->rasterizeIcons($root, $ratio, $w, $h);
-
-        if ($this->mode !== 'quads') {
-            $this->vg->beginFrame($w, $h, $ratio);
-            $this->walk($root, 'all');
-            // Overlays may hold overlays of their own: draw until none are left.
-            for ($i = 0; $i < count($this->overlays); $i++) {
-                $this->vg->save();
-                $this->vg->resetScissor();
-                $this->walk($this->overlays[$i], 'all', true);
-                $this->vg->restore();
-            }
-            $this->vg->endFrame();
-            return;
-        }
-
-        $this->quads ??= new QuadRenderer();
+        [$this->frameW, $this->frameH] = [$w, $h];
+        $this->r->begin($w, $h, $ratio);
+        // Overlays may hold overlays of their own: draw layers until none are left.
         $layers = [$root];
         for ($i = 0; $i < count($layers); $i++) {
             $this->overlays = [];
             $this->clip = self::NO_CLIP;
             $this->alpha = 1.0;
-            $this->quads->begin();
             $this->walk($layers[$i], 'quads', $i > 0);
-            $this->quads->flush($w, $h, $ratio);
             array_push($layers, ...$this->overlays);
-
-            $this->vg->beginFrame($w, $h, $ratio);
+            $this->clip = self::NO_CLIP;
             $this->alpha = 1.0;
             $this->walk($layers[$i], 'vg', $i > 0);
-            $this->vg->endFrame();
         }
+        $this->r->flush();
     }
 
-    /** Pass 'all' draws everything with NanoVG; 'quads' only boxes; 'vg' only text, icons and canvases. */
+    /** Pass 'quads' queues boxes; 'vg' text, icons, images and canvases. */
     /** $color is the parent's painted text color: hover and animated colors reach child text. */
     private function walk(Element $e, string $pass, bool $asOverlay = false, ?string $color = null): void
     {
@@ -303,21 +277,14 @@ final class Painter
         }
         if (!empty($e->style['hidden'])) return;
 
-        $vg = $this->vg;
         $s = $e->painted ??= $this->focusRing($e, $this->animate($e, $this->inherit($e->paintStyle(), $e, $color)));
         $clips = !empty($s['clip']);
-        $save = $this->mode === 'nanovg' || isset($s['opacity']) || $clips;
         [$clip, $alpha] = [$this->clip, $this->alpha];
         if (isset($s['opacity'])) $this->alpha *= $s['opacity'];
-        if ($save && $pass !== 'quads') {
-            $vg->save();
-            if (isset($s['opacity'])) $vg->globalAlpha($this->alpha);
-        }
 
         if ($pass === 'quads') {
             $this->boxQuads($e, $s);
         } else {
-            if ($pass === 'all') $this->boxVg($e, $s);
             if (isset($s['icon'])) $this->icon($e, ...$s['icon']);
             if ($e->kind === 'text' && $e->selection) $this->textSelection($e, $s);
             if ($e->kind === 'text' && !empty($s['wrap'])) {
@@ -329,21 +296,27 @@ final class Painter
             } elseif ($e->kind === 'image') {
                 $this->image($e, $s);
             } elseif ($e->kind === 'canvas' && $e->draw) {
-                $vg->save();
-                ($e->draw)($vg, $e, $this);
-                $vg->restore();
+                $this->canvas($e);
             }
         }
 
-        if ($clips) {
-            if ($pass === 'quads') $this->clip = $this->intersect($this->clip, [$e->x, $e->y, $e->w, $e->h]);
-            else $vg->intersectScissor($e->x, $e->y, $e->w, $e->h);
-        }
+        if ($clips) $this->clip = $this->intersect($this->clip, [$e->x, $e->y, $e->w, $e->h]);
         foreach ($e->children as $c) $this->walk($c, $pass, false, $s['color'] ?? null);
-        if (!empty($s['scroll']) && $e->contentH > $e->h && $pass !== 'vg') $this->scrollbar($e, $pass);
+        if (!empty($s['scroll']) && $e->contentH > $e->h && $pass === 'quads') $this->scrollbar($e);
 
-        if ($save && $pass !== 'quads') $vg->restore();
         [$this->clip, $this->alpha] = [$clip, $alpha];
+    }
+
+    /** A canvas draws with NanoVG, between what is queued before and after it. */
+    private function canvas(Element $e): void
+    {
+        $this->r->flush();
+        $vg = $this->vg;
+        $vg->beginFrame($this->frameW, $this->frameH, $this->ratio);
+        if ($this->clip !== self::NO_CLIP) $vg->scissor(...$this->clip);
+        if ($this->alpha < 1) $vg->globalAlpha($this->alpha);
+        ($e->draw)($vg, $e, $this);
+        $vg->endFrame();
     }
 
     /** Keyboard focus shows a ring around the control, as inputs show while editing. */
@@ -464,7 +437,7 @@ final class Painter
             foreach (self::SHADOWS[$s['shadow']] ?? [] as [$oy, $blur, $spread, $a]) {
                 $color = [0, 0, 0, min(1, $a * $strength) * $this->alpha];
                 $rect = [$e->x - $spread, $e->y + $oy - $spread, $e->w + 2 * $spread, $e->h + 2 * $spread];
-                $this->quads->add($rect, array_fill(0, 4, $rr + $spread), $color, $color, $none, 0, $blur, $this->clip, $spread, $oy);
+                $this->r->shadow(...$rect, ...[array_fill(0, 4, $rr + $spread), $color, $blur, $spread, $oy, $this->clip]);
             }
         }
 
@@ -475,7 +448,7 @@ final class Painter
                 ? [$this->rgba($s['gradient'][0]), $this->rgba($s['gradient'][1])]
                 : (isset($s['bg']) ? array_fill(0, 2, $this->rgba($s['bg'])) : [$none, $none]);
             $border = $bw > 0 ? $this->rgba($s['borderColor'] ?? '#00000020') : $none;
-            $this->quads->add([$e->x, $e->y, $e->w, $e->h], $radii, $top, $bottom, $border, $bw, 0, $this->clip);
+            $this->r->box($e->x, $e->y, $e->w, $e->h, $radii, $top, $bottom, $border, $bw, $this->clip);
         }
 
         foreach ($s['sides'] ?? [] as $side => [$sw, $color]) {
@@ -485,108 +458,38 @@ final class Painter
                 'l' => [$e->x, $e->y, $sw, $e->h],
                 'r' => [$e->x + $e->w - $sw, $e->y, $sw, $e->h],
             };
-            $c = $this->rgba($color);
-            $this->quads->add($rect, $none, $c, $c, $none, 0, 0, $this->clip);
+            $this->r->box(...$rect, ...[$none, $this->rgba($color), null, null, 0, $this->clip]);
         }
 
         if (isset($s['ring'])) {
             [$rw, $rc] = $s['ring'];
-            $this->quads->add([$e->x - $rw, $e->y - $rw, $e->w + 2 * $rw, $e->h + 2 * $rw],
-                array_map(fn ($v) => $v + $rw, $radii), $none, $none, $this->rgba($rc), $rw, 0, $this->clip);
+            $this->r->box($e->x - $rw, $e->y - $rw, $e->w + 2 * $rw, $e->h + 2 * $rw,
+                array_map(fn ($v) => $v + $rw, $radii), $none, $none, $this->rgba($rc), $rw, $this->clip);
         }
     }
 
-    // Boxes through NanoVG ------------------------------------------------------
-
-    private function boxVg(Element $e, array $s): void
-    {
-        $vg = $this->vg;
-        $r = $s['radius'] ?? 0;
-
-        if (isset($s['shadow'])) $this->shadow($e, $r, $s['shadow']);
-        if (isset($s['bg']) || isset($s['gradient'])) {
-            $this->shape($e->x, $e->y, $e->w, $e->h, $r);
-            if (isset($s['gradient'])) {
-                $vg->fillPaint($vg->linearGradient($e->x, $e->y, $e->x, $e->y + $e->h, $this->color($s['gradient'][0]), $this->color($s['gradient'][1])));
-            } else {
-                $vg->fillColor($this->color($s['bg']));
-            }
-            $vg->fill();
-        }
-        if (isset($s['borderW']) && $s['borderW'] > 0) {
-            $bw = $s['borderW'];
-            $this->shape($e->x + $bw / 2, $e->y + $bw / 2, $e->w - $bw, $e->h - $bw, $this->inset($r, $bw / 2));
-            $vg->strokeWidth($bw);
-            $vg->strokeColor($this->color($s['borderColor'] ?? '#00000020'));
-            $vg->stroke();
-        }
-        foreach ($s['sides'] ?? [] as $side => [$bw, $color]) {
-            $vg->beginPath();
-            match ($side) {
-                't' => $vg->rect($e->x, $e->y, $e->w, $bw),
-                'b' => $vg->rect($e->x, $e->y + $e->h - $bw, $e->w, $bw),
-                'l' => $vg->rect($e->x, $e->y, $bw, $e->h),
-                'r' => $vg->rect($e->x + $e->w - $bw, $e->y, $bw, $e->h),
-            };
-            $vg->fillColor($this->color($color));
-            $vg->fill();
-        }
-        if (isset($s['ring'])) {
-            [$rw, $rc] = $s['ring'];
-            $this->shape($e->x - $rw / 2, $e->y - $rw / 2, $e->w + $rw, $e->h + $rw, $this->inset($r, -$rw / 2));
-            $vg->strokeWidth($rw);
-            $vg->strokeColor($this->color($rc));
-            $vg->stroke();
-        }
-    }
-
-    private function shadow(Element $e, float|array $r, string $size): void
-    {
-        $vg = $this->vg;
-        $rr = is_array($r) ? max($r) : $r;
-        $strength = Theme::dark() ? 3.0 : 1.0; // dark surfaces need a stronger shadow to show at all
-        foreach (self::SHADOWS[$size] ?? [] as [$oy, $blur, $spread, $alpha]) {
-            [$x, $y, $w, $h] = [$e->x - $spread, $e->y + $oy - $spread, $e->w + 2 * $spread, $e->h + 2 * $spread];
-            $paint = $vg->boxGradient($x, $y + $blur / 4, $w, $h, $rr + $blur / 2, $blur,
-                VGColor::rgba(0, 0, 0, min(1, $alpha * $strength)), VGColor::rgba(0, 0, 0, 0));
-            $vg->beginPath();
-            $vg->rect($x - $blur * 2, $y - $blur * 2, $w + $blur * 4, $h + $blur * 4);
-            if ($this->mode === 'nanovg') {
-                // A hole under the box makes two paths: NanoVG fills them through the stencil buffer.
-                $vg->roundedRect($e->x, $e->y, $e->w, $e->h, $rr);
-                $vg->pathWinding(VGContext::HOLE);
-            }
-            $vg->fillPaint($paint);
-            $vg->fill();
-        }
-    }
-
-    private function scrollbar(Element $e, string $pass): void
+    private function scrollbar(Element $e): void
     {
         $track = $e->h - 8;
         $thumb = max(24, $track * $e->h / $e->contentH);
         $y = $e->y + 4 + ($track - $thumb) * $e->scrollY / max(1, $e->contentH - $e->h);
-        if ($pass === 'quads') {
-            $c = $this->rgba(t('border'));
-            $this->quads->add([$e->x + $e->w - 7, $y, 4, $thumb], [2, 2, 2, 2], $c, $c, [0, 0, 0, 0], 0, 0, $this->clip);
-            return;
-        }
-        $this->vg->beginPath();
-        $this->vg->roundedRect($e->x + $e->w - 7, $y, 4, $thumb, 2);
-        $this->vg->fillColor($this->color(t('border')));
-        $this->vg->fill();
+        $this->r->box($e->x + $e->w - 7, $y, 4, $thumb, [2, 2, 2, 2], $this->rgba(t('border')), null, null, 0, $this->clip);
+    }
+
+    /** A filled rectangle in the text pass: selections, carets, underlines. */
+    private function fillRect(float $x, float $y, float $w, float $h, string $color): void
+    {
+        $this->r->box($x, $y, $w, $h, [0, 0, 0, 0], $this->rgba($color), null, null, 0, $this->clip);
     }
 
     // Text and icons ------------------------------------------------------------
 
-    /** @var array<string, \GL\VectorGraphics\VGImage> Images by file. */
+    /** @var array<string, string> Image files by path, on disk (bundled images are exported once). */
     private array $images = [];
 
     private function image(Element $e, array $s): void
     {
-        $vg = $this->vg;
-        $image = $this->images[$e->text] ??= $vg->imageFromTexture(
-            \GL\Texture\Texture2D::fromDisk(realFile($e->text), 4), \GL\VectorGraphics\VGImage::REPEAT_NONE, \GL\VectorGraphics\VGImage::FILTER_LINEAR);
+        $file = $this->images[$e->text] ??= realFile($e->text);
         [$iw, $ih] = $e->imageSize;
         [$x, $y, $w, $h] = [$e->x, $e->y, $e->w, $e->h];
         if ($w <= 0 || $h <= 0 || $iw <= 0 || $ih <= 0) return;
@@ -599,11 +502,9 @@ final class Painter
         }
         [$dx, $dy] = [$x + ($w - $dw) / 2, $y + ($h - $dh) / 2];
         // Contain draws only the picture's own rectangle; cover and fill clip to the box and its corners.
-        $fit === 'contain'
-            ? $this->shape($dx, $dy, $dw, $dh, $s['radius'] ?? 0)
-            : $this->shape($x, $y, $w, $h, $s['radius'] ?? 0);
-        $vg->fillPaint($image->makePaint($dx, $dy, $dw, $dh, 0, 1));
-        $vg->fill();
+        $r = $s['radius'] ?? 0;
+        $box = $fit === 'contain' ? [$dx, $dy, $dw, $dh] : [$x, $y, $w, $h];
+        $this->r->image($file, $dx, $dy, $dw, $dh, $box, is_array($r) ? $r : [$r, $r, $r, $r], $this->alpha, $this->clip);
     }
 
     /** Where a line of text starts, given its box and alignment. */
@@ -623,19 +524,15 @@ final class Painter
         $ranges = $wrapped ? $e->ranges : [[0, mb_strlen($e->text)]];
         [$pl, $pr, $pt] = $wrapped ? [$s['pl'] ?? 0, $s['pr'] ?? 0, $s['pt'] ?? 0] : [0, 0, 0];
         $lh = $this->lineHeight($e->size);
-        $width = fn (string $t) => $this->textWidth($t, $e->font, $e->size, $s['tracking'] ?? 0);
         foreach ($ranges as $i => [$start, $len]) {
             if ($to <= $start || $from > $start + $len) continue;
             $line = mb_substr($e->text, $start, $len);
             $x = $this->lineStart($e, $wrapped ? rtrim($line, ' ') : $line, $e->x + $pl, $e->w - $pl - $pr, $s['textAlign'] ?? 'left');
-            $a = max($from, $start) - $start;
-            $b = min($to, $start + $len) - $start;
-            $x1 = $width(mb_substr($line, 0, $a));
+            $carets = $this->carets($line, $e->font, $e->size, $s['tracking'] ?? 0);
+            $x1 = $carets[max($from, $start) - $start];
+            $x2 = $carets[min($to, $start + $len) - $start];
             $cy = $wrapped ? $e->y + $pt + $i * $lh + $lh / 2 : $e->y + $e->h / 2;
-            $this->vg->beginPath();
-            $this->vg->rect($x + $x1, $cy - $lh / 2, max(2, $width(mb_substr($line, 0, $b)) - $x1 + ($to > $start + $len ? 4 : 0)), $lh);
-            $this->vg->fillColor($this->color(t('ring', 0.45)));
-            $this->vg->fill();
+            $this->fillRect($x + $x1, $cy - $lh / 2, max(2, $x2 - $x1 + ($to > $start + $len ? 4 : 0)), $lh, t('ring', 0.45));
         }
     }
 
@@ -666,7 +563,6 @@ final class Painter
 
     private function inputText(Element $e, array $s, ?array $composing = null): void
     {
-        $vg = $this->vg;
         [$pl, $pr, $pt] = [$s['pl'] ?? 0, $s['pr'] ?? 0, $s['pt'] ?? 0];
         $ix = $e->x + $pl;
         $iw = $e->w - $pl - $pr;
@@ -678,29 +574,15 @@ final class Painter
         $width = fn (string $t) => $this->textWidth($t, $e->font, $e->size, $tracking);
         $plain = ['truncate' => false, 'textAlign' => 'left'] + $s;
         $selection = $e->focused && $e->caret !== $e->anchor ? [min($e->caret, $e->anchor), max($e->caret, $e->anchor)] : null;
-        $highlight = function (float $x, float $cy, float $w) use ($vg, $ch) {
-            $vg->beginPath();
-            $vg->rect($x, $cy - $ch / 2 - 1, max(2, $w), $ch + 2);
-            $vg->fillColor($this->color(t('ring', 0.45)));
-            $vg->fill();
-        };
-        $underline = function (float $x, float $cy, float $w) use ($vg, $ch, $color) {
-            $vg->beginPath();
-            $vg->rect($x, $cy + $ch / 2, max(1, $w), 1);
-            $vg->fillColor($this->color($color));
-            $vg->fill();
-        };
-        $caret = function (float $x, float $cy) use ($vg, $ch, $color) {
+        $highlight = fn (float $x, float $cy, float $w) => $this->fillRect($x, $cy - $ch / 2 - 1, max(2, $w), $ch + 2, t('ring', 0.45));
+        $underline = fn (float $x, float $cy, float $w) => $this->fillRect($x, $cy + $ch / 2, max(1, $w), 1, $color);
+        $caret = function (float $x, float $cy) use ($ch, $color) {
             $this->caretRect = [round($x), $cy - $ch / 2, 1, $ch];
-            if (!$this->caretOn) return;
-            $vg->beginPath();
-            $vg->rect(round($x), $cy - $ch / 2, 1, $ch);
-            $vg->fillColor($this->color($color));
-            $vg->fill();
+            if ($this->caretOn) $this->fillRect(round($x), $cy - $ch / 2, 1, $ch, $color);
         };
 
-        $vg->save();
-        $vg->intersectScissor($e->x, $e->y, $e->w, $e->h);
+        $outer = $this->clip;
+        $this->clip = $this->intersect($this->clip, [$e->x, $e->y, $e->w, $e->h]);
         if (!$multi) {
             $cy = $e->y + $e->h / 2;
             $tx = $ix - $e->scrollX;
@@ -753,26 +635,21 @@ final class Painter
                 $caret($ix + $width(mb_substr($e->text, $start, $e->caret - $start)), $top + $i * $lh + $lh / 2);
             }
         }
-        $vg->restore();
+        $this->clip = $outer;
     }
 
     /** Draw one line of text, vertically centered in the element or on $cy. */
     public function text(Element $e, string $text, float $x, float $w, string $color, array $s = [], ?float $cy = null): void
     {
-        $vg = $this->vg;
-        if (!$this->fallbacksLoaded) $this->fallbacksFor($text);
         $tracking = $s['tracking'] ?? 0;
-        if (!empty($s['truncate']) && $this->textWidth($text, $e->font, $e->size, $tracking) > $w + 0.5) {
+        $width = $this->textWidth($text, $e->font, $e->size, $tracking);
+        if (!empty($s['truncate']) && $width > $w + 0.5) {
             $text = $this->ellipsize($text, $e->font, $e->size, $tracking, $w);
+            $width = $this->textWidth($text, $e->font, $e->size, $tracking);
         }
-        $vg->fontFace($e->font);
-        $vg->fontSize($e->size);
-        $vg->textLetterSpacing($tracking);
-        $vg->fillColor($this->color($color));
-        $align = $s['textAlign'] ?? 'left';
-        $vg->textAlign(match ($align) { 'center' => VGAlign::CENTER, 'right' => VGAlign::RIGHT, default => VGAlign::LEFT } | VGAlign::MIDDLE);
-        $tx = match ($align) { 'center' => $x + $w / 2, 'right' => $x + $w, default => $x };
-        $vg->text($tx, $cy ?? $e->y + $e->h / 2, $text);
+        $tx = match ($s['textAlign'] ?? 'left') { 'center' => $x + ($w - $width) / 2, 'right' => $x + $w - $width, default => $x };
+        $this->r->text($text, $e->font, $e->size, $tx, $this->baseline($e->font, $e->size, $cy ?? $e->y + $e->h / 2),
+            $this->rgba($color), $tracking, $this->clip);
     }
 
     private function ellipsize(string $text, string $font, float $size, float $tracking, float $w): string
@@ -785,106 +662,12 @@ final class Painter
         return rtrim(mb_substr($text, 0, $lo)) . '…';
     }
 
-    /** A Lucide icon, recolored, scaled to $size and centered in the element. */
+    /** A Lucide icon in $color, scaled to $size and centered in the element. */
     private function icon(Element $e, string $name, string $color, float $size): void
     {
-        $key = "$name|$color";
-        $this->svg($name, $color);
-        $vg = $this->vg;
-        $x = $e->x + ($e->w - $size) / 2;
-        $y = $e->y + ($e->h - $size) / 2;
-        $image = $this->mode === 'nanovg' ? null : ($this->iconImages[$this->iconKey($name, $color, $size, $this->ratio)] ?? null);
-        if ($image !== null) {
-            // A cached texture: one textured quad, no stencil work.
-            $vg->beginPath();
-            $vg->rect($x, $y, $size, $size);
-            $vg->fillPaint($image->makePaint($x, $y, $size, $size));
-            $vg->fill();
-            return;
-        }
-        // drawSVG saves and restores NanoVG's clip around every call: two full-screen stencil passes each.
-        $vg->lineCap(VGContext::LINECAP_ROUND);
-        $vg->lineJoin(VGContext::LINECAP_ROUND); // NanoVG's ROUND join shares this value
-        $vg->drawSVG($this->icons[$key], $x, $y, $size, $size);
-    }
-
-    private function iconKey(string $name, string $color, float $size, float $ratio): string
-    {
-        return "$name|$color|" . (int) round($size * $ratio);
-    }
-
-    /** Rasterize icons the tree uses and the cache lacks, each once, into textures. */
-    private function rasterizeIcons(Element $root, float $ratio, float $w, float $h): void
-    {
-        $missing = [];
-        $collect = function (Element $e) use (&$collect, &$missing, $ratio) {
-            foreach ([$e->style['icon'] ?? null, $e->hoverStyle['icon'] ?? null] as $icon) {
-                if ($icon && !isset($this->iconImages[$this->iconKey($icon[0], $icon[1], $icon[2] ?? 16, $ratio)])) {
-                    $missing[$this->iconKey($icon[0], $icon[1], $icon[2] ?? 16, $ratio)] = [$icon[0], $icon[1], $icon[2] ?? 16];
-                }
-            }
-            foreach ($e->children as $c) $collect($c);
-        };
-        $collect($root);
-        if (!$missing) return;
-
-        $vg = $this->vg;
-        foreach ($missing as $key => [$name, $color, $size]) {
-            $px = max(1, (int) round($size * $ratio));
-            $this->bindIconFbo($px);
-            glViewport(0, 0, $px, $px);
-            // Clear to the icon's color at zero alpha: blending then leaves straight (not premultiplied) color, as NanoVG images expect.
-            [$r, $g, $b] = array_map(fn ($v) => $v / 255, array_slice($this->bytes($color), 0, 3));
-            glClearColor($r, $g, $b, 0);
-            glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-            $vg->beginFrame($px, $px, 1);
-            // Draw upside down: glReadPixels returns rows bottom first, so the texture comes out upright.
-            $vg->translate(0, $px);
-            $vg->scale(1, -1);
-            $this->svg($name, $color);
-            $vg->lineCap(VGContext::LINECAP_ROUND);
-            $vg->lineJoin(VGContext::LINECAP_ROUND);
-            $vg->drawSVG($this->icons["$name|$color"], 0, 0, $px, $px);
-            $vg->endFrame();
-            $pixels = new \GL\Buffer\UByteBuffer();
-            glReadPixels(0, 0, $px, $px, GL_RGBA, GL_UNSIGNED_BYTE, $pixels);
-            $texture = \GL\Texture\Texture2D::fromBuffer($px, $px, $pixels, \GL\Texture\Texture2D::CHANNEL_RGBA);
-            $this->iconImages[$key] = $vg->imageFromTexture($texture);
-        }
-        glBindFramebuffer(GL_FRAMEBUFFER, $this->target);
-        glViewport(0, 0, (int) round($w * $ratio), (int) round($h * $ratio));
-    }
-
-    private function bindIconFbo(int $px): void
-    {
-        if ($px > $this->iconFboSize) {
-            if ($this->iconFbo) glDeleteFramebuffers(1, $this->iconFbo);
-            $size = max(64, $px);
-            glGenFramebuffers(1, $fbo);
-            glGenRenderbuffers(2, $color, $stencil);
-            glBindRenderbuffer(GL_RENDERBUFFER, $color);
-            glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, $size, $size);
-            glBindRenderbuffer(GL_RENDERBUFFER, $stencil);
-            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, $size, $size);
-            glBindFramebuffer(GL_FRAMEBUFFER, $fbo);
-            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, $color);
-            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, $stencil);
-            [$this->iconFbo, $this->iconFboSize] = [$fbo, $size];
-        }
-        glBindFramebuffer(GL_FRAMEBUFFER, $this->iconFbo);
-    }
-
-    /** Parse an icon's SVG, recolored, once. */
-    private function svg(string $name, string $color): void
-    {
-        $key = "$name|$color";
-        if (isset($this->icons[$key])) return;
-        $svg = @file_get_contents("{$this->iconDir}/$name.svg");
-        if ($svg === false) throw new \InvalidArgumentException("No icon named $name in assets/icons");
-        [$hex, $alpha] = $this->splitAlpha($color);
-        $svg = str_replace('stroke="currentColor"', "stroke=\"$hex\" stroke-opacity=\"$alpha\"", $svg);
-        $svg = str_replace('fill="currentColor"', "fill=\"$hex\" fill-opacity=\"$alpha\"", $svg);
-        $this->icons[$key] = SVGImage::fromString($svg);
+        $svg = $this->icons[$name] ??= @file_get_contents("{$this->iconDir}/$name.svg")
+            ?: throw new \InvalidArgumentException("No icon named $name in assets/icons");
+        $this->r->icon($svg, $e->x + ($e->w - $size) / 2, $e->y + ($e->h - $size) / 2, $size, $this->rgba($color), $this->clip);
     }
 
     // Helpers -------------------------------------------------------------------
@@ -898,10 +681,6 @@ final class Painter
             : $this->vg->roundedRect($x, $y, $w, $h, $r);
     }
 
-    private function inset(float|array $r, float $by): float|array
-    {
-        return is_array($r) ? array_map(fn ($v) => max(0, $v - $by), $r) : max(0, $r - $by);
-    }
 
     private function intersect(array $a, array $b): array
     {
@@ -910,13 +689,6 @@ final class Painter
         return [$x, $y, max(0, min($a[0] + $a[2], $b[0] + $b[2]) - $x), max(0, min($a[1] + $a[3], $b[1] + $b[3]) - $y)];
     }
 
-    /** Split '#rrggbbaa' into '#rrggbb' and an opacity, for SVG. */
-    private function splitAlpha(string $hex): array
-    {
-        $h = ltrim($hex, '#');
-        if (strlen($h) === 3) $h = $h[0] . $h[0] . $h[1] . $h[1] . $h[2] . $h[2];
-        return ['#' . substr($h, 0, 6), strlen($h) === 8 ? round(hexdec(substr($h, 6)) / 255, 3) : 1];
-    }
 
     /** A color as [r, g, b, a] floats, with the current opacity applied. */
     private function rgba(string $hex): array

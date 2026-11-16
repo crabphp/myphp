@@ -32,6 +32,7 @@
 #include "php_phpsdl.h"
 #include "phpsdl_arginfo.h"
 #include "phpsdl_keys.h"
+#include "render.h"
 
 ZEND_DECLARE_MODULE_GLOBALS(phpsdl)
 
@@ -514,6 +515,8 @@ PHP_MINIT_FUNCTION(phpsdl)
     phpsdl_window_handlers.free_obj = phpsdl_window_free;
     phpsdl_window_handlers.clone_obj = NULL;
     phpsdl_sdl_ce = register_class_PhpSdl_Sdl();
+    register_class_PhpSdl_Text();
+    phpsdl_render_register(register_class_PhpSdl_Renderer());
     return SUCCESS;
 }
 
@@ -521,6 +524,7 @@ PHP_MSHUTDOWN_FUNCTION(phpsdl)
 {
     UNREGISTER_INI_ENTRIES();
     phpglfw_shutdown_callbacks();
+    phpsdl_render_shutdown();
     for (int i = 0; i < 3; i++) if (phpsdl_cursors[i]) SDL_DestroyCursor(phpsdl_cursors[i]);
     if (phpsdl_context) SDL_GL_DestroyContext(phpsdl_context);
     if (phpsdl_first) SDL_DestroyWindow(phpsdl_first);
