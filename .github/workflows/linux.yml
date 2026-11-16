@@ -31,6 +31,10 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev \
             libgl-dev xvfb libgl1-mesa-dri imagemagick pkg-config > /dev/null
+          # The runner ships older OpenSSL, libxml2, curl and SQLite development links, and the
+          # glfw recipe puts the system library folder first: remove those links so the
+          # runtime links the versions static-php-cli builds.
+          for l in xml2 ssl crypto curl sqlite3 z lzma iconv; do sudo rm -f /usr/lib/x86_64-linux-gnu/lib$l.so /usr/lib/x86_64-linux-gnu/lib$l.a; done
 
       - name: Restore the PHP runtime
         id: runtime
@@ -63,7 +67,7 @@ jobs:
           for l in X11 Xrandr Xinerama Xcursor Xi; do ln -sf /usr/lib/x86_64-linux-gnu/lib$l.so x11libs/; done
           cp ../build/craft.yml .
           bin/spc doctor --auto-fix || true
-          SPC_TOOLCHAIN='StaticPHP\Toolchain\GccNativeToolchain' SPC_TARGET=native-native-gnu SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/buildroot/lib -L$PWD/x11libs" bin/spc craft -v \
+          SPC_TOOLCHAIN='StaticPHP\Toolchain\GccNativeToolchain' SPC_TARGET=native-native-gnu SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft -v \
             || { tail -n 80 craft.log 2>/dev/null; grep -rn -B3 -A12 -E 'error[: ]|undefined reference|ld: ' log 2>/dev/null | tail -200; exit 1; }
 
       - uses: actions/upload-artifact@v4
