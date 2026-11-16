@@ -64,6 +64,12 @@ jobs:
           SPC_TARGET=native-native-gnu.2.17 SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft -v \
             || { tail -n 80 craft.log 2>/dev/null; grep -rn -B3 -A12 -E 'error[: ]|undefined reference|ld: ' log 2>/dev/null | tail -200; exit 1; }
 
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: spc-logs
+          path: spc/log/
+
       - name: Build myphp
         run: |
           PHP=$PWD/spc/buildroot/bin/php MYPHP_VERSION=${{ inputs.version || 'dev' }} build/make-myphp.sh spc/buildroot/bin/micro.sfx
