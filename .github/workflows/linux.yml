@@ -63,7 +63,7 @@ jobs:
           for l in X11 Xrandr Xinerama Xcursor Xi; do ln -sf /usr/lib/x86_64-linux-gnu/lib$l.so x11libs/; done
           cp ../build/craft.yml .
           bin/spc doctor --auto-fix || true
-          SPC_LIBC=glibc SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft -v \
+          SPC_TOOLCHAIN='StaticPHP\Toolchain\GccNativeToolchain' SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft -v \
             || { tail -n 80 craft.log 2>/dev/null; grep -rn -B3 -A12 -E 'error[: ]|undefined reference|ld: ' log 2>/dev/null | tail -200; exit 1; }
 
       - uses: actions/upload-artifact@v4
