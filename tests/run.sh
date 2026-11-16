@@ -15,7 +15,8 @@ xvfb=''
 group=''
 cleanup() {
     [[ -z $group ]] || kill -- -"$group" 2>/dev/null || true
-    [[ -z $xvfb ]] || kill "$xvfb" 2>/dev/null || true
+    # Wait for the server to exit, so a run right after this one can start its own.
+    [[ -z $xvfb ]] || { kill "$xvfb" 2>/dev/null; wait "$xvfb" 2>/dev/null; } || true
 }
 trap cleanup EXIT
 if ! xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then

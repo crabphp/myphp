@@ -55,7 +55,14 @@ and other theme tokens adapt to light/dark mode. Use `bg()`, `gradient()`,
 `truncate()` adds an ellipsis; `textCenter()` and `textRight()` align text.
 
 `hover(fn ($s) => $s->bg('#eeeeee'))` and `focus(...)` change **painting only**, not
-layout. `when($condition, $then, $else = null)` conditionally changes the node;
+layout. A text color set this way also colors the text inside the element.
+
+`->transition($ms = 150)` fades background, text and border color, opacity and the
+focus ring between states (hover, focus, or a style that changed in the next render)
+with an ease-out curve. `->animateIn($ms = 150)` fades an element in each time it
+appears. Buttons, inputs, tabs, toggles, checkboxes, switches, menus, dialogs, tooltips
+and toasts use them already. Animations follow elements by `id()` (or their position
+in the tree), and screenshots always show the finished state. `when($condition, $then, $else = null)` conditionally changes the node;
 callbacks must return it. Use stable, unique `id()` values for inputs and scrolling.
 IDs also support scripted input through `$app->clickId('add')` and `$app->find('add')`.
 
@@ -111,6 +118,6 @@ Ctrl/Cmd+Enter calls `onSubmit`. On macOS the shortcuts use Cmd, and Alt for wor
 ## Limits
 
 There is no IME (input method) support, undo, rich text, accessibility layer, or
-animation system yet. With nothing selected, copy and cut take the whole value of an
+animation of sizes and positions yet. With nothing selected, copy and cut take the whole value of an
 input. See [Components](components.md)
 and [Desktop](desktop.md) for the available controls and desktop behavior.

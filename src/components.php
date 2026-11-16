@@ -33,7 +33,7 @@ function button(string $label, ?callable $onClick = null, string $variant = 'def
     };
     $iconOnly = str_starts_with($size, 'icon');
     return row()->center()->gap(8)->h($h)->when($iconOnly, fn ($e) => $e->w($h), fn ($e) => $e->px($icon && $label ? $px - 4 : $px))
-        ->rounded(8)->textColor($fg)->medium()->textSize(14)
+        ->rounded(8)->textColor($fg)->medium()->textSize(14)->transition()
         ->when($bg !== null, fn ($e) => $e->bg($bg))
         ->when($hover !== null, fn ($e) => $e->hover(fn ($s) => $s->bg($hover)))
         ->when($border !== null, fn ($e) => $e->border(1, $border))
@@ -98,7 +98,7 @@ function textInput(string $id, string $value, callable $onInput, string $placeho
 {
     $e = input($id, $value, $onInput)->h(36)->pl($icon ? 34 : 12)->pr(12)->rounded(8)
         ->bg(Theme::dark() ? t('input', 0.3) : '#00000000')->border(1, t('input'))->shadow('xs')->textSize(14)
-        ->focus(fn ($s) => $s->borderColor(t('ring'))->ring(3, t('ring', 0.5)));
+        ->transition()->focus(fn ($s) => $s->borderColor(t('ring'))->ring(3, t('ring', 0.5)));
     $e->placeholder = $placeholder;
     if (!$icon) return $e;
     return div()->h(36)->child($e->w('100%'))->child(icon($icon, 16, t('muted-foreground'))->absolute()->left(11)->top(10));
@@ -109,7 +109,7 @@ function textarea(string $id, string $value, callable $onInput, string $placehol
 {
     $e = input($id, $value, $onInput)->multiline($rows)->px(12)->py(8)->rounded(8)
         ->bg(Theme::dark() ? t('input', 0.3) : '#00000000')->border(1, t('input'))->shadow('xs')->textSize(14)
-        ->focus(fn ($s) => $s->borderColor(t('ring'))->ring(3, t('ring', 0.5)));
+        ->transition()->focus(fn ($s) => $s->borderColor(t('ring'))->ring(3, t('ring', 0.5)));
     $e->placeholder = $placeholder;
     return $e;
 }
@@ -122,7 +122,7 @@ function label(string $text): Element
 /** size-4, rounded-[4px], border-input; checked fills with primary and shows a check. */
 function checkbox(bool $checked, callable $onToggle): Element
 {
-    return row()->center()->size(16)->rounded(4)->shadow('xs')
+    return row()->center()->size(16)->rounded(4)->shadow('xs')->transition()
         ->when($checked,
             fn ($e) => $e->bg(t('primary'))->border(1, t('primary'))->icon('check', t('primary-foreground'), 14),
             fn ($e) => $e->bg(Theme::dark() ? t('input', 0.3) : '#00000000')->border(1, t('input')))
@@ -134,7 +134,7 @@ function switchToggle(bool $on, callable $onToggle): Element
 {
     $track = $on ? t('primary') : (Theme::dark() ? t('input', 0.8) : t('input'));
     $thumb = Theme::dark() ? ($on ? t('primary-foreground') : t('foreground')) : t('background');
-    return row()->itemsCenter()->w(32)->h(18)->rounded(9)->bg($track)->px(1)->shadow('xs')
+    return row()->itemsCenter()->w(32)->h(18)->rounded(9)->bg($track)->px(1)->shadow('xs')->transition()
         ->when($on, fn ($e) => $e->justifyEnd())
         ->child(div()->size(16)->rounded(8)->bg($thumb))
         ->onClick($onToggle);
@@ -145,7 +145,7 @@ function selectTrigger(string $value, callable $onClick, string $size = 'default
 {
     return row()->itemsCenter()->justifyBetween()->gap(8)->h($size === 'sm' ? 32 : 36)->pl(12)->pr(10)->rounded(8)
         ->bg(Theme::dark() ? t('input', 0.3) : '#00000000')->border(1, t('input'))->shadow('xs')->textSize(14)
-        ->hover(fn ($s) => $s->bg(Theme::dark() ? t('input', 0.5) : '#00000000'))
+        ->transition()->hover(fn ($s) => $s->bg(Theme::dark() ? t('input', 0.5) : '#00000000'))
         ->child(text($value))
         ->child(icon('chevron-down', 16, t('muted-foreground'))->opacity(0.5))
         ->onClick($onClick);
@@ -159,7 +159,7 @@ function tabs(array $items, string $active, callable $onChange, string $idPrefix
     $list = row()->h(36)->p(3)->rounded(10)->bg(t('muted'))->textColor(t('muted-foreground'))->self('start');
     foreach ($items as $value => $label) {
         $on = $value === $active;
-        $list->child(row()->center()->gap(6)->px(8)->rounded(7)->textSize(14)->medium()->id("$idPrefix-$value")
+        $list->child(row()->center()->gap(6)->px(8)->rounded(7)->textSize(14)->medium()->id("$idPrefix-$value")->transition()
             ->border(1, $on && Theme::dark() ? t('input') : '#00000000')
             ->when($on,
                 fn ($e) => $e->bg(Theme::dark() ? t('input', 0.3) : t('background'))->textColor(t('foreground'))->shadow('sm'),
@@ -177,7 +177,7 @@ function toggleGroup(array $items, string $active, callable $onChange, string $i
     $keys = array_keys($items);
     foreach ($items as $value => $label) {
         $on = $value === $active;
-        $group->child(row()->center()->px(12)->textSize(14)->medium()->id("$idPrefix-$value")
+        $group->child(row()->center()->px(12)->textSize(14)->medium()->id("$idPrefix-$value")->transition()
             ->when($value !== end($keys), fn ($e) => $e->borderR(1, t('input')))
             ->when($on, fn ($e) => $e->bg(t('accent')), fn ($e) => $e->hover(fn ($s) => $s->bg(t('muted'))))
             ->onClick(fn () => $onChange($value))
@@ -223,7 +223,7 @@ function table(array $columns, array $rows, ?callable $rowId = null, ?string $he
 function dropdownMenu(array $items, callable $onClose, float $width = 192): Element
 {
     $menu = col()->w($width)->p(4)->rounded(8)->bg(t('popover'))->textColor(t('popover-foreground'))
-        ->border(1, t('border'))->shadow('md')->stopClicks()->onClickOutside($onClose);
+        ->border(1, t('border'))->shadow('md')->stopClicks()->onClickOutside($onClose)->animateIn(120);
     foreach ($items as $item) {
         if ($item === 'separator') {
             $menu->child(col()->py(4)->child(separator()));
@@ -233,7 +233,7 @@ function dropdownMenu(array $items, callable $onClose, float $width = 192): Elem
             [$label, $onClick, $ico, $shortcut] = $item + [null, null, null, null];
             $destructive = ($item['variant'] ?? null) === 'destructive';
             $fg = $destructive ? t('destructive') : t('popover-foreground');
-            $menu->child(row()->itemsCenter()->gap(8)->h(32)->px(8)->rounded(4)->textSize(14)->textColor($fg)
+            $menu->child(row()->itemsCenter()->gap(8)->h(32)->px(8)->rounded(4)->textSize(14)->textColor($fg)->transition(100)
                 ->hover(fn ($s) => $s->bg($destructive ? t('destructive', 0.1) : t('accent')))
                 ->when($ico !== null, fn ($e) => $e->child(icon($ico, 16, $destructive ? $fg : t('muted-foreground'))))
                 ->child(text($label)->grow())
@@ -250,7 +250,7 @@ function dropdownMenu(array $items, callable $onClose, float $width = 192): Elem
 /** A modal dialog: overlay, centered panel with title, description, body and footer. */
 function dialog(string $title, string $description, Element $body, Element $footer, callable $onClose): Element
 {
-    return div()->absolute()->inset(0)->bg(t('overlay'))->center()->onClick($onClose)->cursor('default')
+    return div()->absolute()->inset(0)->bg(t('overlay'))->center()->onClick($onClose)->cursor('default')->animateIn(150)
         ->child(col()->w(448)->gap(16)->p(24)->rounded(10)->bg(t('background'))->border(1, t('border'))->shadow('lg')
             ->stopClicks()
             ->child(row()->itemsStart()
@@ -271,7 +271,7 @@ function messageBox(string $title, string $message, array $buttons, callable $on
         $variant = in_array($i, $destructive, true) ? 'destructive' : ($i === $default ? 'default' : 'outline');
         $footer->child(button($label, fn () => $onButton($i), $variant)->id("message-button-$i"));
     }
-    $box = div()->absolute()->inset(0)->bg(t('overlay'))->center()->stopClicks()->id('message-overlay')
+    $box = div()->absolute()->inset(0)->bg(t('overlay'))->center()->stopClicks()->id('message-overlay')->animateIn(150)
         ->child(col()->w(448)->gap(16)->p(24)->rounded(10)->bg(t('background'))->textColor(t('foreground'))
             ->border(1, t('border'))->shadow('lg')->stopClicks()->id('message-panel')
             ->child(row()->itemsCenter()->gap(10)->child(icon($ico, 20))->child(text($title)->textSize(18)->semibold()))
@@ -284,7 +284,7 @@ function messageBox(string $title, string $message, array $buttons, callable $on
 /** A tooltip shown while the pointer is over the parent: bg-foreground, text-xs. */
 function tooltip(string $text, string $side = 'bottom'): Element
 {
-    $tip = row()->absolute()->hoverOnly()->centerX()->h(26)->px(12)->rounded(6)
+    $tip = row()->absolute()->hoverOnly()->centerX()->h(26)->px(12)->rounded(6)->animateIn(100)
         ->bg(t('foreground'))->textColor(t('background'))->textSize(12);
     return ($side === 'top' ? $tip->top(-32) : $tip->bottom(-32))->child($text);
 }
@@ -292,7 +292,7 @@ function tooltip(string $text, string $side = 'bottom'): Element
 /** A toast in the corner: bg-popover border shadow-lg, title and description. */
 function toast(string $title, string $description, ?string $icon = 'circle-check'): Element
 {
-    return row()->absolute()->right(24)->bottom(24)->w(356)->gap(10)->p(16)->rounded(8)
+    return row()->absolute()->right(24)->bottom(24)->w(356)->gap(10)->p(16)->rounded(8)->animateIn(200)
         ->bg(t('popover'))->border(1, t('border'))->shadow('lg')->itemsStart()
         ->when($icon !== null, fn ($e) => $e->child(col()->pt(2)->child(icon($icon, 16, t('foreground')))))
         ->child(col()->gap(2)->flex1()

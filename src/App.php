@@ -81,6 +81,8 @@ final class App
             if ($action !== GLFW_RELEASE) $this->key($key, $mods);
         });
         glfwSetWindowRefreshCallback($this->window, fn () => $this->dirty = true);
+        // Keep drawing at display rate while something is animating.
+        $this->waitHint(fn () => $this->painter->animating ? 1 / 120 : 0.5);
         $this->poller(Desktop::poll(...));
         $this->waitHint(Desktop::waitHint(...));
         $this->onShutdown(Desktop::shutdown(...));
@@ -226,7 +228,7 @@ final class App
         glfwGetFramebufferSize($this->window, $fbw, $fbh);
         $this->draw($w, $h, $w > 0 ? $fbw / $w : 1, fmod(glfwGetTime(), 1.0) < 0.5);
         glfwSwapBuffers($this->window);
-        $this->dirty = false;
+        $this->dirty = $this->painter->animating;
     }
 
     /**
@@ -248,8 +250,12 @@ final class App
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) !== GL_FRAMEBUFFER_COMPLETE) throw new \RuntimeException('Framebuffer incomplete');
 
         $this->painter->target = $fbo;
-        $this->draw($w, $h, $scale, true);
-        $this->painter->target = 0;
+        $this->painter->instant = true;
+        try {
+            $this->draw($w, $h, $scale, true);
+        } finally {
+            [$this->painter->target, $this->painter->instant] = [0, false];
+        }
 
         $pixels = new UByteBuffer();
         glReadPixels(0, 0, $pw, $ph, GL_RGBA, GL_UNSIGNED_BYTE, $pixels);

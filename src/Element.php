@@ -42,6 +42,8 @@ final class Element
     public ?Element $parent = null;
     public bool $hovered = false;
     public bool $focused = false;
+    /** Paint style for the current frame, animations applied (set by Painter). */
+    public ?array $painted = null;
     /** Input editing: caret and selection anchor as character offsets. */
     public int $caret = 0, $anchor = 0;
 
@@ -214,6 +216,13 @@ final class Element
         if (!in_array($mode, ['contain', 'cover', 'fill'], true)) throw new \InvalidArgumentException("Unknown fit $mode");
         return $this->set('fit', $mode);
     }
+    /**
+     * Fade background, text and border color, opacity and focus ring between states
+     * (hover, focus, or a changed style) over $ms milliseconds. Needs a stable id().
+     */
+    public function transition(float $ms = 150): self { return $this->set('transition', max(1, $ms)); }
+    /** Fade in over $ms milliseconds each time the element appears, e.g. a menu or dialog. */
+    public function animateIn(float $ms = 150): self { return $this->set('enter', max(1, $ms)); }
     /** Cut text that does not fit with an ellipsis. */
     public function truncate(): self { return $this->set('truncate', true)->shrink(); }
 

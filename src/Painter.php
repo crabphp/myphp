@@ -41,6 +41,16 @@ final class Painter
     private array $overlays = [];
     private string $iconDir;
     private bool $caretOn = true;
+    /** Time in seconds for animations; tests can replace it. */
+    public ?\Closure $clock = null;
+    /** Skip animations and show final states, e.g. for screenshots. */
+    public bool $instant = false;
+    /** True while the last frame had an animation in progress. */
+    public bool $animating = false;
+    /** @var array<string, array<string, array>> Running transitions by element id and property. */
+    private array $anim = [];
+    private array $seen = [], $seenNow = [];
+    private float $now = 0;
     private array $lineCache = [];
     private float $ratio = 1.0;
     /** Current clip rectangle and opacity, for the quad pass. */
@@ -196,6 +206,12 @@ final class Painter
     public function render(Element $root, float $w, float $h, float $ratio, bool $caretOn): void
     {
         $this->caretOn = $caretOn;
+        $this->now = $this->clock ? ($this->clock)() : glfwGetTime();
+        $this->animating = false;
+        // Elements painted in the last frame; one missing there is appearing now.
+        $this->seen = $this->seenNow;
+        $this->seenNow = [];
+        $this->anim = array_intersect_key($this->anim, $this->seen);
         $this->overlays = [];
         $this->ratio = $ratio;
         if ($this->mode !== 'nanovg') $this->rasterizeIcons($root, $ratio, $w, $h);
@@ -233,7 +249,8 @@ final class Painter
     }
 
     /** Pass 'all' draws everything with NanoVG; 'quads' only boxes; 'vg' only text, icons and canvases. */
-    private function walk(Element $e, string $pass, bool $asOverlay = false): void
+    /** $color is the parent's painted text color: hover and animated colors reach child text. */
+    private function walk(Element $e, string $pass, bool $asOverlay = false, ?string $color = null): void
     {
         if ($e->isAbsolute() && !$asOverlay) {
             if ($pass !== 'vg' && empty($e->style['hidden'])) $this->overlays[] = $e;
@@ -242,7 +259,7 @@ final class Painter
         if (!empty($e->style['hidden'])) return;
 
         $vg = $this->vg;
-        $s = $e->paintStyle();
+        $s = $e->painted ??= $this->animate($e, $this->inherit($e->paintStyle(), $e, $color));
         $clips = !empty($s['clip']);
         $save = $this->mode === 'nanovg' || isset($s['opacity']) || $clips;
         [$clip, $alpha] = [$this->clip, $this->alpha];
@@ -276,11 +293,107 @@ final class Painter
             if ($pass === 'quads') $this->clip = $this->intersect($this->clip, [$e->x, $e->y, $e->w, $e->h]);
             else $vg->intersectScissor($e->x, $e->y, $e->w, $e->h);
         }
-        foreach ($e->children as $c) $this->walk($c, $pass);
+        foreach ($e->children as $c) $this->walk($c, $pass, false, $s['color'] ?? null);
         if (!empty($s['scroll']) && $e->contentH > $e->h && $pass !== 'vg') $this->scrollbar($e, $pass);
 
         if ($save && $pass !== 'quads') $vg->restore();
         [$this->clip, $this->alpha] = [$clip, $alpha];
+    }
+
+    /** An element without its own text color paints with its parent's painted one. */
+    private function inherit(array $s, Element $e, ?string $color): array
+    {
+        if (!isset($s['color'])) $s['color'] = $color ?? $e->color;
+        return $s;
+    }
+
+    // Animation ----------------------------------------------------------------
+
+    /** Paint style with transitions and fade-in applied for this frame. */
+    private function animate(Element $e, array $s): array
+    {
+        $ms = $s['transition'] ?? null;
+        $enter = $s['enter'] ?? null;
+        if (($ms === null && $enter === null) || $e->id === null) return $s;
+        $id = $e->id;
+        $this->seenNow[$id] = true;
+        $appearing = !isset($this->seen[$id]);
+        if ($appearing) unset($this->anim[$id]);
+        if ($this->instant) return $s;
+
+        if ($ms !== null) {
+            foreach (['bg', 'color', 'borderColor', 'opacity', 'ring'] as $key) {
+                $value = match ($key) {
+                    'color' => $this->floatsOf($s['color'] ?? $e->color),
+                    'opacity' => [(float) ($s['opacity'] ?? 1)],
+                    'ring' => isset($s['ring']) ? [$s['ring'][0], ...$this->floatsOf($s['ring'][1])] : null,
+                    default => isset($s[$key]) ? $this->floatsOf($s[$key]) : null,
+                };
+                $current = $this->tween($id, $key, $value, $ms / 1000);
+                if ($current === null) { unset($s[$key]); continue; }
+                $s[$key] = match ($key) {
+                    'opacity' => $current[0],
+                    'ring' => [$current[0], $this->hexOf(array_slice($current, 1))],
+                    default => $this->hexOf($current),
+                };
+            }
+            if (($s['opacity'] ?? 1) >= 1) unset($s['opacity']);
+        }
+        if ($enter !== null) {
+            if ($appearing) $this->anim[$id]['enter'] = ['from' => [0.0], 'to' => [1.0], 'start' => $this->now, 'time' => $enter / 1000, 'gone' => false];
+            $fade = $this->tween($id, 'enter', [1.0], $enter / 1000);
+            if ($fade !== null && $fade[0] < 1) $s['opacity'] = ($s['opacity'] ?? 1) * $fade[0];
+        }
+        return $s;
+    }
+
+    /**
+     * The value to show for a property moving to $target ([floats], or null when unset).
+     * A new target starts from what is on screen; an unset color fades to transparent.
+     */
+    private function tween(string $id, string $key, ?array $target, float $time): ?array
+    {
+        $state = $this->anim[$id][$key] ?? null;
+        if ($state === null) {
+            if ($target === null) return null;
+            $state = ['from' => $target, 'to' => $target, 'start' => -INF, 'time' => $time, 'gone' => false];
+        }
+        $goal = $target ?? $this->transparent($state['to']);
+        if ($goal !== $state['to']) {
+            $state = ['from' => $this->progress($state), 'to' => $goal, 'start' => $this->now, 'time' => $time, 'gone' => $target === null];
+            if ($state['from'] !== null && count($state['from']) !== count($goal)) $state['from'] = $goal;
+        }
+        if ($state['from'] === null) $state['from'] = $this->transparent($goal);
+        $value = $this->progress($state);
+        $done = $this->now - $state['start'] >= $state['time'];
+        if (!$done) $this->animating = true;
+        if ($done && $state['gone']) { unset($this->anim[$id][$key]); return null; }
+        $this->anim[$id][$key] = $state;
+        return $value;
+    }
+
+    private function progress(array $state): array
+    {
+        $t = $state['time'] > 0 ? min(1, max(0, ($this->now - $state['start']) / $state['time'])) : 1;
+        $t = 1 - (1 - $t) ** 3; // ease out
+        return array_map(fn ($a, $b) => $a + ($b - $a) * $t, $state['from'], $state['to']);
+    }
+
+    /** The same color (or ring) with zero alpha; opacity stays as it is. */
+    private function transparent(array $v): array
+    {
+        if (count($v) >= 4) $v[count($v) - 1] = 0.0;
+        return $v;
+    }
+
+    private function floatsOf(string $hex): array
+    {
+        return array_map(fn ($v) => $v / 255, $this->bytes($hex));
+    }
+
+    private function hexOf(array $c): string
+    {
+        return vsprintf('#%02x%02x%02x%02x', array_map(fn ($v) => (int) round(max(0, min(1, $v)) * 255), $c));
     }
 
     // Boxes as quads -----------------------------------------------------------
