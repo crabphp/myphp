@@ -121,6 +121,25 @@ check($app->find('line')->scrollX > 0, 'a long single line scrolls to keep the c
 $app->key(GLFW_KEY_HOME);
 same(0.0, $app->find('line')->scrollX, 'Home scrolls back to the start');
 
+// Undo and redo
+$app->key(GLFW_KEY_A, $mod);
+$app->type('abc');
+$app->type(' ');
+$app->type('def');
+same('abc def', $s->line, 'typed text before undo');
+$app->key(GLFW_KEY_Z, $mod);
+same('abc ', $s->line, 'undo removes the last run of typing');
+$app->key(GLFW_KEY_Z, $mod);
+same('abc', $s->line, 'undo steps back through edits');
+$app->key(GLFW_KEY_Z, $mod | GLFW_MOD_SHIFT);
+same('abc ', $s->line, 'Shift+undo redoes');
+$app->type('x');
+$app->key(GLFW_KEY_Z, $mod | GLFW_MOD_SHIFT);
+same('abc x', $s->line, 'typing clears the redo history');
+$s->line = 'reset by the app';
+$app->key(GLFW_KEY_Z, $mod);
+same('reset by the app', $s->line, 'a value set by the app starts a new history');
+
 // Multi-line editing ---------------------------------------------------------
 
 $app->clickId('note');

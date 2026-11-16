@@ -115,14 +115,14 @@ text with an optional fixed width. `->truncate()` cuts one line with an ellipsis
 
 Inputs (`textInput()`, and `textarea()` for several lines) are full editors: click
 or drag to place the caret and select, double-click selects a word, arrows move
-(Ctrl/Alt for words, Shift to select), Home/End, Backspace/Delete, select all, and
-copy, cut and paste of the selection. Long text scrolls to keep the caret visible.
+(Ctrl/Alt for words, Shift to select), Home/End, Backspace/Delete, select all,
+copy, cut and paste of the selection, and undo/redo (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y). Long text scrolls to keep the caret visible.
 In a textarea, Enter adds a line, Up/Down move between lines, the wheel scrolls, and
 Ctrl/Cmd+Enter calls `onSubmit`. On macOS the shortcuts use Cmd, and Alt for words.
 
 ## Limits
 
-There is no IME (input method) support, undo, rich text, accessibility layer, or
+There is no IME (input method) support, rich text, accessibility layer, or
 animation of sizes and positions yet. With nothing selected, copy and cut take the whole value of an
 input. See [Components](components.md)
 and [Desktop](desktop.md) for the available controls and desktop behavior.

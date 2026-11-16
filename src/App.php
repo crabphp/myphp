@@ -38,6 +38,8 @@ final class App
     /** Caret, selection and scroll of each input by id, with the text they belong to. */
     private array $edits = [];
     private ?string $dragId = null;
+    /** Undo and redo stacks of each input by id. */
+    private array $history = [];
     private array $lastPress = [0.0, null, 0.0, 0.0];
 
     public function __construct(string $title, int $width, int $height, callable $render)
@@ -549,6 +551,9 @@ final class App
         $hasSelection = $from !== $to;
 
         switch (true) {
+            case $primary && ($key === GLFW_KEY_Z || (!$mac && $key === GLFW_KEY_Y)):
+                $this->undo($input, $key === GLFW_KEY_Y || $shift);
+                return true;
             case $primary && $key === GLFW_KEY_A:
                 $this->moveCaret($input, 0, false);
                 $this->moveCaret($input, $len, true);
@@ -613,6 +618,8 @@ final class App
         $len = mb_strlen($e->text);
         $edit = $this->edits[$e->id] ?? null;
         if ($edit === null || $edit['text'] !== $e->text) {
+            // The app changed the value itself: earlier edits no longer apply.
+            if ($edit !== null) unset($this->history[$e->id]);
             $edit = ['text' => $e->text, 'caret' => $len, 'anchor' => $len, 'sx' => $edit['sx'] ?? 0.0,
                 'sy' => $edit['sy'] ?? 0.0, 'goal' => null, 'follow' => true];
         }
@@ -648,10 +655,42 @@ final class App
             ? str_replace(["\r\n", "\r"], "\n", $insert)
             : preg_replace('/\r\n|[\r\n]/', ' ', $insert);
         $text = mb_substr($e->text, 0, $from) . $insert . mb_substr($e->text, $to);
+        if ($text === $e->text) return;
         $caret = $from + mb_strlen($insert);
         $edit = $this->edit($e);
+        $this->remember($e, $edit, $from === $to && mb_strlen($insert) === 1 && $from === $edit['caret'] && !ctype_space($insert));
         ($e->onInput)($text);
         $this->edits[$e->id] = ['text' => $text, 'caret' => $caret, 'anchor' => $caret, 'goal' => null, 'follow' => true] + $edit;
+        $this->stale = $this->dirty = true;
+    }
+
+    /** Save the value before an edit; typing runs of characters undo together. */
+    private function remember(Element $e, array $edit, bool $typing): void
+    {
+        $h = $this->history[$e->id] ?? ['undo' => [], 'redo' => [], 'typing' => false, 'at' => 0.0];
+        $now = microtime(true);
+        if (!($typing && $h['typing'] && $now - $h['at'] < 1.0)) {
+            $h['undo'][] = [$e->text, $edit['caret'], $edit['anchor']];
+            if (count($h['undo']) > 200) array_shift($h['undo']);
+        }
+        [$h['redo'], $h['typing'], $h['at']] = [[], $typing, $now];
+        $this->history[$e->id] = $h;
+    }
+
+    /** Undo (or redo) the last edit of an input. */
+    private function undo(Element $e, bool $redo): void
+    {
+        if (!$e->onInput) return;
+        $h = $this->history[$e->id] ?? null;
+        [$from, $to] = $redo ? ['redo', 'undo'] : ['undo', 'redo'];
+        if (!$h || !$h[$from]) return;
+        $edit = $this->edit($e);
+        [$text, $caret, $anchor] = array_pop($h[$from]);
+        $h[$to][] = [$e->text, $edit['caret'], $edit['anchor']];
+        $h['typing'] = false;
+        $this->history[$e->id] = $h;
+        ($e->onInput)($text);
+        $this->edits[$e->id] = ['text' => $text, 'caret' => $caret, 'anchor' => $anchor, 'goal' => null, 'follow' => true] + $edit;
         $this->stale = $this->dirty = true;
     }
 
