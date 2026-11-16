@@ -47,10 +47,14 @@ the working directory. Default output: `<project>/build/<project-name>`.
 The result is one executable with the runtime, toolkit, assets, and project.
 No download, PHP subprocess, or second runtime file is needed to build.
 
-Packing skips `vendor/`, `build/`, `.git/`, every dot-prefixed path component,
-symlinks, and the output file itself. A hidden entry file is rejected. All other
-project files are included, so keep secrets outside the project or in dotfiles.
-**Composer dependencies are not packed.**
+Packing skips `build/`, `.git/`, every dot-prefixed path component, symlinks, and
+the output file itself. A hidden entry file is rejected. All other project files are
+included, so keep secrets outside the project or in dotfiles.
+
+**Composer packages** come along: `vendor/` is packed (without packages' `tests/`,
+`docs/` and `examples/` folders, and without the myphp package itself), and
+`vendor/autoload.php` loads before your app, in `myphp run` too. Run
+`composer install` before building. Composer needs a separate PHP; the built app does not.
 
 ### Assets
 
@@ -127,8 +131,7 @@ Nightly builds come from every push to `main` and may be less stable.
 
 Apps can print their own output or explicitly exit with their own code.
 Linux x86-64 (glibc 2.17+, X11/XWayland, OpenGL), experimental macOS (arm64,
-x86-64) and experimental Windows (x86-64). No Composer dependency packing or
-cross-compilation: `myphp build` targets the platform it runs on (on Windows it writes `build/<name>.exe`). Windows limits: built apps also open a
+x86-64) and experimental Windows (x86-64). No cross-compilation: `myphp build` targets the platform it runs on (on Windows it writes `build/<name>.exe`). Windows limits: built apps also open a
 console window, and a binary started through an 8.3 short path (`C:\Users\LONGNA~1\...`)
 does not work; use the full path.
 Source CLI runs use `php84 bin/myphp`; source builds also need `MYPHP_SFX` and

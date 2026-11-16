@@ -63,15 +63,22 @@ server, and OpenGL; it is not a headless server app. Building is offline.
 ordinary project files: they would be packed. See [CLI](cli.md#build) for assets
 and custom output paths.
 
-## Optional editor autocomplete
+## Composer packages and editor autocomplete
 
 ```sh
 composer install
+composer require guzzlehttp/guzzle   # any package
 ```
 
-This installs toolkit sources and GLFW stubs for your editor only. Running and
-building still use the toolkit inside `myphp`, not `vendor/`. Composer requires a
-separate PHP installation; it is never needed to run the app.
+`vendor/autoload.php` loads by itself in `myphp run`, and `myphp build` packs your
+packages into the app. The generated `composer.json` also installs the toolkit's
+sources and GLFW stubs, so your editor autocompletes everything. Composer needs a
+separate PHP installation; built apps never do.
+
+The runtime includes HTTPS (`openssl`, `curl`), SQLite (`pdo_sqlite`, `sqlite3`),
+XML, `fileinfo`, `iconv`, `bcmath` and `sockets`, so HTTP clients and databases work
+as in any PHP app. Certificates come from the system, or from a bundled Mozilla CA
+list where there is none (Windows).
 
 ## Explore
 

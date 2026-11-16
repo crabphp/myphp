@@ -22,3 +22,17 @@ require __DIR__ . '/App.php';
 require __DIR__ . '/functions.php';
 require __DIR__ . '/components.php';
 require __DIR__ . '/charts.php';
+
+// HTTPS: the runtime's OpenSSL and curl find no certificates on their own on most
+// systems. Point them at the system's CA bundle, or the Mozilla bundle in assets.
+if (extension_loaded('openssl') && !getenv('SSL_CERT_FILE') && !ini_get('openssl.cafile')) {
+    $bundle = null;
+    foreach (['/etc/ssl/certs/ca-certificates.crt', '/etc/pki/tls/certs/ca-bundle.crt', '/etc/ssl/ca-bundle.pem',
+        '/etc/pki/tls/cacert.pem', '/etc/ssl/cert.pem', '/usr/local/etc/openssl/cert.pem'] as $candidate) {
+        if (PHP_OS_FAMILY !== 'Windows' && is_readable($candidate)) { $bundle = $candidate; break; }
+    }
+    $bundle ??= PhpUi\realFile(dirname(__DIR__) . '/assets/certs/cacert.pem');
+    putenv("SSL_CERT_FILE=$bundle");
+    unset($bundle, $candidate);
+}
+

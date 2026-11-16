@@ -2,14 +2,22 @@
 
 declare(strict_types=1);
 
-/** Copy regular files only; never follow symlinks out of a project. */
+/**
+ * Copy regular files only; never follow symlinks out of a project. A project's
+ * Composer vendor/ comes along without package tests and docs, and without the
+ * copy of myphp itself (the binary has its own).
+ */
 function myphpPack(Phar $phar, string $root, string $prefix, ?string $output = null, bool $project = false): void
 {
     $walk = function (string $dir, string $relative = '') use (&$walk, $phar, $prefix, $output, $project): void {
         foreach (new DirectoryIterator($dir) as $file) {
             if ($file->isDot() || $file->isLink()) continue;
             $name = $file->getFilename();
-            if ($project && (str_starts_with($name, '.') || in_array($name, ['vendor', 'build'], true) && $file->isDir())) continue;
+            if ($project && (str_starts_with($name, '.') || ($relative === '' && $name === 'build' && $file->isDir()))) continue;
+            if ($project && str_starts_with($relative, 'vendor/') && $file->isDir()) {
+                if (in_array(strtolower($name), ['tests', 'test', 'docs', 'doc', 'examples'], true) && substr_count($relative, '/') >= 3) continue;
+                if ($relative === 'vendor/crabphp/' && $name === 'myphp') continue;
+            }
             $path = $file->getPathname();
             if ($path === $output) continue;
             $entry = $relative . $name;
@@ -93,16 +101,28 @@ function cmdBuild(array $args): int
         myphpPack($phar, MYPHP_ROOT . '/assets', 'assets');
         myphpPack($phar, $project, 'app', $target, true);
         $app = var_export('phar://app.phar/app/' . basename($entry), true);
-        $phar->setStub("<?php Phar::mapPhar('app.phar'); require 'phar://app.phar/src/autoload.php'; require $app; __HALT_COMPILER();");
+        // Composer packages load before the app, as with myphp run.
+        $vendor = is_file("$project/vendor/autoload.php") ? "require 'phar://app.phar/app/vendor/autoload.php'; " : '';
+        $phar->setStub("<?php Phar::mapPhar('app.phar'); require 'phar://app.phar/src/autoload.php'; {$vendor}require $app; __HALT_COMPILER();");
         $phar->stopBuffering();
         // Same INI as the CLI where apps need it: FFI for screen reader support.
         $ini = "ffi.enable=1\n";
-        $bytes = $sfx . "\xfd\xf6\x69\xe6" . pack('N', strlen($ini)) . $ini . file_get_contents($archive);
+        // Written piece by piece: the runtime and the app together can exceed PHP's memory limit.
         $staged = tempnam(realpath($dir), '.myphp-');
-        if (file_put_contents($staged, $bytes) !== strlen($bytes) || !chmod($staged, 0755) || !rename($staged, $target)) {
+        $out = fopen($staged, 'wb');
+        $in = fopen($archive, 'rb');
+        $ok = $out && $in
+            && fwrite($out, $sfx) === strlen($sfx)
+            && fwrite($out, "\xfd\xf6\x69\xe6" . pack('N', strlen($ini)) . $ini) === 8 + strlen($ini)
+            && stream_copy_to_stream($in, $out) === filesize($archive);
+        if ($out) fclose($out);
+        if ($in) fclose($in);
+        unset($sfx);
+        if (!$ok || !chmod($staged, 0755) || !rename($staged, $target)) {
             return myphpError("cannot write $output");
         }
-        printf("Built %s (%.1f MB)\n", $output, strlen($bytes) / 1000000);
+        clearstatcache();
+        printf("Built %s (%.1f MB)\n", $output, filesize($target) / 1000000);
         return 0;
     } finally {
         unset($phar);

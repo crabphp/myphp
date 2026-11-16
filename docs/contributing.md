@@ -34,7 +34,8 @@ does not need GLFW. Do not commit `vendor/` or the root `composer.lock`.
 
 Use [static-php-cli](https://github.com/crazywhalecc/static-php-cli), targeting glibc
 (glfw cannot be fully static). In its checkout, use `build/craft.yml` (PHP 8.4,
-extensions `glfw,opcache,phar,mbstring,ctype,tokenizer,zlib,posix,pcntl`, SAPIs `cli`
+extensions as listed there: the toolkit's, plus `openssl`, `curl`, `pdo_sqlite`, XML
+and friends for apps), SAPIs `cli`
 and `micro`). On Fedora, supply the X11 library paths:
 
 ```sh
@@ -50,6 +51,8 @@ reuse the clean runtime prefix, with no INI block or OPcache/JIT (micro crashes 
 
 Fonts: Geist and Geist Mono (OFL, `assets/fonts`). Icons: Lucide (ISC, `assets/icons`).
 The macOS build bundles AccessKit (MIT/Apache-2.0) in `assets/native`, downloaded by CI.
+`assets/certs/cacert.pem` is Mozilla's CA list as published by curl.se (MPL-2.0);
+refresh it with `curl -o assets/certs/cacert.pem https://curl.se/ca/cacert.pem`.
 
 ## macOS binaries
 

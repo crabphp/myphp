@@ -1,6 +1,6 @@
 # static-php-cli recipe for the Windows myphp runtime (posix and pcntl do not exist there).
 php-version: 8.4
-extensions: glfw,phar,mbstring,ctype,tokenizer,zlib
+extensions: glfw,phar,mbstring,ctype,tokenizer,zlib,openssl,curl,pdo,pdo_sqlite,sqlite3,filter,fileinfo,iconv,dom,xml,simplexml,xmlreader,xmlwriter,bcmath,sockets
 sapi:
   - cli
   - micro

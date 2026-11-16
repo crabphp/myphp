@@ -18,6 +18,9 @@ function myphpCheckoutToolkit(string $file): ?string
 function myphpRun(string $file, array $args): int
 {
     require myphpCheckoutToolkit($file) ?? MYPHP_ROOT . '/src/autoload.php';
+    // Composer packages beside the app load automatically.
+    $vendor = dirname(str_starts_with($file, 'phar://') ? $file : (string) realpath($file)) . '/vendor/autoload.php';
+    if (is_file($vendor)) require_once $vendor;
     $GLOBALS['argv'] = $_SERVER['argv'] = [$file, ...$args];
     $GLOBALS['argc'] = $_SERVER['argc'] = count($GLOBALS['argv']);
     (static function (): void {

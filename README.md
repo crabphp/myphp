@@ -66,15 +66,14 @@ myphp build
 
 You get `build/hello`, one executable with everything inside.
 
-## Editor autocomplete
-
-Optional. If you have Composer:
+## Composer packages
 
 ```sh
-composer install
+composer require guzzlehttp/guzzle
 ```
 
-This only feeds your editor. Apps never need `vendor/`.
+`vendor/` loads by itself and is packed into `myphp build`. `composer install` also
+gives your editor autocompletion for the toolkit. HTTPS, SQLite and XML are built in.
 
 ## What's inside
 

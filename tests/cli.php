@@ -100,6 +100,36 @@ file_put_contents("$project/other.php", '<?php file_put_contents("args.json", js
 same(0, $code, "run accepts arguments: $err");
 same([['other.php', 'a', 'b'], 3, ['other.php', 'a', 'b'], 3, false],
     json_decode(file_get_contents("$project/args.json"), true), 'app gets argv/argc, not CLI locals');
+// The runtime has what apps need: HTTPS, SQLite, XML; and a CA bundle for HTTPS.
+$probe = getenv('PHPUI_TEST_TMP') . '/runtime-probe.php';
+file_put_contents($probe, <<<'PHP'
+<?php
+$missing = array_values(array_filter(['openssl', 'curl', 'pdo_sqlite', 'sqlite3', 'dom', 'simplexml', 'xmlwriter', 'fileinfo', 'iconv', 'bcmath', 'sockets', 'filter'],
+    fn ($e) => !extension_loaded($e)));
+$db = new PDO('sqlite::memory:');
+$db->exec('create table notes (title text)');
+$db->prepare('insert into notes values (?)')->execute(['hello']);
+$ca = getenv('SSL_CERT_FILE');
+echo json_encode([$missing, $db->query('select title from notes')->fetchColumn(), is_file($ca) && str_contains(file_get_contents($ca), 'BEGIN CERTIFICATE')]);
+PHP);
+[$code, $out, $err] = cli(['run', $probe]);
+same([[], 'hello', true], json_decode($out, true), "the runtime has HTTPS, SQLite and XML, and a CA bundle: $err");
+
+// Composer packages: vendor/ loads automatically with run, and is packed by build.
+$composed = getenv('PHPUI_TEST_TMP') . '/composed';
+mkdir("$composed/vendor/acme/greet/src", 0777, true);
+mkdir("$composed/vendor/acme/greet/tests", 0777, true);
+file_put_contents("$composed/vendor/acme/greet/src/Greet.php", "<?php namespace Acme; function greet(string \$n): string { return \"Hello, \$n\"; }\n");
+file_put_contents("$composed/vendor/acme/greet/tests/Big.php", "<?php // not needed at runtime\n");
+file_put_contents("$composed/vendor/autoload.php", "<?php require __DIR__ . '/acme/greet/src/Greet.php';\n");
+file_put_contents("$composed/app.php", "<?php echo Acme\\greet('vendor'), file_exists(__DIR__ . '/vendor/acme/greet/tests/Big.php') ? ' +tests' : '';\n");
+[$code, $out, $err] = cli(['run'], $composed);
+same([0, 'Hello, vendor +tests'], [$code, $out], "run loads vendor/autoload.php: $err");
+[$code, $out, $err] = cli(['build'], $composed);
+same(0, $code, "build packs vendor: $err");
+[$code, $out, $err] = cliProcess(["$composed/build/composed"]);
+same([0, 'Hello, vendor'], [$code, $out], "a built app uses its Composer packages, without their tests: $err");
+
 // run --watch restarts on a change and stops when the app ends by itself.
 $watched = getenv('PHPUI_TEST_TMP') . '/watched';
 mkdir($watched);
@@ -199,7 +229,7 @@ file_put_contents("$hello/probe-output", 'previous output');
 same(0, $code, "build alternate entry/output: $err");
 [$code, $out, $err] = cliProcess(["$hello/probe-output"]);
 same(0, $code, "run packed data probe: $err");
-same(['packed data', false, false, false, false, '1', false], json_decode($out, true), 'packs data, excludes dependencies, dotfiles, links, builds and output; no CLI INI');
+same(['packed data', true, false, false, false, '1', false], json_decode($out, true), 'packs data and Composer vendor/; excludes dotfiles, links, builds and output; no CLI INI');
 [$code, $out, $err] = cli(['build', '-o', "$workspace/out/app2"], $hello);
 same(0, $code, "build creates output parents: $err");
 check(is_executable("$workspace/out/app2"), 'custom output exists');
