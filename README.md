@@ -130,8 +130,30 @@ myphp run showcase.php    # also: desktop, logs, mail, notes, player, pocket, to
 Early. Screen readers: VoiceOver on macOS (experimental), not yet on Linux or
 Windows. Linux and macOS run on real hardware; Windows is experimental (built and
 smoke-tested by CI on Direct3D 12's software adapter, not yet tested on a real
-machine). A GPU driver with Vulkan, Metal or Direct3D 12 is required. Not yet: tray icons, menus,
-multiple windows, global shortcuts.
+machine). A GPU driver with Vulkan, Metal or Direct3D 12 is required. See the roadmap
+for what is missing.
+
+## Roadmap
+
+Next:
+
+- **Windows on real machines:** test and fix Direct3D 12, input methods and desktop
+  APIs on real hardware; a console-free GUI build.
+- **Windows and app chrome:** app and context menus, tray icons, multiple windows,
+  window options (minimum size, fullscreen, frameless), global shortcuts.
+- **Shipping:** app icons, macOS `.app` bundles and DMGs, Windows installers, Linux
+  AppImage and `.desktop` files, code signing and notarization, self-updating apps.
+- **Screen readers:** Orca on Linux and Narrator/NVDA on Windows (VoiceOver works on
+  macOS).
+
+Later:
+
+- **Text:** right-to-left and mixed-direction text (bidi), rich text, find in text.
+- **Large data:** virtualized lists and tables for many thousands of rows.
+- **Media:** SVG and WebP images, animated GIFs.
+- **Developer tools:** an element inspector, in-place reload that keeps state.
+- **Platforms:** Linux and Windows on ARM64; a software fallback for machines without
+  Vulkan, Metal or Direct3D 12.
 
 ## License
 
