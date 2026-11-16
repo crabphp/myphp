@@ -263,6 +263,8 @@ final class Painter
                 $this->text($e, $e->text, $e->x, $e->w, $s['color'] ?? $e->color, $s);
             } elseif ($e->kind === 'input') {
                 $this->input($e, $s);
+            } elseif ($e->kind === 'image') {
+                $this->image($e, $s);
             } elseif ($e->kind === 'canvas' && $e->draw) {
                 $vg->save();
                 ($e->draw)($vg, $e, $this);
@@ -409,6 +411,33 @@ final class Painter
     }
 
     // Text and icons ------------------------------------------------------------
+
+    /** @var array<string, \GL\VectorGraphics\VGImage> Images by file. */
+    private array $images = [];
+
+    private function image(Element $e, array $s): void
+    {
+        $vg = $this->vg;
+        $image = $this->images[$e->text] ??= $vg->imageFromTexture(
+            \GL\Texture\Texture2D::fromDisk(realFile($e->text), 4), \GL\VectorGraphics\VGImage::REPEAT_NONE, \GL\VectorGraphics\VGImage::FILTER_LINEAR);
+        [$iw, $ih] = $e->imageSize;
+        [$x, $y, $w, $h] = [$e->x, $e->y, $e->w, $e->h];
+        if ($w <= 0 || $h <= 0 || $iw <= 0 || $ih <= 0) return;
+        $fit = $s['fit'] ?? 'contain';
+        if ($fit === 'fill') {
+            [$dw, $dh] = [$w, $h];
+        } else {
+            $scale = $fit === 'cover' ? max($w / $iw, $h / $ih) : min($w / $iw, $h / $ih);
+            [$dw, $dh] = [$iw * $scale, $ih * $scale];
+        }
+        [$dx, $dy] = [$x + ($w - $dw) / 2, $y + ($h - $dh) / 2];
+        // Contain draws only the picture's own rectangle; cover and fill clip to the box and its corners.
+        $fit === 'contain'
+            ? $this->shape($dx, $dy, $dw, $dh, $s['radius'] ?? 0)
+            : $this->shape($x, $y, $w, $h, $s['radius'] ?? 0);
+        $vg->fillPaint($image->makePaint($dx, $dy, $dw, $dh, 0, 1));
+        $vg->fill();
+    }
 
     /** Wrapped text: the lines Layout measured, from the top of the content box. */
     private function lines(Element $e, array $s): void

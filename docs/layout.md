@@ -60,7 +60,13 @@ callbacks must return it. Use stable, unique `id()` values for inputs and scroll
 IDs also support scripted input through `$app->clickId('add')` and `$app->find('add')`.
 
 Other primitives: `text($string)`, controlled `input($id, $value, $onInput)`,
-`icon($name, $size = 16, $color = null)`, `spacer()`, and `canvas($draw)`.
+`icon($name, $size = 16, $color = null)`, `spacer()`, `image($path)` and `canvas($draw)`.
+
+`image(__DIR__ . '/logo.png')` shows a PNG, JPEG, BMP or GIF (first frame). Give it
+`->w()` or `->h()` (pixels or a percent) and the other side keeps the picture's
+aspect ratio; with neither it shows at its pixel size. `->fit('cover')` fills the box
+and crops, `'contain'` (the default) shows the whole picture, `'fill'` stretches it.
+`->rounded()` clips the corners. Use `__DIR__` paths so built apps find their files.
 Canvas callbacks receive `(VGContext $vg, Element $box, Painter $painter)`.
 
 ## State

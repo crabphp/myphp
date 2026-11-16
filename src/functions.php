@@ -81,6 +81,26 @@ function canvas(callable $draw): Element
     return $e;
 }
 
+/**
+ * A PNG, JPEG, BMP or GIF (first frame) file. Set ->w() or ->h() and the other side
+ * follows the picture's aspect ratio; with neither it shows at its pixel size.
+ * ->fit('cover') fills the box and crops, 'contain' (default) shows it all, 'fill' stretches.
+ */
+function image(string $path): Element
+{
+    static $sizes = [];
+    if (!isset($sizes[$path])) {
+        $info = @getimagesize($path);
+        if (!$info || !in_array($info[2], [IMAGETYPE_PNG, IMAGETYPE_JPEG, IMAGETYPE_GIF, IMAGETYPE_BMP], true)) {
+            throw new \InvalidArgumentException("Cannot show image $path: use a PNG, JPEG, BMP or GIF file");
+        }
+        $sizes[$path] = [(float) $info[0], (float) $info[1]];
+    }
+    $e = new Element('image', $path);
+    $e->imageSize = $sizes[$path];
+    return $e;
+}
+
 /** A Lucide icon in a box of its size. */
 function icon(string $name, float $size = 16, ?string $color = null): Element
 {

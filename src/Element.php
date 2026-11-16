@@ -35,6 +35,8 @@ final class Element
     public array $lines = [];
     public ?float $wrapAt = null;
     public float $scrollX = 0;
+    /** Pixel size of an image element's file. */
+    public array $imageSize = [0.0, 0.0];
 
     // Filled in by App.
     public ?Element $parent = null;
@@ -206,6 +208,12 @@ final class Element
     public function wrap(): self { return $this->set('wrap', true)->shrink(); }
     /** A multi-line input showing $rows lines; Enter adds a line, Ctrl/Cmd+Enter submits. */
     public function multiline(int $rows = 4): self { return $this->set('multiline', max(1, $rows)); }
+    /** How an image fills its box: 'contain' (default), 'cover' (crops) or 'fill' (stretches). */
+    public function fit(string $mode): self
+    {
+        if (!in_array($mode, ['contain', 'cover', 'fill'], true)) throw new \InvalidArgumentException("Unknown fit $mode");
+        return $this->set('fit', $mode);
+    }
     /** Cut text that does not fit with an ellipsis. */
     public function truncate(): self { return $this->set('truncate', true)->shrink(); }
 

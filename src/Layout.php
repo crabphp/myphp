@@ -29,6 +29,8 @@ final class Layout
             $changed = false;
             foreach ($this->wraps as $e) {
                 $inner = max(1.0, $e->w - $e->get('pl', 0) - $e->get('pr', 0));
+                // An image's width decides its height, like wrapped text.
+                if ($e->kind === 'image') $inner = $e->w;
                 if ($e->wrapAt !== $inner) [$e->wrapAt, $changed] = [$inner, true];
             }
             if (!$changed) return;
@@ -50,6 +52,20 @@ final class Layout
             $e->lines = $e->wrapAt === null ? [$e->text] : $this->painter->wrap($e->text, $e->wrapAt, $e->font, $e->size);
             $e->mw = ceil(max(array_map(fn ($line) => $this->painter->textWidth($line, $e->font, $e->size, $tracking), $e->lines ?: [''])));
             $e->mh = $this->painter->lineHeight($e->size) * max(1, count($e->lines));
+        } elseif ($e->kind === 'image') {
+            [$iw, $ih] = $e->imageSize;
+            $ratio = $iw > 0 ? $ih / $iw : 1;
+            [$w, $h] = [$e->get('w'), $e->get('h')];
+            if ($h === null && $w !== null) {
+                // Height follows the width the layout gives it (a percent width too).
+                $this->wraps[] = $e;
+                $e->mw = is_string($w) ? $iw : (float) $w;
+                $e->mh = ($e->wrapAt ?? $e->mw) * $ratio;
+            } elseif ($w === null && $h !== null && !is_string($h)) {
+                [$e->mw, $e->mh] = [(float) $h / $ratio, (float) $h];
+            } else {
+                [$e->mw, $e->mh] = [$iw, $ih];
+            }
         } elseif ($e->kind === 'text') {
             $e->mw = ceil($this->painter->textWidth($e->text, $e->font, $e->size, $tracking));
             $e->mh = $this->painter->lineHeight($e->size);
