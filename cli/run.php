@@ -100,8 +100,8 @@ function myphpWatch(string $file, array $args): int
 function cmdDemo(array $args): int
 {
     $name = array_shift($args) ?? 'dashboard';
-    if (!in_array($name, ['dashboard', 'desktop', 'gallery', 'notes', 'todo'], true)) {
-        return myphpError('demo name must be dashboard, desktop, gallery, notes or todo', 2);
+    if (!in_array($name, ['dashboard', 'desktop', 'gallery', 'notes', 'player', 'todo'], true)) {
+        return myphpError('demo name must be dashboard, desktop, gallery, notes, player or todo', 2);
     }
     return myphpRun(MYPHP_ROOT . "/examples/$name.php", $args);
 }

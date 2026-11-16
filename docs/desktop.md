@@ -92,3 +92,21 @@ Tests: `tests/run.sh` uses deterministic private-bus fakes;
 `tests/run.sh real-portal` also opens/closes a real GTK portal chooser and zenity on
 Xvfb and reads real portal settings. Test config/cache/data are isolated; it never
 writes the user's system-style preference. Pass test filenames to run a subset.
+
+## Audio
+
+The runtime includes PHP-GLFW's audio engine (miniaudio): no extension or library to
+install. It decodes MP3, FLAC and WAV.
+
+```php
+$engine = new GL\Audio\Engine([]);
+$engine->start();
+$song = $engine->soundFromDisk(__DIR__ . '/song.mp3');
+$song->play();             // stop() pauses; play() resumes
+$song->seekTo(30.0);       // seconds; getCursor() and getLength() too
+$song->setVolume(0.8);
+```
+
+`readFrames()` returns decoded samples, e.g. to draw a waveform. Redraw while
+playing with `$app->every(1 / 30, ...)`. `myphp demo player` is a complete example.
+

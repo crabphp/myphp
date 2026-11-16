@@ -73,6 +73,7 @@ myphp demo dashboard
 myphp demo desktop
 myphp demo gallery
 myphp demo notes
+myphp demo player
 myphp demo todo
 ```
 

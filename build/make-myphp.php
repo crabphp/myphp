@@ -18,7 +18,7 @@ $phar->startBuffering();
 foreach (['src', 'assets', 'cli'] as $folder) {
     $phar->buildFromDirectory($root, '#^' . preg_quote($root, '#') . "/$folder/#");
 }
-foreach (['dashboard', 'desktop', 'gallery', 'notes', 'todo'] as $example) {
+foreach (['dashboard', 'desktop', 'gallery', 'notes', 'player', 'todo'] as $example) {
     $phar->addFile("$root/examples/$example.php", "examples/$example.php");
 }
 $phar->addFile("$root/examples/gallery.jpg", 'examples/gallery.jpg');

@@ -81,6 +81,7 @@ This only feeds your editor. Apps never need `vendor/`.
 - **State:** `state()` with a typed object your editor autocompletes; timers;
   a data folder per app.
 - **Live reload:** `myphp run --watch` restarts the window when you save.
+- **Audio:** play MP3, FLAC and WAV with `GL\Audio\Engine`, built in; see the player demo.
 - **Desktop:** file dialogs, notifications, clipboard, file drop, open links,
   follow system dark mode.
 - **Fast:** one GPU draw for all boxes and shadows; the app sleeps when idle.
@@ -92,6 +93,7 @@ myphp demo dashboard
 myphp demo desktop
 myphp demo gallery
 myphp demo notes
+myphp demo player
 myphp demo todo
 ```
 
