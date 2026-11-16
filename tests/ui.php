@@ -43,10 +43,10 @@ same(realpath(__DIR__ . '/../src/App.php'), (new ReflectionClass(PhpUi\App::clas
     'loading another toolkit copy keeps the original class');
 
 putenv('PHPUI_NO_RUN=1');
-require __DIR__ . '/../examples/dashboard.php';
+require __DIR__ . '/../examples/showcase.php';
 $app->frame();
 $app->clickId('quick-create');
-same(true, $state->dialog, 'dashboard quick-create opens dialog');
+same(true, $state->adding, 'dashboard quick-create opens dialog');
 $app->clickId('draft-header');
 $app->type('a');
 $app->type('b');
@@ -56,7 +56,7 @@ $app->key(GLFW_KEY_BACKSPACE);
 $app->key(GLFW_KEY_BACKSPACE);
 same('a', $state->draft['header'], 'repeated backspace sees the latest text');
 $app->key(GLFW_KEY_ESCAPE);
-same(false, $state->dialog, 'Escape closes the dashboard dialog with its input focused');
+same(false, $state->adding, 'Escape closes the dashboard dialog with its input focused');
 $keys = [];
 $app->onKey(function (int $key, int $mods) use (&$keys) { $keys[] = [$key, $mods]; });
 $app->key(GLFW_KEY_V, GLFW_MOD_CONTROL);

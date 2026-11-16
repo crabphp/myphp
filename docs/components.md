@@ -38,8 +38,9 @@ The older positional forms (`button('Save', $save, 'outline')`,
 `textInput('email', $value, $onInput)`, `card(cardHeader(...), cardContent(...))`) keep
 working.
 
-Run `myphp run examples/gallery.php` from the repository to try every component live, in
-light and dark, with the code for each example next to it (select it, or press Copy).
+Run `myphp run examples/showcase.php` from the repository to try every component live, in
+light and dark, with the code for each example next to it (select it, or press Copy). Its
+dashboard page shows them working together.
 
 ![Component gallery](images/gallery.webp)
 

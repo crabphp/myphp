@@ -99,13 +99,13 @@ none (Windows).
 ## Explore
 
 The [`examples/`](../examples) folder of the repository has complete apps: a
-dashboard, a component gallery, notes, a mail client, a music player, a pocket player with a click wheel, a log viewer, a todo list
+showcase (a dashboard, and every component with its code), notes, a mail client, a music player, a pocket player with a click wheel, a log viewer, a todo list
 and desktop APIs.
 
 ```sh
 git clone https://github.com/crabphp/myphp
 cd myphp/examples
-myphp run gallery.php
+myphp run showcase.php
 ```
 
 Run any of them the same way. Inside the repository, `myphp run` uses the

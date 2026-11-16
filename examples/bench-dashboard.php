@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-// Times the dashboard: building the tree, layout, painting, a whole frame,
+// Times the showcase dashboard: building the tree, layout, painting, a whole frame,
 // and a pointer move (hover). Usage: php84 examples/bench-dashboard.php
 
 use PhpUi\Element;
@@ -10,7 +10,7 @@ use PhpUi\Element;
 // Load the dashboard without running its loop.
 putenv('PHPUI_SCREENSHOTS');
 putenv('PHPUI_NO_RUN=1');
-require __DIR__ . '/dashboard.php';
+require __DIR__ . '/showcase.php';
 
 $get = fn (string $prop) => (new ReflectionProperty($app, $prop))->getValue($app);
 $painter = $get('painter');

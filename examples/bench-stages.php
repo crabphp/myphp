@@ -10,7 +10,7 @@ use PhpUi\Element;
 
 putenv('PHPUI_SCREENSHOTS');
 putenv('PHPUI_NO_RUN=1');
-require __DIR__ . '/dashboard.php';
+require __DIR__ . '/showcase.php';
 
 $painter = (new ReflectionProperty($app, 'painter'))->getValue($app);
 $layout = (new ReflectionProperty($app, 'layout'))->getValue($app);

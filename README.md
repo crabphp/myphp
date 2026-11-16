@@ -97,13 +97,13 @@ run on a larger runtime that myphp picks and downloads by itself.
   follow system dark mode.
 - **Fast:** one GPU draw for all boxes and shadows; the app sleeps when idle.
 
-Try the examples in [`examples/`](examples): a dashboard, a component gallery,
-notes, a mail client, a music player, a pocket player with a click wheel, a log viewer, a todo list and desktop APIs.
+Try the examples in [`examples/`](examples): a showcase (a dashboard and every
+component with its code), notes, a mail client, a music player, a pocket player with a click wheel, a log viewer, a todo list and desktop APIs.
 
 ```sh
 git clone https://github.com/crabphp/myphp
 cd myphp/examples
-myphp run gallery.php     # also: dashboard, desktop, logs, mail, notes, player, todo
+myphp run showcase.php    # also: desktop, logs, mail, notes, player, pocket, todo
 ```
 
 ![Desktop APIs demo](docs/images/desktop.webp)
