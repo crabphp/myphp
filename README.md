@@ -98,7 +98,7 @@ run on a larger runtime that myphp picks and downloads by itself.
 - **Fast:** one GPU draw for all boxes and shadows; the app sleeps when idle.
 
 Try the examples in [`examples/`](examples): a dashboard, a component gallery,
-notes, a mail client, a music player, a log viewer, a todo list and desktop APIs.
+notes, a mail client, a music player, a pocket player with a click wheel, a log viewer, a todo list and desktop APIs.
 
 ```sh
 git clone https://github.com/crabphp/myphp
