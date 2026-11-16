@@ -1,6 +1,6 @@
 # static-php-cli recipe for the full macOS myphp runtime (myphp-full): build/craft-full.yml plus FFI.
 php-version: 8.4
-extensions: glfw,opcache,phar,mbstring,ctype,tokenizer,zlib,posix,pcntl,filter,openssl,curl,pdo,pdo_sqlite,sqlite3,fileinfo,iconv,dom,xml,simplexml,xmlreader,xmlwriter,bcmath,sockets,ffi
+extensions: phpsdl,opcache,phar,mbstring,ctype,tokenizer,zlib,posix,pcntl,filter,openssl,curl,pdo,pdo_sqlite,sqlite3,fileinfo,iconv,dom,xml,simplexml,xmlreader,xmlwriter,bcmath,sockets,ffi
 sapi:
   - cli
   - micro

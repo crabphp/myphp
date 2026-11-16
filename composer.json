@@ -5,6 +5,6 @@
     "license": "MIT",
     "require": { "php": ">=8.2" },
     "require-dev": { "phpgl/ide-stubs": "^1.0" },
-    "suggest": { "ext-glfw": "Needed to run without the myphp binary" },
+    "suggest": { "ext-phpsdl": "Needed to run without the myphp binary (ext/phpsdl)" },
     "autoload": { "files": ["src/autoload.php"] }
 }

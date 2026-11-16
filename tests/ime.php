@@ -59,3 +59,9 @@ same(null, PhpUi\Painter::$shared->caretRect, 'without a focused input there is 
 $app->clickId('note');
 $app->frame();
 same('', $app->find('note')->composing, 'a composition stays with the input it started in');
+
+// Scripts Geist lacks (CJK, Hangul) draw with a system font when one is installed.
+$painter = PhpUi\Painter::$shared;
+$tofu = $painter->textWidth('xyz', 'regular', 14);
+$cjk = $painter->textWidth('日本語', 'regular', 14);
+check($cjk > $tofu * 0.8, "CJK text has width ($cjk)");

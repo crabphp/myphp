@@ -17,6 +17,8 @@ on:
     paths:
       - .github/workflows/macos.yml
       - build/craft-macos*.yml
+      - build/spc/**
+      - ext/phpsdl/**
       - src/AccessKit.php
       - build/make-myphp.*
       - cli/**
@@ -49,21 +51,33 @@ jobs:
         uses: actions/cache@v4
         with:
           path: spc/buildroot/bin
-          key: runtime-macos-${{ matrix.arch }}-${{ matrix.flavor }}-${{ hashFiles(matrix.recipe) }}
+          key: runtime-macos-${{ matrix.arch }}-${{ matrix.flavor }}-${{ hashFiles(matrix.recipe, 'ext/phpsdl/**', 'build/spc/**') }}
 
+      - uses: shivammathur/setup-php@v2
+        if: steps.runtime.outputs.cache-hit != 'true'
+        with:
+          php-version: '8.4'
+          tools: composer
+
+      # static-php-cli v3 from source: it builds myphp's own extension (ext/phpsdl, SDL3)
+      # from this checkout, with the SDL3 and phpsdl recipes from build/spc.
       - name: Build the PHP runtime with static-php-cli
         if: steps.runtime.outputs.cache-hit != 'true'
-        env:
-          # PHP-GLFW contains C++ (voxel parser); the static link needs the C++ runtime.
-          SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS: -lc++
-          SPC_EXTRA_LIBS: -lc++
         run: |
-          mkdir -p spc && cd spc
+          git clone -q --branch v3 https://github.com/crazywhalecc/static-php-cli.git spc
+          git -C spc checkout -q b8de36c
+          cd spc
+          composer install -q --no-dev --no-interaction
+          php ../build/spc/install.php .
           cp ../${{ matrix.recipe }} craft.yml
-          curl -fsSL -o spc https://dl.static-php.dev/static-php-cli/spc-bin/nightly/spc-macos-${{ matrix.spc }}
-          chmod +x spc
-          ./spc doctor --auto-fix
-          ./spc craft || { grep -n -B3 -A12 -E 'error[: ]|Undefined symbols|ld: ' log/spc.shell.log | tail -200; exit 1; }
+          bin/spc doctor --auto-fix || true
+          bin/spc craft -v || { tail -n 80 craft.log 2>/dev/null; grep -rn -B3 -A12 -E 'error[: ]|Undefined symbols|ld: ' log 2>/dev/null | tail -200; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: spc-logs-macos-${{ matrix.arch }}-${{ matrix.flavor }}
+          path: spc/log/
 
       # Screen readers: AccessKit's macOS library goes into the binary (assets/native),
       # and so into every app built with it.

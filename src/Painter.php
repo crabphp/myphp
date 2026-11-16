@@ -40,6 +40,30 @@ final class Painter
     /** @var Element[] Absolute elements, drawn after the layer that holds them. */
     private array $overlays = [];
     private string $iconDir;
+    /** System fonts for scripts Geist lacks (CJK, Hangul), loaded the first time such text appears. */
+    private bool $fallbacksLoaded = false;
+    private const FONT_FACES = ['regular', 'medium', 'semibold', 'bold', 'mono', 'mono-semibold'];
+    /** Candidates by OS, best first; each one found is a fallback. TrueType or CFF, not variable CFF2. */
+    private const FALLBACK_FONTS = [
+        'Linux' => [
+            '/usr/share/fonts/google-droid-sans-fonts/DroidSansFallbackFull.ttf',
+            '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',
+            '/usr/share/fonts/google-noto-sans-cjk-fonts/NotoSansCJK-Regular.ttc',
+            '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+            '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc',
+            '/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc',
+            '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+            '/usr/share/fonts/google-droid-sans-fonts/DroidSansJapanese.ttf',
+        ],
+        'Darwin' => [
+            '/System/Library/Fonts/Hiragino Sans GB.ttc',
+            '/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc',
+            '/System/Library/Fonts/AppleSDGothicNeo.ttc',
+            '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
+            '/Library/Fonts/Arial Unicode.ttf',
+        ],
+        'Windows' => ['msyh.ttc', 'YuGothR.ttc', 'meiryo.ttc', 'malgun.ttf', 'simsun.ttc'],
+    ];
     private bool $caretOn = true;
     /** Time in seconds for animations; tests can replace it. */
     public ?\Closure $clock = null;
@@ -90,6 +114,7 @@ final class Painter
     public function textWidth(string $text, string $font, float $size, float $tracking = 0): float
     {
         if ($text === '') return 0;
+        if (!$this->fallbacksLoaded) $this->fallbacksFor($text);
         $this->vg->fontFace($font);
         $this->vg->fontSize($size);
         $this->vg->textLetterSpacing($tracking);
@@ -199,6 +224,21 @@ final class Painter
     {
         $iw = $e->w - $e->get('pl', 0) - $e->get('pr', 0);
         return $e->lines = $this->breakLines($e->text, max(1, $iw - 2), $e->font, $e->size, $e->get('tracking', 0));
+    }
+
+    /** Load the system's CJK and Hangul fonts as fallbacks once text needs them. */
+    private function fallbacksFor(string $text): void
+    {
+        if (!preg_match('/[\x{2E80}-\x{9FFF}\x{A960}-\x{A97F}\x{AC00}-\x{D7FF}\x{F900}-\x{FAFF}\x{FF00}-\x{FFEF}\x{20000}-\x{3FFFF}]/u', $text)) return;
+        $this->fallbacksLoaded = true;
+        $windows = (getenv('WINDIR') ?: 'C:\\Windows') . '\\Fonts\\';
+        $i = 0;
+        foreach (self::FALLBACK_FONTS[PHP_OS_FAMILY] ?? [] as $file) {
+            if (PHP_OS_FAMILY === 'Windows') $file = $windows . $file;
+            if (!is_file($file) || $this->vg->createFont("fallback$i", $file) < 0) continue;
+            foreach (self::FONT_FACES as $face) $this->vg->addFallbackFont($face, "fallback$i");
+            $i++;
+        }
     }
 
     public function lineHeight(float $size): float
@@ -720,6 +760,7 @@ final class Painter
     public function text(Element $e, string $text, float $x, float $w, string $color, array $s = [], ?float $cy = null): void
     {
         $vg = $this->vg;
+        if (!$this->fallbacksLoaded) $this->fallbacksFor($text);
         $tracking = $s['tracking'] ?? 0;
         if (!empty($s['truncate']) && $this->textWidth($text, $e->font, $e->size, $tracking) > $w + 0.5) {
             $text = $this->ellipsize($text, $e->font, $e->size, $tracking, $w);

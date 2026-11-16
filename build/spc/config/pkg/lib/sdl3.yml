@@ -1,0 +1,33 @@
+sdl3:
+  type: library
+  artifact:
+    source:
+      type: url
+      url: 'https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz'
+    metadata:
+      license-files: [LICENSE.txt]
+      license: Zlib
+  headers:
+    - SDL3/SDL.h
+  pkg-configs:
+    - sdl3
+  static-libs@unix:
+    - libSDL3.a
+  static-libs@windows:
+    - SDL3-static.lib
+  frameworks:
+    - AudioToolbox
+    - AVFoundation
+    - Carbon
+    - Cocoa
+    - CoreAudio
+    - CoreFoundation
+    - CoreHaptics
+    - CoreMedia
+    - CoreVideo
+    - ForceFeedback
+    - GameController
+    - IOKit
+    - Metal
+    - QuartzCore
+    - UniformTypeIdentifiers

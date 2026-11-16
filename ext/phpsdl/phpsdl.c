@@ -178,7 +178,8 @@ static int phpsdl_glfw_button(Uint8 button)
 static bool phpsdl_ensure_video(void)
 {
     if (phpsdl_video) return true;
-    SDL_SetHint(SDL_HINT_IME_IMPLEMENTED_UI, "0");
+    /* The toolkit draws the text being composed; the input method shows its candidate list. */
+    SDL_SetHint(SDL_HINT_IME_IMPLEMENTED_UI, "composition");
     /* A desktop app, not a game: let the screen saver run. */
     SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "1");
     if (!SDL_Init(SDL_INIT_VIDEO)) {

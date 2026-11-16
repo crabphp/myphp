@@ -1,0 +1,14 @@
+ext-phpsdl:
+  type: php-extension
+  artifact:
+    source:
+      type: local
+      dirname: '@MYPHP_EXT_PHPSDL@'
+    metadata:
+      license-files: [README.md]
+      license: MIT
+  depends:
+    - sdl3
+  php-extension:
+    arg-type@unix: '--enable-phpsdl --with-sdl3-dir=@build_root_path@'
+    arg-type@windows: '--enable-phpsdl'

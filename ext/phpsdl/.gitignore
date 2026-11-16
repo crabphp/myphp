@@ -1,0 +1,6 @@
+# Build files: static-php-cli builds this folder in place.
+*.o
+*.lo
+*.dep
+*.la
+.libs/

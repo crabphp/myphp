@@ -63,7 +63,7 @@ Theme::toggle();      // changes mode and switches source to explicit light/dark
 | Notifications | `org.freedesktop.Notifications` | `notify-send` (0.8+ for actions) | `osascript`; no icon, click or actions | `powershell` tray balloon; no icon, click or actions |
 | System theme | Portal Settings read + signals | `gsettings get` (one read, no live updates) | `defaults read` (one read, no live updates) | `reg query` (one read, no live updates) |
 | Open URL/file | `xdg-open` | `gio open` | `open` | `rundll32 url.dll` |
-| Clipboard/drop | GLFW | — | GLFW | GLFW |
+| Clipboard/drop | SDL3 | — | SDL3 | SDL3 |
 | Message/confirm | In-app components | — | In-app components | In-app components |
 
 `PHPUI_DESKTOP=auto` is the default (bus first, then tools). `portal` disables the
@@ -73,8 +73,7 @@ receive portal responses and notification actions.
 
 Known limits:
 
-- File dialogs are not tied to the app window: PHP-GLFW does not expose its X11
-  window ID. A chooser may appear behind the app. Zenity multiple results cannot
+- File dialogs are not tied to the app window yet. A chooser may appear behind the app. Zenity multiple results cannot
   represent filenames containing newlines.
 - Inputs copy, cut and paste the selection with Ctrl+C/X/V (Cmd on macOS); pasting
   into a one-line input turns line breaks into spaces. With nothing selected, copy
@@ -95,8 +94,8 @@ writes the user's system-style preference. Pass test filenames to run a subset.
 
 ## Audio
 
-The runtime includes PHP-GLFW's audio engine (miniaudio): no extension or library to
-install. It decodes MP3, FLAC and WAV.
+The runtime includes an audio engine (miniaudio, in phpsdl): no extension or library
+to install. It decodes MP3, FLAC and WAV.
 
 ```php
 $engine = new GL\Audio\Engine([]);

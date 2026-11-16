@@ -139,10 +139,10 @@ final class AccessKit
         return is_file($bundled) ? realFile($bundled) : null;
     }
 
-    /** Attach to GLFW's NSWindow: AccessKit subclasses its content view. */
+    /** Attach to the app's NSWindow (SDL's or GLFW's): AccessKit subclasses its content view. */
     private function connectMacOS(): bool
     {
-        $objc = FFI::cdef('void *objc_getClass(const char *name); void *sel_registerName(const char *name); void *objc_msgSend(void *self, void *op);', '/usr/lib/libobjc.A.dylib');
+        $objc = FFI::cdef('void *objc_getClass(const char *name); void *sel_registerName(const char *name); void *objc_msgSend(void *self, void *op); const char *object_getClassName(void *obj);', '/usr/lib/libobjc.A.dylib');
         $at = FFI::cdef('void *objc_msgSend(void *self, void *op, unsigned long index);', '/usr/lib/libobjc.A.dylib');
         $send = fn ($target, string $selector) => $objc->objc_msgSend($target, $objc->sel_registerName($selector));
         $nsApp = $send($objc->objc_getClass('NSApplication'), 'sharedApplication');
@@ -153,8 +153,10 @@ final class AccessKit
             if ($count < 1) return false;
             $window = $at->objc_msgSend($windows, $objc->sel_registerName('objectAtIndex:'), 0);
         }
-        // GLFW focuses its window, not the view: forward VoiceOver's focus question to the view.
-        $this->ak->accesskit_macos_add_focus_forwarder_to_window_class('GLFWWindow');
+        // The window system focuses its window, not the view: forward VoiceOver's focus
+        // question to the view, on the window's own class (SDL3Window, GLFWWindow).
+        $class = $objc->object_getClassName($window);
+        $this->ak->accesskit_macos_add_focus_forwarder_to_window_class(is_string($class) ? $class : \FFI::string($class));
         $this->callbacks = [
             'activate' => function ($userdata) {
                 self::debug('VoiceOver connected: sending the tree');

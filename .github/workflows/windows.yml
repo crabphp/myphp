@@ -17,6 +17,8 @@ on:
     paths:
       - .github/workflows/windows.yml
       - build/craft-windows*.yml
+      - build/spc/**
+      - ext/phpsdl/**
       - build/make-myphp.*
       - cli/**
       - install.ps1
@@ -49,18 +51,28 @@ jobs:
         uses: actions/cache@v4
         with:
           path: spc/buildroot/bin
-          key: runtime-windows-x86_64-${{ matrix.flavor }}-${{ hashFiles(matrix.recipe) }}
+          key: runtime-windows-x86_64-${{ matrix.flavor }}-${{ hashFiles(matrix.recipe, 'ext/phpsdl/**', 'build/spc/**') }}
+
+      - uses: shivammathur/setup-php@v2
+        if: steps.runtime.outputs.cache-hit != 'true'
+        with:
+          php-version: '8.4'
+          tools: composer
 
       - name: Build the PHP runtime with static-php-cli
         if: steps.runtime.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force spc | Out-Null
+          # static-php-cli v3 from source: it builds myphp's own extension (ext/phpsdl, SDL3)
+          # from this checkout, with the SDL3 and phpsdl recipes from build/spc.
+          git clone -q --branch v3 https://github.com/crazywhalecc/static-php-cli.git spc
+          git -C spc checkout -q b8de36c
           Set-Location spc
+          composer install -q --no-dev --no-interaction
+          php ..\build\spc\install.php .
           Copy-Item ..\${{ matrix.recipe }} craft.yml
-          curl.exe -fsSL -o spc.exe https://dl.static-php.dev/static-php-cli/spc-bin/nightly/spc-windows-x64.exe
-          .\spc.exe doctor --auto-fix
-          .\spc.exe craft
+          php bin/spc doctor --auto-fix
+          php bin/spc craft -v
           if ($LASTEXITCODE -ne 0) {
             Get-ChildItem log -ErrorAction SilentlyContinue | ForEach-Object {
               Select-String -Path $_.FullName -Pattern 'error [A-Z]+[0-9]+|fatal error|unresolved external' -Context 2,4 | Select-Object -Last 60

@@ -4,7 +4,8 @@ Notes for working on MyPHP itself. Internal history: `docs/handover.md` and the 
 
 ## Setup
 
-Use PHP 8.2+ with the `glfw` extension (examples below call it `php84`). Tests need
+Use PHP 8.2+ with the `phpsdl` extension (`ext/phpsdl`, built as in its README; the
+older `glfw` extension also works). Examples below call it `php84`. Tests need
 Xvfb on `:99` and `dbus-run-session`; they start private D-Bus sessions themselves.
 
 ```sh
@@ -29,21 +30,24 @@ pushes, and creates the GitHub release.
 
 For editor testing before Packagist, run `composer config repositories.myphp path
 /path/to/myphp` in a generated app, then `composer install`. The PHP used by Composer
-does not need GLFW. Do not commit `vendor/` or the root `composer.lock`.
+does not need phpsdl. Do not commit `vendor/` or the root `composer.lock`.
 
 ## Build the runtime
 
-Use [static-php-cli](https://github.com/crazywhalecc/static-php-cli), targeting glibc
-(glfw cannot be fully static). In its checkout, build twice: `build/craft.yml`
+Use [static-php-cli](https://github.com/crazywhalecc/static-php-cli) v3 (the commit CI
+uses), targeting glibc: SDL3 loads X11, Wayland and D-Bus at run time. First add
+myphp's recipes for SDL3 and phpsdl, which builds from `ext/phpsdl` in this checkout:
+`php build/spc/install.php SPC_DIR`. SDL needs the X11, Wayland, D-Bus and IBus
+development headers to build with input-method support (the build stops without it);
+`MYPHP_SDL_PKG_CONFIG_PATH` points it at headers unpacked elsewhere, e.g. from
+`dnf download` + `rpm2cpio` without root. In the checkout, build twice: `build/craft.yml`
 (the core runtime: PHP 8.4 with the toolkit's extensions) and `build/craft-full.yml`
 (plus `openssl`, `curl`, `pdo_sqlite`, XML and friends; keep `cli/runtime.php` in sync),
 copying `buildroot/bin/micro.sfx` and `php` to `~/.cache/spc/runtimes/core/` and
-`.../full/` after each. On Fedora, supply the X11 library paths:
+`.../full/` after each:
 
 ```sh
-mkdir -p x11libs
-for l in X11 Xrandr Xinerama Xcursor Xi; do ln -sf /usr/lib64/lib$l.so x11libs/; done
-SPC_TARGET=native-native-gnu.2.17 SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft
+SPC_TOOLCHAIN='StaticPHP\Toolchain\GccNativeToolchain' SPC_TARGET=native-native-gnu bin/spc craft craft.yml
 ```
 
 The CLI is micro + an INI block enabling phar creation + the CLI phar. App builds

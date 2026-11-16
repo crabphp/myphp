@@ -11,7 +11,7 @@ if test "$PHP_PHPSDL" != "no"; then
   if test "$PHP_SDL3_DIR" != "no"; then
     export PKG_CONFIG_PATH="$PHP_SDL3_DIR/lib64/pkgconfig:$PHP_SDL3_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
   fi
-  PKG_CHECK_MODULES([SDL3], [sdl3 >= 3.2.0])
+  PKG_CHECK_MODULES_STATIC([SDL3], [sdl3 >= 3.2.0])
   dnl SDL3 is linked statically: take its private libraries too.
   SDL3_STATIC_LIBS=`$PKG_CONFIG --static --libs sdl3`
   PHP_EVAL_INCLINE($SDL3_CFLAGS)
@@ -30,8 +30,9 @@ if test "$PHP_PHPSDL" != "no"; then
     vendor/nanovg/src/nanovg.c"
 
   dnl stb is implemented once, in gl/phpglfw_texture.c; the generated arginfo has
-  dnl class names that trip -Wunicode.
-  PHPSDL_CFLAGS="-DNVG_NO_STB=1 -Wno-unicode -Wno-unknown-warning-option"
+  dnl class names that trip -Wunicode. NanoVG must not cache GL state: several NanoVG
+  dnl contexts share phpsdl's one GL context.
+  PHPSDL_CFLAGS="-DNVG_NO_STB=1 -DNANOVG_GL_USE_STATE_FILTER=0 -Wno-unicode -Wno-unknown-warning-option"
 
   PHP_NEW_EXTENSION(phpsdl, $PHPSDL_SOURCES, $ext_shared,, $PHPSDL_CFLAGS)
   PHP_ADD_BUILD_DIR($ext_builddir/gl)

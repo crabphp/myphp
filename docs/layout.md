@@ -142,9 +142,13 @@ copy, cut and paste of the selection, and undo/redo (Ctrl+Z, Ctrl+Shift+Z or Ctr
 In a textarea, Enter adds a line, Up/Down move between lines, the wheel scrolls, and
 Ctrl/Cmd+Enter calls `onSubmit`. On macOS the shortcuts use Cmd, and Alt for words.
 
+Input methods work in inputs: Vietnamese (Telex, VNI), Chinese, Japanese, Korean and
+others. Text being composed shows at the caret, underlined, and becomes part of the
+value only when the input method commits it; the candidate list opens beside the caret.
+On Linux this uses IBus or Fcitx.
+
 ## Limits
 
-There is no IME (input method) support, rich text, accessibility layer, or
-animation of sizes and positions yet. With nothing selected, copy and cut take the whole value of an
+There is no rich text or animation of sizes and positions yet. With nothing selected, copy and cut take the whole value of an
 input. See [Components](components.md)
 and [Desktop](desktop.md) for the available controls and desktop behavior.

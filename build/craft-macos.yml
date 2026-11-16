@@ -1,7 +1,7 @@
 # static-php-cli recipe for the core macOS myphp runtime: build/craft.yml plus FFI,
 # which loads AccessKit for VoiceOver (src/AccessKit.php).
 php-version: 8.4
-extensions: glfw,opcache,phar,mbstring,ctype,tokenizer,zlib,posix,pcntl,filter,ffi
+extensions: phpsdl,opcache,phar,mbstring,ctype,tokenizer,zlib,posix,pcntl,filter,ffi
 sapi:
   - cli
   - micro

@@ -24,6 +24,11 @@ if ! xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
     for i in {1..100}; do xdpyinfo -display "$DISPLAY" >/dev/null 2>&1 && break; sleep .02; done
 fi
 export PHPUI_TEST_TMP=$logs
+# Test what ships: the myphp runtime runs without OPcache's JIT, and PHP 8.4's tracing
+# JIT can miscompile toolkit code (e.g. text wrapping) depending on what it traces.
+mkdir -p "$logs/ini"
+echo 'opcache.jit=disable' > "$logs/ini/zz-myphp-tests.ini"
+export PHP_INI_SCAN_DIR="${PHP_INI_SCAN_DIR-}:$logs/ini"
 export FAKE_LOG="$logs/fake.jsonl"
 export XDG_CONFIG_HOME="$logs/config" XDG_CACHE_HOME="$logs/cache" XDG_DATA_HOME="$logs/data"
 export GSETTINGS_BACKEND=memory GIO_USE_VFS=local GIO_USE_VOLUME_MONITOR=unix

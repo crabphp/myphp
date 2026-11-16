@@ -3,7 +3,7 @@
 /** @generate-class-entries */
 
 namespace PhpSdl {
-    /** The application window with its OpenGL 3.3 context. One per process. */
+    /** A window with the OpenGL 3.3 context, shared by all windows; the newest draws. */
     final class Window
     {
         public function __construct(string $title, int $width, int $height) {}

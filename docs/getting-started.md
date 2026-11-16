@@ -72,7 +72,7 @@ composer require guzzlehttp/guzzle   # any package
 
 `vendor/autoload.php` loads by itself in `myphp run`, and `myphp build` packs your
 packages into the app. The generated `composer.json` also installs the toolkit's
-sources and GLFW stubs, so your editor autocompletes everything. Composer needs a
+sources and the runtime's stubs, so your editor autocompletes everything. Composer needs a
 separate PHP installation; built apps never do.
 
 ### Two runtimes

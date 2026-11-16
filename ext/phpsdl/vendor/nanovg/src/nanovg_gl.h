@@ -51,7 +51,9 @@ enum NVGcreateFlags {
 #  define NANOVG_GL_IMPLEMENTATION 1
 #endif
 
+#ifndef NANOVG_GL_USE_STATE_FILTER
 #define NANOVG_GL_USE_STATE_FILTER (1)
+#endif
 
 // Creates NanoVG contexts for different OpenGL (ES) versions.
 // Flags should be combination of the create flags above.

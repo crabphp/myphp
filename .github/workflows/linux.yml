@@ -15,6 +15,8 @@ on:
       - .github/workflows/linux.yml
       - build/craft.yml
       - build/craft-full.yml
+      - build/spc/**
+      - ext/phpsdl/**
 
 permissions:
   contents: read
@@ -35,11 +37,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install X11 and OpenGL development files
+      # SDL3 (phpsdl) loads X11, Wayland and D-Bus at run time; it needs their headers to
+      # build, and D-Bus and IBus ones for input methods.
+      - name: Install X11, Wayland, input-method and OpenGL development files
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev \
-            libgl-dev xvfb libgl1-mesa-dri imagemagick pkg-config > /dev/null
+          sudo apt-get install -y -qq libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libxfixes-dev \
+            libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev wayland-protocols libdecor-0-dev libegl-dev \
+            libdbus-1-dev libibus-1.0-dev libgl-dev xvfb libgl1-mesa-dri imagemagick pkg-config cmake > /dev/null
           # The runner ships older OpenSSL, libxml2, curl and SQLite development links, and the
           # glfw recipe puts the system library folder first: remove those links so the
           # runtime links the versions static-php-cli builds.
@@ -50,7 +55,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: spc/buildroot/bin
-          key: runtime-linux-x86_64-${{ matrix.flavor }}-${{ hashFiles(matrix.recipe) }}
+          key: runtime-linux-x86_64-${{ matrix.flavor }}-${{ hashFiles(matrix.recipe, 'ext/phpsdl/**', 'build/spc/**') }}
 
       - uses: shivammathur/setup-php@v2
         if: steps.runtime.outputs.cache-hit != 'true'
@@ -58,10 +63,9 @@ jobs:
           php-version: '8.4'
           tools: composer
 
-      # static-php-cli v3 (the commit the maintainer builds with) is the version that builds glfw on Linux.
-      # glfw links X11 dynamically. CI builds with the system GCC against Ubuntu 22.04's glibc (2.35):
-      # the glfw recipe reads X11 headers from /usr/include, which clash with zig's glibc 2.17
-      # headers on Ubuntu. Releases built by build/release.sh keep glibc 2.17.
+      # static-php-cli v3 builds myphp's own extension (ext/phpsdl, SDL3) from this checkout:
+      # build/spc/install.php adds the SDL3 and phpsdl recipes. CI builds with the system GCC
+      # against Ubuntu 22.04's glibc (2.35); zig's glibc 2.17 headers clash with the system ones.
       - name: Build the PHP runtime with static-php-cli
         if: steps.runtime.outputs.cache-hit != 'true'
         env:
@@ -72,11 +76,10 @@ jobs:
           git -C spc checkout -q b8de36c
           cd spc
           composer install -q --no-dev --no-interaction
-          mkdir -p x11libs
-          for l in X11 Xrandr Xinerama Xcursor Xi; do ln -sf /usr/lib/x86_64-linux-gnu/lib$l.so x11libs/; done
+          php ../build/spc/install.php .
           cp ../${{ matrix.recipe }} craft.yml
           bin/spc doctor --auto-fix || true
-          SPC_TOOLCHAIN='StaticPHP\Toolchain\GccNativeToolchain' SPC_TARGET=native-native-gnu SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft -v \
+          SPC_TOOLCHAIN='StaticPHP\Toolchain\GccNativeToolchain' SPC_TARGET=native-native-gnu bin/spc craft -v \
             || { tail -n 80 craft.log 2>/dev/null; grep -rn -B3 -A12 -E 'error[: ]|undefined reference|ld: ' log 2>/dev/null | tail -200; exit 1; }
 
       - uses: actions/upload-artifact@v4
