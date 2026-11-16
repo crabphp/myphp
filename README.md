@@ -1,15 +1,15 @@
 # MyPHP
 
-Native desktop apps in plain PHP, drawn on the GPU.
+Native desktop apps in plain PHP, drawn on the GPU (Vulkan, Metal, Direct3D 12).
 
-One 12 MB binary holds PHP, the UI toolkit and its assets. No PHP install, no
-webview, no Electron. Apps build into a single file you can send to anyone.
+One binary of about 15 MB holds PHP, the UI toolkit and its assets. No PHP install,
+no webview, no Electron. Apps build into a single file you can send to anyone.
 
 ![Dashboard built with MyPHP](docs/images/dashboard.webp)
 
 ## Install
 
-Linux x86-64 (X11 or XWayland, a Vulkan driver), or macOS on Apple Silicon or Intel (experimental):
+Linux x86-64 (X11 or Wayland, a Vulkan driver), or macOS 11+ on Apple Silicon or Intel:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/crabphp/myphp/main/install.sh | sh
@@ -19,7 +19,7 @@ Later, `myphp upgrade` updates it. For the newest unreleased build from `main`, 
 with `curl -fsSL https://raw.githubusercontent.com/crabphp/myphp/main/install.sh | sh -s -- --nightly`;
 `myphp upgrade` then keeps you on nightly builds (`--stable` goes back to releases).
 
-Windows x86-64 (experimental), in PowerShell:
+Windows x86-64 (Direct3D 12; experimental), in PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/crabphp/myphp/main/install.ps1 | iex
@@ -80,8 +80,11 @@ run on a larger runtime that myphp picks and downloads by itself.
 
 - **Layout:** flexbox rows and columns, grids, wrapping rows, gap, padding, grow,
   align, scrolling, wrapping text and images.
+- **Text:** shaped by HarfBuzz (ligatures, accents, complex scripts), with the
+  system's fonts as fallbacks for Chinese, Japanese, Korean, emoji and more.
 - **Text editing:** inputs and textareas with a caret, mouse selection, word jumps,
-  copy/paste, undo/redo and Tab between fields.
+  copy/paste, undo/redo, Tab between fields, and input methods (IBus, Fcitx, macOS
+  and Windows IMEs) for Vietnamese, Chinese, Japanese and others.
 - **Filament-style API:** chain settings (`card()->heading(...)->schema([...])`), and
   `->bind($state->email)` connects inputs to state both ways.
 - **Components:** shadcn/ui style buttons, inputs, select, tabs, table, dialog,
@@ -90,12 +93,16 @@ run on a larger runtime that myphp picks and downloads by itself.
 - **State:** `state()` with a typed object your editor autocompletes; timers;
   a data folder per app.
 - **Live reload:** `myphp run --watch` restarts the window when you save.
+- **Canvas:** `canvas()` draws with the HTML canvas 2D API: paths, arcs, Béziers,
+  SVG path data, gradients, patterns, clipping, shadows, transforms, text and images
+  ([details](docs/layout.md#canvas)).
 - **Audio:** play MP3, FLAC and WAV with `GL\Audio\Engine`, built in; see the player demo.
 - **Keyboard and zoom:** Tab to every control, Enter/Space/arrows/Escape, a focus ring,
   Ctrl/Cmd +/− zoom, reduced motion and accessible names ([details](docs/accessibility.md)).
 - **Desktop:** file dialogs, notifications, clipboard, file drop, open links,
   follow system dark mode.
-- **Fast:** one GPU draw for all boxes and shadows; the app sleeps when idle.
+- **Fast:** boxes, borders, shadows, text and icons drawn in a few GPU calls with
+  SDL_GPU (Vulkan, Metal, Direct3D 12); the app sleeps when idle.
 
 Try the examples in [`examples/`](examples): a showcase (a dashboard and every
 component with its code), notes, a mail client, a music player, a pocket player with a click wheel, a log viewer, a todo list and desktop APIs.
@@ -121,8 +128,9 @@ myphp run showcase.php    # also: desktop, logs, mail, notes, player, pocket, to
 ## Status
 
 Early. Screen readers: VoiceOver on macOS (experimental), not yet on Linux or
-Windows. Linux is the main platform; macOS and Windows are experimental (built and
-smoke-tested by CI, not yet tested on real hardware). Not yet: tray icons, menus,
+Windows. Linux and macOS run on real hardware; Windows is experimental (built and
+smoke-tested by CI on Direct3D 12's software adapter, not yet tested on a real
+machine). A GPU driver with Vulkan, Metal or Direct3D 12 is required. Not yet: tray icons, menus,
 multiple windows, global shortcuts.
 
 ## License

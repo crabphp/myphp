@@ -97,6 +97,9 @@ Other primitives: `text($string)`, controlled `input($id, $value, $onInput)`,
 aspect ratio; with neither it shows at its pixel size. `->fit('cover')` fills the box
 and crops, `'contain'` (the default) shows the whole picture, `'fill'` stretches it.
 `->rounded()` clips the corners. Use `__DIR__` paths so built apps find their files.
+
+## Canvas
+
 `canvas(fn (Canvas $c) => ...)` draws with the HTML canvas 2D API, in the box's own
 pixels (`$c->width`, `$c->height`): paths (`arc`, `bezierCurveTo`, `roundRect`,
 `Path2D`, also from SVG path data), `fill`/`stroke` with even-odd, joins, caps and
@@ -106,6 +109,22 @@ fonts), `drawImage`, `save`/`restore`. Colors take CSS (`'#ff0000'`, `'rgb(...)'
 `'hsl(...)'`, names) and theme colors (`t('primary')`). Not supported: `clearRect`,
 pixel access and composite operations other than source-over. The callback also
 gets the `Element` and the `Painter`.
+
+```php
+canvas(function (Canvas $c) {
+    $g = $c->createLinearGradient(0, 0, $c->width, 0);
+    $g->addColorStop(0, t('chart-1'));
+    $g->addColorStop(1, t('chart-2'));
+    $c->fillStyle = $g;
+    $c->beginPath();
+    $c->roundRect(0, 0, $c->width, $c->height, 12);
+    $c->fill();
+    $c->font = 'bold 16px sans-serif';
+    $c->fillStyle = '#ffffff';
+    $c->textBaseline = 'middle';
+    $c->fillText('Hello, canvas', 16, $c->height / 2);
+})->h(80)
+```
 
 ## State
 
