@@ -46,9 +46,9 @@ jobs:
           tools: composer
 
       # static-php-cli v3 (the commit the maintainer builds with) is the version that builds glfw on Linux.
-      # glfw links X11 dynamically. CI builds against Ubuntu 22.04's own glibc (2.35): a glibc 2.17
-      # target would mix zig's old libc headers with the system X11 headers. Releases built by
-      # build/release.sh keep glibc 2.17.
+      # glfw links X11 dynamically. CI builds with the system GCC against Ubuntu 22.04's glibc (2.35):
+      # the glfw recipe reads X11 headers from /usr/include, which clash with zig's glibc 2.17
+      # headers on Ubuntu. Releases built by build/release.sh keep glibc 2.17.
       - name: Build the PHP runtime with static-php-cli
         if: steps.runtime.outputs.cache-hit != 'true'
         env:
@@ -59,15 +59,11 @@ jobs:
           git -C spc checkout -q b8de36c
           cd spc
           composer install -q --no-dev --no-interaction
-          mkdir -p x11libs x11root/include
+          mkdir -p x11libs
           for l in X11 Xrandr Xinerama Xcursor Xi; do ln -sf /usr/lib/x86_64-linux-gnu/lib$l.so x11libs/; done
-          # Only the X11 headers: CMake would otherwise add /usr/include, and Ubuntu's newer
-          # libc headers there clash with the glibc 2.17 headers the build targets.
-          ln -s /usr/include/X11 x11root/include/X11
-          export CMAKE_PREFIX_PATH=$PWD/x11root
           cp ../build/craft.yml .
           bin/spc doctor --auto-fix || true
-          SPC_TARGET=native-native-gnu SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft -v \
+          SPC_LIBC=glibc SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS="-L$PWD/x11libs" bin/spc craft -v \
             || { tail -n 80 craft.log 2>/dev/null; grep -rn -B3 -A12 -E 'error[: ]|undefined reference|ld: ' log 2>/dev/null | tail -200; exit 1; }
 
       - uses: actions/upload-artifact@v4
