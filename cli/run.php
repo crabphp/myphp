@@ -21,6 +21,9 @@ function myphpRun(string $file, array $args): int
     // Composer packages beside the app load automatically.
     $vendor = dirname(str_starts_with($file, 'phar://') ? $file : (string) realpath($file)) . '/vendor/autoload.php';
     if (is_file($vendor)) require_once $vendor;
+    // The app's icon for its windows (icon.png beside it, or composer.json's extra.myphp.icon).
+    $info = myphpAppInfo(dirname((string) realpath($file)));
+    if ($info['iconInProject']) putenv('MYPHP_APP_ICON=' . $info['icon']);
     $GLOBALS['argv'] = $_SERVER['argv'] = [$file, ...$args];
     $GLOBALS['argc'] = $_SERVER['argc'] = count($GLOBALS['argv']);
     (static function (): void {

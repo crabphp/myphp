@@ -2011,6 +2011,66 @@ PHP_METHOD(PhpSdl_Renderer, flush)
     renderer_flush(renderer_of(ZEND_THIS));
 }
 
+/* $from scaled to $width×$height and saved as a PNG at $to: area averaging (each output
+ * pixel the mean of the input it covers, in premultiplied color), so shrinking is sharp
+ * and clean. For app icons. */
+PHP_METHOD(PhpSdl_Renderer, resizeImage)
+{
+    zend_string *from, *to;
+    zend_long width, height;
+    ZEND_PARSE_PARAMETERS_START(4, 4)
+        Z_PARAM_PATH_STR(from) Z_PARAM_PATH_STR(to) Z_PARAM_LONG(width) Z_PARAM_LONG(height)
+    ZEND_PARSE_PARAMETERS_END();
+    if (width < 1 || height < 1 || width > 16384 || height > 16384) { zend_value_error("The size is out of range"); RETURN_THROWS(); }
+    int sw, sh, n;
+    unsigned char *src = stbi_load(ZSTR_VAL(from), &sw, &sh, &n, 4);
+    if (!src) RETURN_FALSE;
+    int dw = (int) width, dh = (int) height;
+    float *row = ecalloc((size_t) dw * sh, sizeof(float) * 4); /* horizontal pass: dw × sh */
+    float kx = (float) sw / dw, ky = (float) sh / dh;
+    for (int y = 0; y < sh; y++) {
+        for (int x = 0; x < dw; x++) {
+            float x0 = x * kx, x1 = x0 + kx, acc[4] = {0, 0, 0, 0}, total = 0;
+            for (int sx = (int) x0; sx < sw && sx < x1; sx++) {
+                float w = fminf(x1, sx + 1.0f) - fmaxf(x0, (float) sx);
+                if (w <= 0) continue;
+                const unsigned char *p = src + ((size_t) y * sw + sx) * 4;
+                float a = p[3] / 255.0f;
+                acc[0] += p[0] * a * w; acc[1] += p[1] * a * w; acc[2] += p[2] * a * w; acc[3] += a * w;
+                total += w;
+            }
+            float *o = row + ((size_t) y * dw + x) * 4;
+            for (int k = 0; k < 4; k++) o[k] = total > 0 ? acc[k] / total : 0;
+        }
+    }
+    stbi_image_free(src);
+    unsigned char *out = emalloc((size_t) dw * dh * 4);
+    for (int y = 0; y < dh; y++) {
+        float y0 = y * ky, y1 = y0 + ky;
+        for (int x = 0; x < dw; x++) {
+            float acc[4] = {0, 0, 0, 0}, total = 0;
+            for (int sy = (int) y0; sy < sh && sy < y1; sy++) {
+                float w = fminf(y1, sy + 1.0f) - fmaxf(y0, (float) sy);
+                if (w <= 0) continue;
+                const float *p = row + ((size_t) sy * dw + x) * 4;
+                for (int k = 0; k < 4; k++) acc[k] += p[k] * w;
+                total += w;
+            }
+            unsigned char *o = out + ((size_t) y * dw + x) * 4;
+            float a = total > 0 ? acc[3] / total : 0;
+            for (int k = 0; k < 3; k++) {
+                float v = a > 0 ? acc[k] / total / a : 0;
+                o[k] = (unsigned char) fminf(255, v + 0.5f);
+            }
+            o[3] = (unsigned char) fminf(255, a * 255 + 0.5f);
+        }
+    }
+    efree(row);
+    bool ok = stbi_write_png(ZSTR_VAL(to), dw, dh, 4, out, dw * 4) != 0;
+    efree(out);
+    RETURN_BOOL(ok);
+}
+
 PHP_METHOD(PhpSdl_Renderer, imageSize)
 {
     zend_string *path;

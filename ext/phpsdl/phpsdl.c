@@ -30,6 +30,7 @@
 #include "phpsdl_arginfo.h"
 #include "phpsdl_keys.h"
 #include "render.h"
+#include "stb_image.h"
 
 ZEND_DECLARE_MODULE_GLOBALS(phpsdl)
 
@@ -284,6 +285,24 @@ ZEND_METHOD(PhpSdl_Window, begin)
     int w = 0, h = 0;
     SDL_GetWindowSizeInPixels(window, &w, &h);
     RETURN_BOOL(phpsdl_frame_begin(window, w, h, color));
+}
+
+ZEND_METHOD(PhpSdl_Window, setIcon)
+{
+    zend_string *path;
+    ZEND_PARSE_PARAMETERS_START(1, 1)
+        Z_PARAM_PATH_STR(path)
+    ZEND_PARSE_PARAMETERS_END();
+    SDL_Window *window = PHPSDL_WINDOW();
+    if (!window) RETURN_FALSE;
+    int w, h, n;
+    unsigned char *px = stbi_load(ZSTR_VAL(path), &w, &h, &n, 4);
+    if (!px) RETURN_FALSE;
+    SDL_Surface *icon = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_RGBA32, px, w * 4);
+    bool ok = icon && SDL_SetWindowIcon(window, icon);
+    if (icon) SDL_DestroySurface(icon);
+    stbi_image_free(px);
+    RETURN_BOOL(ok);
 }
 
 ZEND_METHOD(PhpSdl_Window, swap)

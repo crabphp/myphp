@@ -13,6 +13,8 @@ namespace PhpSdl {
         public function pixelSize(): array {}
         public function setSize(int $width, int $height): void {}
         public function setTitle(string $title): void {}
+        /** The window's icon (taskbar, Dock, title bar) from an image file; false when it cannot be read. */
+        public function setIcon(string $path): bool {}
         /** Start a frame in the window, cleared to $clear (RGBA, 0 to 1); false when there is nothing to draw into. */
         public function begin(array $clear): bool {}
         /** Show the frame. */
@@ -78,6 +80,8 @@ namespace PhpSdl {
         public function forget(): void {}
         /** @return array{int, int} */
         public static function imageSize(string $path): array {}
+        /** $from (PNG, JPEG, ...) scaled to $width×$height and saved as a PNG at $to, averaging what each pixel covers. */
+        public static function resizeImage(string $from, string $to, int $width, int $height): bool {}
     }
 
     /** A vector path, as canvas's Path2D. Angles in radians. */

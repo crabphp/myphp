@@ -73,6 +73,8 @@ final class App
         } else {
             $this->painter = new Painter();
             $this->layout = new Layout($this->painter);
+            // The app's icon (myphp run and build pass it), else myphp's.
+            $this->icon(getenv('MYPHP_APP_ICON') ?: dirname(__DIR__) . '/assets/icon.png');
         }
         $this->bindWindow();
         // Keep drawing at display rate while something is animating.
@@ -138,6 +140,13 @@ final class App
     {
         $this->painter->forgetAssets();
         $this->invalidate();
+    }
+
+    /** The window's icon in the taskbar and Dock: a PNG (1024×1024 works everywhere). */
+    public function icon(string $path): self
+    {
+        if (is_file($path)) $this->window->setIcon(realFile($path));
+        return $this;
     }
 
     /** Ask for a new frame, e.g. after state changed outside an event handler. */

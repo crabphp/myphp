@@ -64,7 +64,9 @@ The UI is a function of state: change `$state`, and the next frame shows it.
 myphp build
 ```
 
-You get `build/hello`, one executable with everything inside.
+You get `build/hello`, one executable with everything inside. On a Mac you also get
+`build/Hello.app` with your icon, and `myphp build --dmg` makes a disk image to share.
+Put an `icon.png` beside `app.php` for the app's icon ([details](docs/cli.md#name-icon-and-macos-apps)).
 
 ## Composer packages
 
@@ -143,8 +145,8 @@ Next:
   APIs on real hardware; a console-free GUI build.
 - **Windows and app chrome:** app and context menus, tray icons, multiple windows,
   window options (minimum size, fullscreen, frameless), global shortcuts.
-- **Shipping:** app icons, macOS `.app` bundles and DMGs, Windows installers, Linux
-  AppImage and `.desktop` files, code signing and notarization, self-updating apps.
+- **Shipping:** Windows `.exe` icons and installers, Linux AppImage and `.desktop`
+  files, Developer ID signing and notarization on macOS, self-updating apps.
 - **Screen readers:** Orca on Linux and Narrator/NVDA on Windows (VoiceOver works on
   macOS).
 

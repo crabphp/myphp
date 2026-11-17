@@ -59,13 +59,16 @@ function cmdBuild(array $args): int
     $original = $args;
     $file = null;
     $output = null;
+    $dmg = false;
     for ($i = 0; $i < count($args); $i++) {
-        if ($args[$i] === '-o' && $output === null && isset($args[$i + 1]) && !str_starts_with($args[$i + 1], '-')) {
+        if ($args[$i] === '--dmg') {
+            $dmg = true;
+        } elseif ($args[$i] === '-o' && $output === null && isset($args[$i + 1]) && !str_starts_with($args[$i + 1], '-')) {
             $output = $args[++$i];
         } elseif (!str_starts_with($args[$i], '-') && $file === null) {
             $file = $args[$i];
         } else {
-            return myphpError('usage: myphp build [file] [-o output] [--full | --core]', 2);
+            return myphpError('usage: myphp build [file] [-o output] [--dmg] [--full | --core]', 2);
         }
     }
     $file ??= 'app.php';
@@ -110,7 +113,14 @@ function cmdBuild(array $args): int
         $app = var_export('phar://app.phar/app/' . basename($entry), true);
         // Composer packages load before the app, as with myphp run.
         $vendor = is_file("$project/vendor/autoload.php") ? "require 'phar://app.phar/app/vendor/autoload.php'; " : '';
-        $phar->setStub("<?php Phar::mapPhar('app.phar'); require 'phar://app.phar/src/autoload.php'; {$vendor}require $app; __HALT_COMPILER();");
+        // The app's own icon, for its windows.
+        $info = myphpAppInfo($project);
+        $icon = '';
+        if ($info['iconInProject'] && str_starts_with($info['icon'], $project . DIRECTORY_SEPARATOR)) {
+            $inside = var_export('MYPHP_APP_ICON=phar://app.phar/app/' . str_replace(DIRECTORY_SEPARATOR, '/', substr($info['icon'], strlen($project) + 1)), true);
+            $icon = "putenv($inside); ";
+        }
+        $phar->setStub("<?php Phar::mapPhar('app.phar'); {$icon}require 'phar://app.phar/src/autoload.php'; {$vendor}require $app; __HALT_COMPILER();");
         $phar->stopBuffering();
         // Same INI as the CLI where apps need it: FFI for screen reader support.
         $ini = "ffi.enable=1\n";
@@ -130,6 +140,19 @@ function cmdBuild(array $args): int
         }
         clearstatcache();
         printf("Built %s (%.1f MB, %s runtime)\n", $output, filesize($target) / 1000000, myphpFlavor());
+        // macOS apps live in bundles: name, icon and id from composer.json (extra.myphp).
+        if (PHP_OS_FAMILY === 'Darwin' || getenv('MYPHP_MAC_BUNDLE')) {
+            $bundle = myphpMacBundle($target, $info, dirname($target));
+            if ($bundle === null) return myphpError('cannot write the app bundle');
+            printf("Built %s\n", $dir . '/' . basename($bundle));
+            if ($dmg) {
+                $image = myphpDmg($bundle, $info, dirname($target));
+                if ($image === null) return myphpError('cannot make the disk image');
+                printf("Built %s\n", $dir . '/' . basename($image));
+            }
+        } elseif ($dmg) {
+            return myphpError('--dmg makes a macOS disk image: build on a Mac');
+        }
         return 0;
     } finally {
         unset($phar);

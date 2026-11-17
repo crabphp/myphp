@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 6cb27638ec81d23f771c9a21715ca2e78c6009c3 */
+ * Stub hash: 775d45497dfe7d23c6e40db83ff71591aaf597ac */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_PhpSdl_Window___construct, 0, 0, 3)
 	ZEND_ARG_TYPE_INFO(0, title, IS_STRING, 0)
@@ -19,6 +19,10 @@ ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Window_setTitle, 0, 1, IS_VOID, 0)
 	ZEND_ARG_TYPE_INFO(0, title, IS_STRING, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Window_setIcon, 0, 1, _IS_BOOL, 0)
+	ZEND_ARG_TYPE_INFO(0, path, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Window_begin, 0, 1, _IS_BOOL, 0)
@@ -172,6 +176,13 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Renderer_imageSize,
 	ZEND_ARG_TYPE_INFO(0, path, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Renderer_resizeImage, 0, 4, _IS_BOOL, 0)
+	ZEND_ARG_TYPE_INFO(0, from, IS_STRING, 0)
+	ZEND_ARG_TYPE_INFO(0, to, IS_STRING, 0)
+	ZEND_ARG_TYPE_INFO(0, width, IS_LONG, 0)
+	ZEND_ARG_TYPE_INFO(0, height, IS_LONG, 0)
+ZEND_END_ARG_INFO()
+
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Path_moveTo, 0, 2, IS_VOID, 0)
 	ZEND_ARG_TYPE_INFO(0, x, IS_DOUBLE, 0)
 	ZEND_ARG_TYPE_INFO(0, y, IS_DOUBLE, 0)
@@ -300,6 +311,7 @@ ZEND_METHOD(PhpSdl_Window, size);
 ZEND_METHOD(PhpSdl_Window, pixelSize);
 ZEND_METHOD(PhpSdl_Window, setSize);
 ZEND_METHOD(PhpSdl_Window, setTitle);
+ZEND_METHOD(PhpSdl_Window, setIcon);
 ZEND_METHOD(PhpSdl_Window, begin);
 ZEND_METHOD(PhpSdl_Window, swap);
 ZEND_METHOD(PhpSdl_Window, beginCapture);
@@ -327,6 +339,7 @@ ZEND_METHOD(PhpSdl_Renderer, path);
 ZEND_METHOD(PhpSdl_Renderer, flush);
 ZEND_METHOD(PhpSdl_Renderer, forget);
 ZEND_METHOD(PhpSdl_Renderer, imageSize);
+ZEND_METHOD(PhpSdl_Renderer, resizeImage);
 ZEND_METHOD(PhpSdl_Path, moveTo);
 ZEND_METHOD(PhpSdl_Path, lineTo);
 ZEND_METHOD(PhpSdl_Path, quadraticCurveTo);
@@ -358,6 +371,7 @@ static const zend_function_entry class_PhpSdl_Window_methods[] = {
 	ZEND_ME(PhpSdl_Window, pixelSize, arginfo_class_PhpSdl_Window_pixelSize, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Window, setSize, arginfo_class_PhpSdl_Window_setSize, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Window, setTitle, arginfo_class_PhpSdl_Window_setTitle, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Window, setIcon, arginfo_class_PhpSdl_Window_setIcon, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Window, begin, arginfo_class_PhpSdl_Window_begin, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Window, swap, arginfo_class_PhpSdl_Window_swap, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Window, beginCapture, arginfo_class_PhpSdl_Window_beginCapture, ZEND_ACC_PUBLIC)
@@ -393,6 +407,7 @@ static const zend_function_entry class_PhpSdl_Renderer_methods[] = {
 	ZEND_ME(PhpSdl_Renderer, flush, arginfo_class_PhpSdl_Renderer_flush, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Renderer, forget, arginfo_class_PhpSdl_Renderer_forget, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Renderer, imageSize, arginfo_class_PhpSdl_Renderer_imageSize, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
+	ZEND_ME(PhpSdl_Renderer, resizeImage, arginfo_class_PhpSdl_Renderer_resizeImage, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_FE_END
 };
 

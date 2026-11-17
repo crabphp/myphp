@@ -40,6 +40,8 @@ abstract class Window
     abstract public function framebufferSize(): array;
     abstract public function setSize(int $width, int $height): void;
     abstract public function setTitle(string $title): void;
+    /** The window's icon (taskbar, Dock) from an image file. */
+    abstract public function setIcon(string $path): void;
     abstract public function shouldClose(): bool;
     /** Wait up to $timeout seconds for events and dispatch them. */
     abstract public function waitEvents(float $timeout): void;

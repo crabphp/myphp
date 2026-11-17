@@ -8,6 +8,7 @@ error_reporting(E_ALL);
 require __DIR__ . '/run.php';
 require __DIR__ . '/init.php';
 require __DIR__ . '/build.php';
+require __DIR__ . '/package.php';
 require __DIR__ . '/upgrade.php';
 require __DIR__ . '/runtime.php';
 
@@ -30,7 +31,7 @@ function myphpHelp(): int
         'init' => '  myphp init <name>     create a new app',
         'run' => '  myphp run [file]      run an app (default: app.php); --watch reloads on save',
         'runtime' => '                        apps needing HTTPS, SQLite or XML use the full runtime; --full/--core choose',
-        'build' => '  myphp build [file]    build one executable (default: app.php)',
+        'build' => '  myphp build [file]    build one executable (default: app.php); on macOS also an .app (--dmg: a disk image)',
         'upgrade' => '  myphp upgrade         update myphp (--nightly: newest build from main, --stable: releases)',
     ] as $name => $line) {
         if (function_exists('cmd' . ucfirst($name))) echo "$line\n";

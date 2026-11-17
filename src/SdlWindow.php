@@ -24,6 +24,7 @@ final class SdlWindow extends Window
     public function framebufferSize(): array { return $this->handle->pixelSize(); }
     public function setSize(int $width, int $height): void { $this->handle->setSize($width, $height); }
     public function setTitle(string $title): void { $this->handle->setTitle($title); }
+    public function setIcon(string $path): void { $this->handle->setIcon($path); }
     public function shouldClose(): bool { return $this->closing; }
     public function begin(array $clear): bool { return $this->handle->begin($clear); }
     public function swap(): void { $this->handle->swap(); }

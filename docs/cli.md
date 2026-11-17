@@ -52,6 +52,7 @@ watching.
 myphp build
 myphp build app.php -o build/custom
 myphp build --full
+myphp build --dmg        # macOS: also a disk image
 ```
 
 Defaults to `app.php`; the project is the entry file's directory, not necessarily
@@ -74,6 +75,35 @@ included, so keep secrets outside the project or in dotfiles.
 `docs/` and `examples/` folders, and without the myphp package itself), and
 `vendor/autoload.php` loads before your app, in `myphp run` too. Run
 `composer install` before building. Composer needs a separate PHP; the built app does not.
+
+### Name, icon and macOS apps
+
+The app's icon is `icon.png` beside the entry file (a 1024×1024 PNG works everywhere),
+or myphp's own. Its windows show it in the taskbar or Dock, in `myphp run` too.
+`composer.json` names the app:
+
+```json
+{
+    "extra": {
+        "myphp": {
+            "name": "Hello World",
+            "id": "com.example.hello",
+            "version": "1.2.0",
+            "icon": "art/icon.png"
+        }
+    }
+}
+```
+
+The name defaults to the folder's (`my-app` becomes `My App`), the id to
+`dev.myphp.<folder>`, the version to `composer.json`'s `version` or `1.0.0`.
+
+On macOS, `myphp build` also makes `build/<Name>.app`: the executable in a bundle with
+an `Info.plist` (name, id, version, Retina) and the icon as `AppIcon.icns` at every
+size, signed ad hoc so Apple Silicon Macs open it. `--dmg` puts the app in
+`build/<Name>.dmg`, a compressed disk image with a link to Applications to drag it
+to. Apps downloaded from the internet also need a Developer ID signature and Apple's
+notarization to open without a warning; myphp does not do that yet.
 
 ### Assets
 

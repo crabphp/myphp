@@ -106,8 +106,14 @@ jobs:
           cd "$WORK"
           "$GITHUB_WORKSPACE/$MYPHP" init smoke
           cd smoke
-          "$GITHUB_WORKSPACE/$MYPHP" build
+          "$GITHUB_WORKSPACE/$MYPHP" build --dmg
           file build/smoke
+          # An app bundle and a disk image, as a Mac app ships.
+          test -x build/Smoke.app/Contents/MacOS/smoke
+          plutil -lint build/Smoke.app/Contents/Info.plist
+          test "$(head -c 4 build/Smoke.app/Contents/Resources/AppIcon.icns)" = icns
+          codesign --verify --verbose build/Smoke.app || echo "::warning::the app bundle is not signed"
+          hdiutil verify build/Smoke.dmg
           MYPHP_DOWNLOAD_URL=file://$GITHUB_WORKSPACE/$MYPHP MYPHP_INSTALL_DIR=$WORK/bin sh "$GITHUB_WORKSPACE/install.sh"
           echo "SMOKE=$WORK/smoke" >> "$GITHUB_ENV"
 
@@ -117,6 +123,7 @@ jobs:
         run: |
           mkdir -p shots
           PHPUI_SCREENSHOT=$PWD/shots/built-app.png "$SMOKE/build/smoke"
+          PHPUI_SCREENSHOT=$PWD/shots/bundled-app.png "$SMOKE/build/Smoke.app/Contents/MacOS/smoke"
           PHPUI_SCREENSHOT=$PWD/shots/demo.png $MYPHP run examples/showcase.php
           ls -l shots
 
