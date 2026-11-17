@@ -6,7 +6,7 @@ require __DIR__ . '/../src/autoload.php';
 
 use PhpSdl\Renderer;
 use PhpSdl\Sound;
-use PhpUi\{App, Canvas, Key, Mouse};
+use PhpUi\{App, Camera3D, Canvas, Key, Mouse, Voxels};
 use function PhpUi\{canvas, col, dataDir, state};
 
 // Island Hop: 3D from 2D. The ground is one flat image seen in perspective ("mode 7",
@@ -14,7 +14,8 @@ use function PhpUi\{canvas, col, dataDir, state};
 // houses, mountains, clouds) is a voxel shape cut into flat slices; drawn stacked and
 // turned together, the slices make it solid from any angle ("sprite stacking"). The
 // camera chases the jet low over the sea. Art and sound are made by this file.
-// A/D or ←/→ turn, W/S or ↑/↓ speed, Space or click shoots. Esc pauses.
+// A/D or ←/→ turn, W/S or ↑/↓ speed, Space or click shoots, V switches to the cockpit
+// and back. Esc pauses.
 
 defined('MAP') || define('MAP', 512);        // ground texels; the world wraps every MAP * TEXEL units
 defined('TEXEL') || define('TEXEL', 2);      // world units a ground texel
@@ -74,143 +75,112 @@ if (!is_file($groundFile)) {
     Renderer::savePng($groundFile, MAP, MAP, $px);
 }
 
-/**
- * A voxel model, sliced: $voxel(x, y, z) gives a color or null. Each layer becomes a
- * top (lit) and a side (shaded) image; drawn stacked, they make the model solid. All
- * slices of all models go in one atlas, so the GPU draws a scene in a few calls.
- * $unit is world units a voxel; $shade how dark the lowest sides are.
- */
+// The models: voxel shapes, sliced into one atlas for sprite stacking (PhpUi\Voxels).
+// [width, depth, height] in voxels, world units a voxel, how dark the lowest sides are.
 $specs = [
     'jet' => [25, 30, 9, 1, 0.55], 'drone' => [13, 13, 6, 1.5, 0.55], 'oak' => [11, 11, 13, 1.4, 0.55],
     'pine' => [9, 9, 16, 1.4, 0.55], 'house' => [14, 12, 12, 1.4, 0.6], 'rock' => [9, 8, 5, 1.4, 0.6],
     'lighthouse' => [9, 9, 28, 1.4, 0.6], 'mountain' => [36, 36, 24, 2.6, 0.5],
     'cloud' => [28, 20, 8, 3, 0.86], 'cloud2' => [22, 18, 7, 3, 0.86],
 ];
-$models = [];
-[$row, $width] = [0, 0];
-foreach ($specs as $name => [$w, $d, $h, $unit, $shade]) {
-    $layers = [];
-    for ($z = 0; $z < $h; $z++) $layers[] = [[$z * 2 * $w, $row, $w, $d], [($z * 2 + 1) * $w, $row, $w, $d]];
-    $models[$name] = ['w' => $w, 'd' => $d, 'h' => $h, 'unit' => $unit, 'layers' => $layers];
-    $width = max($width, $h * 2 * $w);
-    $row += $d;
-}
+$shapes = [];
+$model = function (string $name, callable $voxel) use (&$shapes, $specs): void {
+    [$w, $d, $h, $unit, $shade] = $specs[$name];
+    $shapes[$name] = ['size' => [$w, $d, $h], 'unit' => $unit, 'shade' => $shade, 'voxel' => $voxel];
+};
+$near = fn ($x, $y, $z, $cx, $cy, $cz, $r) => ($x - $cx) ** 2 + ($y - $cy) ** 2 + ($z - $cz) ** 2 < $r * $r;
+mt_srand(5);
 
-$atlasFile = "$dir/models.png";
-if (!is_file($atlasFile)) {
-    $atlas = array_fill(0, $row, str_repeat("\0", $width * 4));
-    $model = function (string $name, callable $voxel) use (&$atlas, $models, $specs, $hex): void {
-        [$w, $d, $h, , $shade] = $specs[$name];
-        $top = $models[$name]['layers'][0][0][1];
-        for ($z = 0; $z < $h; $z++) {
-            [$a, $b] = ['', ''];
-            $k = $shade + (0.85 - $shade) * $z / max(1, $h - 1);
-            for ($y = 0; $y < $d; $y++) for ($x = 0; $x < $w; $x++) {
-                $c = $voxel($x, $y, $z);
-                if ($c === null) { $a .= "\0\0\0\0"; $b .= "\0\0\0\0"; continue; }
-                [$r, $g, $bl] = $hex($c);
-                $a .= pack('C4', $r, $g, $bl, 255);
-                $b .= pack('C4', (int) ($r * $k), (int) ($g * $k), (int) ($bl * $k), 255);
-            }
-            foreach ([$a, $b] as $which => $rgba) {
-                for ($y = 0; $y < $d; $y++) {
-                    $atlas[$top + $y] = substr_replace($atlas[$top + $y], substr($rgba, $y * $w * 4, $w * 4), ($z * 2 + $which) * $w * 4, $w * 4);
-                }
-            }
-        }
-    };
-    $near = fn ($x, $y, $z, $cx, $cy, $cz, $r) => ($x - $cx) ** 2 + ($y - $cy) ** 2 + ($z - $cz) ** 2 < $r * $r;
-    mt_srand(5);
-
-    // The jet, our own: a white twin-tail fighter with blue wing bands. Nose up (-y).
-    $model('jet', function ($x, $y, $z) {
-        $dx = abs($x - 12);
-        $hull = $y < 4 ? 0 : ($y < 9 ? 1 : ($y < 25 ? 2 : 1));
-        if ($y >= 1 && $y <= 28 && $dx <= $hull && $z >= ($y < 5 ? 2 : 1) && $z <= ($y < 5 ? 2 : 3)) {
-            return $z === 1 ? '#8c97a8' : ($dx === 0 && $y >= 13 && $z === 3 ? '#2d6cdf' : '#eef2f7');
-        }
-        if ($y >= 7 && $y <= 12 && $dx <= 1 && $z >= 4 && $z <= ($y <= 10 ? 5 : 4)) return $y === 8 && $z === 5 ? '#bfe9ff' : '#24314d';
-        if ($z === 2 && $y >= 11 && $y <= 21 && $dx >= 2 && $dx <= min(12, ($y - 9) * 1.25)) {
-            if ($dx >= 11) return '#ffc93a';
-            return $y >= 18 && $dx >= 5 ? '#2d6cdf' : '#e2e8f0';
-        }
-        if ($z === 2 && $y >= 24 && $y <= 28 && $dx >= 2 && $dx <= min(7, 2 + ($y - 23) * 1.4)) return '#d6dde8';
-        if ($dx === 3 && $z >= 3 && $z <= 8 && $y >= 20 + ($z - 3) && $y <= 27) return $z >= 7 ? '#2d6cdf' : '#e2e8f0';
-        if ($y === 29 && $dx >= 1 && $dx <= 2 && $z === 2) return $dx === 1 ? '#ff9a3a' : '#4a4e58';
-        if ($y === 0 && $dx === 0 && $z === 2) return '#b8c2d0';
-        return null;
-    });
-    $model('drone', function ($x, $y, $z) use ($near) {
-        $r = hypot($x - 6, $y - 6);
-        if ($z <= 1 && $r <= 6 && $r >= 4.6) return '#c8303e';
-        if ($z <= 2 && $r < 4.6) return $z === 2 ? '#ff6b6b' : '#8f1f2c';
-        if ($z >= 3 && $near($x, $y, $z, 6, 6, 2.5, 2.6)) return $near($x, $y, $z, 6, 4.5, 3.5, 1.2) ? '#ffd23f' : '#2b1a22';
-        return null;
-    });
-    $model('oak', function ($x, $y, $z) use ($near) {
-        if ($z <= 4 && $x === 5 && abs($y - 5) <= 1) return '#6b4a2b';
-        if ($near($x, $y, $z, 5, 5, 8, 4.4) && mt_rand(0, 12)) return ['#2f7a34', '#3d9440', '#56b04a', '#6cc25a'][min(3, intdiv($z - 4, 2))];
-        return null;
-    });
-    $model('pine', function ($x, $y, $z) {
-        if ($z <= 3 && $x === 4 && $y === 4) return '#5a3d22';
-        if ($z >= 3 && hypot($x - 4, $y - 4) <= (16 - $z) * 0.36) return $z % 3 === 0 ? '#1f5c34' : '#2c7a45';
-        return null;
-    });
-    $model('house', function ($x, $y, $z) {
-        $wall = $x >= 1 && $x <= 12 && $y >= 1 && $y <= 10;
-        if ($z <= 5 && $wall) {
-            $edge = $x === 1 || $x === 12 || $y === 1 || $y === 10;
-            if ($edge && $z >= 2 && $z <= 3 && ($x % 3 === 0 || $y % 3 === 0)) return '#3b6ea8';
-            if ($edge && $y === 10 && $x >= 6 && $x <= 7 && $z <= 3) return '#7a4a28';
-            return $edge ? '#efe3c8' : '#d8c8a8';
-        }
-        if ($z >= 6 && abs($y - 5.5) <= 6.5 - ($z - 6) * 1.3) return $z === 11 ? '#8f2f24' : '#c4473a';
-        if ($z >= 6 && $z <= 9 && $x === 10 && $y === 3) return '#7d7d7d';
-        return null;
-    });
-    $model('rock', function ($x, $y, $z) use ($near) {
-        return $near($x, $y, $z * 1.6, 4, 4, 0, 4.2) && mt_rand(0, 8) ? ($z >= 3 ? '#b5b5ad' : '#8c8c84') : null;
-    });
-    $model('lighthouse', function ($x, $y, $z) {
-        $r = hypot($x - 4, $y - 4);
-        if ($z <= 1 && $r <= 4.4) return '#9a9a92';
-        if ($z >= 2 && $z <= 21 && $r <= 3.2 - $z * 0.05) return intdiv($z - 2, 4) % 2 ? '#f2f2ee' : '#d63c33';
-        if ($z >= 22 && $z <= 24 && $r <= 2.4) return $r <= 1.5 ? '#ffe680' : '#2a2a30';
-        if ($z >= 25 && $r <= 2.6 - ($z - 25)) return '#d63c33';
-        return null;
-    });
-    // A mountain: a ridged cone, grass at the foot, bare rock, snow on top.
-    $ridge = $noise(61, 4);
-    $model('mountain', function ($x, $y, $z) use ($ridge) {
-        $r = hypot($x - 17.5, $y - 17.5) / 17.5;
-        $top = 24 * (1 - $r) ** 1.2 + ($ridge($x * 3, $y * 3) - 0.5) * 7 * (1 - $r);
-        if ($r > 1 || $z > $top) return null;
-        $v = mt_rand(0, 9);
-        if ($z >= 17 - $v % 3) return $v ? '#f4f7fb' : '#d5dde8';
-        if ($z >= 6 + $v % 3) return ['#8b8478', '#7a7368', '#9a9284'][$v % 3];
-        return ['#5a9a48', '#4d8a3f', '#6aa852'][$v % 3];
-    });
-    // Clouds: lumps of round puffs, flat underneath.
-    foreach (['cloud' => [28, 20, 8], 'cloud2' => [22, 18, 7]] as $name => [$w, $d, $h]) {
-        $puffs = [];
-        for ($i = 0; $i < 7; $i++) {
-            $puffs[] = [mt_rand(6, $w - 7), mt_rand(5, $d - 6), mt_rand(0, 2), mt_rand(35, 60) / 10];
-        }
-        $model($name, function ($x, $y, $z) use ($puffs, $near) {
-            foreach ($puffs as [$px, $py, $pz, $r]) {
-                if ($near($x, $y, $z * 1.4, $px, $py, $pz, $r)) return $z >= 4 ? '#ffffff' : '#f2f6fb';
-            }
-            return null;
-        });
+// The jet, our own: a white twin-tail fighter with blue wing bands. Nose up (-y).
+$model('jet', function ($x, $y, $z) {
+    $dx = abs($x - 12);
+    $hull = $y < 4 ? 0 : ($y < 9 ? 1 : ($y < 25 ? 2 : 1));
+    if ($y >= 1 && $y <= 28 && $dx <= $hull && $z >= ($y < 5 ? 2 : 1) && $z <= ($y < 5 ? 2 : 3)) {
+        return $z === 1 ? '#8c97a8' : ($dx === 0 && $y >= 13 && $z === 3 ? '#2d6cdf' : '#eef2f7');
     }
-    Renderer::savePng($atlasFile, $width, $row, implode('', $atlas));
-    // The top of the jet, for the window's icon.
-    $icon = '';
-    [$ix, $iy] = $models['jet']['layers'][2][0];
-    for ($y = 0; $y < 30; $y++) $icon .= substr($atlas[$iy + $y], $ix * 4, 25 * 4);
-    Renderer::savePng("$dir/icon.png", 25, 30, $icon);
+    if ($y >= 7 && $y <= 12 && $dx <= 1 && $z >= 4 && $z <= ($y <= 10 ? 5 : 4)) return $y === 8 && $z === 5 ? '#bfe9ff' : '#24314d';
+    if ($z === 2 && $y >= 11 && $y <= 21 && $dx >= 2 && $dx <= min(12, ($y - 9) * 1.25)) {
+        if ($dx >= 11) return '#ffc93a';
+        return $y >= 18 && $dx >= 5 ? '#2d6cdf' : '#e2e8f0';
+    }
+    if ($z === 2 && $y >= 24 && $y <= 28 && $dx >= 2 && $dx <= min(7, 2 + ($y - 23) * 1.4)) return '#d6dde8';
+    if ($dx === 3 && $z >= 3 && $z <= 8 && $y >= 20 + ($z - 3) && $y <= 27) return $z >= 7 ? '#2d6cdf' : '#e2e8f0';
+    if ($y === 29 && $dx >= 1 && $dx <= 2 && $z === 2) return $dx === 1 ? '#ff9a3a' : '#4a4e58';
+    if ($y === 0 && $dx === 0 && $z === 2) return '#b8c2d0';
+    return null;
+});
+$model('drone', function ($x, $y, $z) use ($near) {
+    $r = hypot($x - 6, $y - 6);
+    if ($z <= 1 && $r <= 6 && $r >= 4.6) return '#c8303e';
+    if ($z <= 2 && $r < 4.6) return $z === 2 ? '#ff6b6b' : '#8f1f2c';
+    if ($z >= 3 && $near($x, $y, $z, 6, 6, 2.5, 2.6)) return $near($x, $y, $z, 6, 4.5, 3.5, 1.2) ? '#ffd23f' : '#2b1a22';
+    return null;
+});
+$model('oak', function ($x, $y, $z) use ($near) {
+    if ($z <= 4 && $x === 5 && abs($y - 5) <= 1) return '#6b4a2b';
+    if ($near($x, $y, $z, 5, 5, 8, 4.4) && mt_rand(0, 12)) return ['#2f7a34', '#3d9440', '#56b04a', '#6cc25a'][min(3, intdiv($z - 4, 2))];
+    return null;
+});
+$model('pine', function ($x, $y, $z) {
+    if ($z <= 3 && $x === 4 && $y === 4) return '#5a3d22';
+    if ($z >= 3 && hypot($x - 4, $y - 4) <= (16 - $z) * 0.36) return $z % 3 === 0 ? '#1f5c34' : '#2c7a45';
+    return null;
+});
+$model('house', function ($x, $y, $z) {
+    $wall = $x >= 1 && $x <= 12 && $y >= 1 && $y <= 10;
+    if ($z <= 5 && $wall) {
+        $edge = $x === 1 || $x === 12 || $y === 1 || $y === 10;
+        if ($edge && $z >= 2 && $z <= 3 && ($x % 3 === 0 || $y % 3 === 0)) return '#3b6ea8';
+        if ($edge && $y === 10 && $x >= 6 && $x <= 7 && $z <= 3) return '#7a4a28';
+        return $edge ? '#efe3c8' : '#d8c8a8';
+    }
+    if ($z >= 6 && abs($y - 5.5) <= 6.5 - ($z - 6) * 1.3) return $z === 11 ? '#8f2f24' : '#c4473a';
+    if ($z >= 6 && $z <= 9 && $x === 10 && $y === 3) return '#7d7d7d';
+    return null;
+});
+$model('rock', function ($x, $y, $z) use ($near) {
+    return $near($x, $y, $z * 1.6, 4, 4, 0, 4.2) && mt_rand(0, 8) ? ($z >= 3 ? '#b5b5ad' : '#8c8c84') : null;
+});
+$model('lighthouse', function ($x, $y, $z) {
+    $r = hypot($x - 4, $y - 4);
+    if ($z <= 1 && $r <= 4.4) return '#9a9a92';
+    if ($z >= 2 && $z <= 21 && $r <= 3.2 - $z * 0.05) return intdiv($z - 2, 4) % 2 ? '#f2f2ee' : '#d63c33';
+    if ($z >= 22 && $z <= 24 && $r <= 2.4) return $r <= 1.5 ? '#ffe680' : '#2a2a30';
+    if ($z >= 25 && $r <= 2.6 - ($z - 25)) return '#d63c33';
+    return null;
+});
+// A mountain: a ridged cone, grass at the foot, bare rock, snow on top.
+$ridge = $noise(61, 4);
+$model('mountain', function ($x, $y, $z) use ($ridge) {
+    $r = hypot($x - 17.5, $y - 17.5) / 17.5;
+    $top = 24 * (1 - $r) ** 1.2 + ($ridge($x * 3, $y * 3) - 0.5) * 7 * (1 - $r);
+    if ($r > 1 || $z > $top) return null;
+    $v = mt_rand(0, 9);
+    if ($z >= 17 - $v % 3) return $v ? '#f4f7fb' : '#d5dde8';
+    if ($z >= 6 + $v % 3) return ['#8b8478', '#7a7368', '#9a9284'][$v % 3];
+    return ['#5a9a48', '#4d8a3f', '#6aa852'][$v % 3];
+});
+// Clouds: lumps of round puffs, flat underneath.
+foreach (['cloud' => [28, 20, 8], 'cloud2' => [22, 18, 7]] as $name => [$w, $d, $h]) {
+    $puffs = [];
+    for ($i = 0; $i < 7; $i++) {
+        $puffs[] = [mt_rand(6, $w - 7), mt_rand(5, $d - 6), mt_rand(0, 2), mt_rand(35, 60) / 10];
+    }
+    $model($name, function ($x, $y, $z) use ($puffs, $near) {
+        foreach ($puffs as [$px, $py, $pz, $r]) {
+            if ($near($x, $y, $z * 1.4, $px, $py, $pz, $r)) return $z >= 4 ? '#ffffff' : '#f2f6fb';
+        }
+        return null;
+    });
 }
+$voxels = new Voxels("$dir/models.png", $shapes);
+$models = $voxels->models;
+$atlasFile = $voxels->file;
+// A white pixel, stretched into contrails.
+$whiteFile = "$dir/white.png";
+if (!is_file($whiteFile)) Renderer::savePng($whiteFile, 1, 1, "\xff\xff\xff\xff");
+// The top of the jet, for the window's icon.
+if ($voxels->built) Renderer::savePng("$dir/icon.png", 25, 30, $voxels->layer('jet', 2));
 
 // Things on the land, in world units: mountains inland, woods, houses and rocks near
 // the shore, one lighthouse. Clouds low under the jet and high above it.
@@ -274,6 +244,7 @@ $g = state(new class {
     public float $x = 0, $y = 0, $yaw = 0, $view = 0, $speed = 130, $turn = 0, $time = 0, $gun = 0, $spawn = 2, $trail = 0;
     public int $score = 0;
     public bool $paused = false, $autopilot = false;
+    public string $camera = 'chase';
     public array $drones = [], $bullets = [], $particles = [], $trails = [[], []];
 });
 // Start near the lighthouse, heading for land.
@@ -360,7 +331,7 @@ $update = function (float $dt) use ($g, $wrap, $ahead, $boom, $sfx, $world) {
         if ($p['life'] <= 0) unset($g->particles[$i]);
     }
     unset($p);
-    // Contrails off the wing tips, and the engines' glow.
+    // Contrails off the wing tips.
     $g->trail -= $dt;
     if ($g->trail <= 0) {
         $g->trail = 0.025;
@@ -368,26 +339,25 @@ $update = function (float $dt) use ($g, $wrap, $ahead, $boom, $sfx, $world) {
             array_unshift($g->trails[$n], [$g->x + $rx * $side - $fx * 4, $g->y + $ry * $side - $fy * 4]);
             $g->trails[$n] = array_slice($g->trails[$n], 0, 16);
         }
-        foreach ([-1.5, 1.5] as $side) {
-            $g->particles[] = ['x' => $g->x + $rx * $side - $fx * 17, 'y' => $g->y + $ry * $side - $fy * 17, 'z' => JET_Z + 2,
-                'vx' => -$fx * 30, 'vy' => -$fy * 30, 'vz' => 0, 'fall' => 0, 'life' => 0.12, 'size' => 1.6,
-                'color' => mt_rand(0, 1) ? '#ffb02e' : '#fff3b0'];
-        }
     }
 };
 
 // Drawing ---------------------------------------------------------------------------
 
-$draw = function (Canvas $c) use ($g, $models, $places, $groundFile, $atlasFile, $wrap, $ahead, $world) {
+$draw = function (Canvas $c) use ($g, $voxels, $places, $groundFile, $whiteFile, $ahead, $world) {
     $c->imageSmoothingEnabled = false;
     [$cw, $ch] = [$c->width, $c->height];
-    $horizon = round($ch * 0.34);
-    $focal = $ch * 0.8;
-    $cx = $cw / 2;
-    // The camera: behind and above the jet, looking where the view turns.
-    [$fx, $fy] = $ahead($g->view);
-    [$rx, $ry] = [-$fy, $fx];
-    [$camX, $camY, $camZ] = [$g->x - $fx * CHASE, $g->y - $fy * CHASE, JET_Z + CAM_UP];
+    // The camera (PhpUi\Camera3D): behind and above the jet, swinging round after it as
+    // it turns; or in the cockpit, looking where the jet goes.
+    $cockpit = $g->camera === 'cockpit';
+    if ($cockpit) {
+        [$fx, $fy] = $ahead($g->yaw);
+        $cam = new Camera3D($g->x + $fx * 8, $g->y + $fy * 8, JET_Z + 6, $g->yaw, 0.08, $ch * 0.9, $cw / 2, $ch * 0.42, $world, -$g->turn * 0.4);
+    } else {
+        [$fx, $fy] = $ahead($g->view);
+        $cam = new Camera3D($g->x - $fx * CHASE, $g->y - $fy * CHASE, JET_Z + CAM_UP, $g->view, 0, $ch * 0.8, $cw / 2, round($ch * 0.34), $world, -$g->turn * 0.06);
+    }
+    $horizon = $cam->horizon();
 
     // Sky, then the ground under it fading into the haze at the horizon.
     $sky = $c->createLinearGradient(0, 0, 0, $horizon);
@@ -395,44 +365,31 @@ $draw = function (Canvas $c) use ($g, $models, $places, $groundFile, $atlasFile,
     $sky->addColorStop(0.7, '#8cc3ec');
     $sky->addColorStop(1, '#d4ebf7');
     $c->fillStyle = $sky;
-    $c->fillRect(0, 0, $cw, $horizon + 1);
-    $c->drawGround($groundFile, $camX, $camY, $g->view, $camZ, $horizon, $focal, 2, '#d4ebf7', FOG, $world);
-
-    /** World point to screen: [x, y, scale, depth, sideways], or null behind the camera. */
-    $at = function (float $x, float $y, float $z) use ($wrap, $camX, $camY, $camZ, $fx, $fy, $rx, $ry, $focal, $horizon, $cx): ?array {
-        [$dx, $dy] = [$wrap($x - $camX), $wrap($y - $camY)];
-        $depth = $dx * $fx + $dy * $fy;
-        if ($depth < 4) return null;
-        $side = $dx * $rx + $dy * $ry;
-        $s = $focal / $depth;
-        return [$cx + $side * $s, $horizon + ($camZ - $z) * $s, $s, $depth, $side];
-    };
-    $wide = $cw / 2 / $focal;
+    $c->fillRect(0, 0, $cw, $ch);
+    $cam->ground($c, $groundFile, $world, 2, '#d4ebf7', FOG);
 
     // Everything that stands or flies, far to near.
     $things = [];
-    $add = function (string $kind, float $x, float $y, float $z, float $yaw, float $roll = 0) use ($at, $models, $wide, &$things) {
-        $p = $at($x, $y, $z);
-        $m = $models[$kind];
-        $r = max($m['w'], $m['d']) * $m['unit'];
-        if (!$p || $p[3] > FOG || abs($p[4]) > $p[3] * $wide + $r) return;
-        $things[] = [$p[3], $kind, $p, $z, $yaw, $roll];
+    $add = function (array $thing, float $x, float $y, float $z) use ($cam, &$things) {
+        $p = $cam->project($x, $y, $z);
+        if ($p && $p[3] < FOG) $things[] = [$p[3], $p, ...$thing];
     };
-    foreach ($places as $p) $add($p['kind'], $p['x'], $p['y'], $p['z'], $p['yaw']);
-    foreach ($g->drones as $d) $add('drone', $d['x'], $d['y'], $d['z'], $d['yaw'] + $g->time * 3);
-    $add('jet', $g->x, $g->y, JET_Z, $g->yaw, $g->turn * 0.35);
-    foreach ($g->bullets as $b) if ($p = $at($b['x'], $b['y'], $b['z'])) $things[] = [$p[3], 'bullet', $p];
-    foreach ($g->particles as $q) if ($p = $at($q['x'], $q['y'], $q['z'])) $things[] = [$p[3], 'spark', $p, $q];
+    foreach ($places as $p) $add(['model', $p['kind'], $p['x'], $p['y'], $p['z'], $p['yaw'], 0], $p['x'], $p['y'], $p['z']);
+    foreach ($g->drones as $d) $add(['model', 'drone', $d['x'], $d['y'], $d['z'], $d['yaw'] + $g->time * 3, 0], $d['x'], $d['y'], $d['z']);
+    if (!$cockpit) $add(['model', 'jet', $g->x, $g->y, JET_Z, $g->yaw, $g->turn * 0.6], $g->x, $g->y, JET_Z);
+    foreach ($g->bullets as $b) $add(['bullet'], $b['x'], $b['y'], $b['z']);
+    foreach ($g->particles as $q) $add(['spark', $q], $q['x'], $q['y'], $q['z']);
     usort($things, fn ($a, $b) => $b[0] <=> $a[0]);
 
     foreach ($things as $t) {
-        [$depth, $kind, [$sx, $sy, $s, , $side]] = $t;
-        // Far things fade into the haze, as the ground does; clouds also when too near.
+        [$depth, [$sx, $sy, $s], $kind] = $t;
+        // Far things fade into the haze, as the ground does.
         $alpha = 1 - ($depth / FOG) ** 2;
         if ($kind === 'bullet') {
+            if ($depth < 25) continue;
             $c->globalAlpha = $alpha;
             $c->fillStyle = '#fff6c4';
-            $z = max(2, $s * 1.5);
+            $z = min(8, max(2, $s * 1.5));
             $c->fillRect($sx - $z / 2, $sy - $z, $z, $z * 2);
             continue;
         }
@@ -444,63 +401,50 @@ $draw = function (Canvas $c) use ($g, $models, $places, $groundFile, $atlasFile,
             $c->fillRect($sx - $z / 2, $sy - $z / 2, $z, $z);
             continue;
         }
-        [, , , $z, $yaw, $roll] = $t;
-        $m = $models[$kind];
-        if (str_starts_with($kind, 'cloud')) {
-            $steep = abs(JET_Z + CAM_UP - $z) / $depth;
+        [, , , $name, $x, $y, $z, $yaw, $roll] = $t;
+        if (str_starts_with($name, 'cloud')) {
+            // Clouds thin out when near or right overhead, so they never fill the view.
+            $steep = abs($cam->z - $z) / $depth;
             $alpha *= 0.92 * min(1, ($depth - 60) / 100) * max(0, min(1, (1.1 - $steep) / 0.5));
         }
-        if ($alpha <= 0.02) continue;
-        $c->globalAlpha = $alpha;
-        $u = $m['unit'];
-        $phi = $yaw - $g->view;
-        [$pc, $ps] = [cos($phi), sin($phi)];
-        $k = $side / $depth;
-        $su = $s * $u;
-        // Seen from below (clouds overhead), the layers go top first, shaded.
-        $below = JET_Z + CAM_UP < $z;
-        $steps = (int) min($kind === 'jet' ? 14 : 8, max(1, ceil($su)));
-        [$rc, $rs] = [cos($roll), sin($roll)];
-        $pivotY = $sy - $su * $m['h'] / 2;
-        $order = $below ? array_reverse(array_keys($m['layers'])) : array_keys($m['layers']);
-        foreach ($order as $layer) {
-            [$top, $sideImage] = $m['layers'][$layer];
-            for ($i = 0; $i < $steps; $i++) {
-                $lift = $layer + ($below ? $steps - 1 - $i : $i) / $steps;
-                $tilt = ((JET_Z + CAM_UP) - ($z + $lift * $u)) / $depth;
-                [$a, $b, $cc, $d] = [$su * ($pc + $k * $ps), $su * $tilt * $ps, $su * ($k * $pc - $ps), $su * $tilt * $pc];
-                [$e, $f] = [$sx, $sy - $su * $lift];
-                if ($roll != 0) {
-                    // Banking: the whole stack turns on screen about the jet's middle.
-                    [$a, $b] = [$rc * $a - $rs * $b, $rs * $a + $rc * $b];
-                    [$cc, $d] = [$rc * $cc - $rs * $d, $rs * $cc + $rc * $d];
-                    [$e, $f] = [$sx + $rc * ($e - $sx) - $rs * ($f - $pivotY), $pivotY + $rs * ($e - $sx) + $rc * ($f - $pivotY)];
-                }
-                $c->setTransform($a, $b, $cc, $d, $e, $f);
-                $c->drawImage($atlasFile, ...[...(!$below && $i === $steps - 1 ? $top : $sideImage), -$m['w'] / 2, -$m['d'] / 2, $m['w'], $m['d']]);
-            }
-        }
-        $c->setTransform(1, 0, 0, 1, 0, 0);
+        if ($alpha > 0.02) $cam->stack($c, $voxels, $name, $x, $y, $z, $yaw, $alpha, $roll, $name === 'jet' ? 14 : 8);
     }
-    // Contrails, from the wing tips back past the camera, thinning out.
-    $c->strokeStyle = '#ffffff';
-    $c->lineCap = 'round';
+
+    // Contrails, from the wing tips back past the camera, thinning out: each piece a
+    // white pixel stretched and turned (on the GPU, unlike a stroked line).
     foreach ($g->trails as $trail) {
         $last = null;
         foreach ($trail as $i => [$x, $y]) {
-            $p = $at($x, $y, JET_Z + 2);
+            $p = $cam->project($x, $y, JET_Z + 2);
             if ($p && $last && $i > 0) {
-                $c->globalAlpha = 0.55 * (1 - $i / count($trail));
-                $c->lineWidth = min(6, max(1, $p[2] * 0.9));
-                $c->beginPath();
-                $c->moveTo($last[0], $last[1]);
-                $c->lineTo($p[0], $p[1]);
-                $c->stroke();
+                [$dx, $dy] = [$p[0] - $last[0], $p[1] - $last[1]];
+                $long = hypot($dx, $dy);
+                $wide = min(6, max(1, $p[2] * 0.9));
+                if ($long > 0) {
+                    $c->globalAlpha = 0.55 * (1 - $i / count($trail));
+                    $c->setTransform($dx, $dy, -$dy / $long * $wide, $dx / $long * $wide, $last[0], $last[1]);
+                    $c->drawImage($whiteFile, 0, -0.5, 1, 1);
+                }
             }
             $last = $p;
         }
     }
+    $c->setTransform(1, 0, 0, 1, 0, 0);
     $c->globalAlpha = 1;
+
+    if ($cockpit) {
+        // The gun sight.
+        [$mx, $my] = [$cw / 2, $ch * 0.42];
+        $c->strokeStyle = 'rgba(140, 255, 170, 0.9)';
+        $c->lineWidth = 2;
+        $c->beginPath();
+        $c->arc($mx, $my, 18, 0, 2 * M_PI);
+        foreach ([[-34, 0, -22, 0], [22, 0, 34, 0], [0, -34, 0, -22], [0, 22, 0, 34]] as [$a, $b, $e, $f]) {
+            $c->moveTo($mx + $a, $my + $b);
+            $c->lineTo($mx + $e, $my + $f);
+        }
+        $c->stroke();
+    }
 
     // HUD.
     $c->font = '11px mono-semibold';
@@ -534,7 +478,11 @@ $app->every(1 / 120, function () use ($update, &$last) {
     $update(min(0.05, $now - $last));
     $last = $now;
 });
-$app->onKey(function (int $key) use ($g) { if ($key === Key::ESCAPE) $g->paused = !$g->paused; });
+$app->onKey(function (int $key) use ($g) {
+    if ($key === Key::ESCAPE) $g->paused = !$g->paused;
+    // V: the chase camera, or the cockpit.
+    if ($key === Key::V) $g->camera = $g->camera === 'chase' ? 'cockpit' : 'chase';
+});
 
 if ($shots = getenv('PHPUI_SCREENSHOTS')) {
     @mkdir($shots, 0777, true);
@@ -542,6 +490,8 @@ if ($shots = getenv('PHPUI_SCREENSHOTS')) {
     mt_srand(3);
     for ($i = 0; $i < 330; $i++) $update(1 / 60);
     $app->screenshot("$shots/islandhop.png", 960, 600, 1);
+    $g->camera = 'cockpit';
+    $app->screenshot("$shots/islandhop-cockpit.png", 960, 600, 1);
     exit;
 }
 if (!getenv('PHPUI_NO_RUN')) $app->run();

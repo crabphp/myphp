@@ -2064,15 +2064,15 @@ PHP_METHOD(PhpSdl_Renderer, imageTransformed)
 }
 
 /* A ground in perspective ("mode 7") over $rect [x, y, w, h]: the image repeating every
- * $size units under a camera at $camera [x, y, angle, height] (angle 0 looks toward -y),
- * horizon at y $horizon, focal length $focal, in blocks of $pixel, hazing into $fog
+ * $size units under a camera at $camera [x, y, angle, height] (angle 0 looks toward -y)
+ * pitched down $pitch radians and rolled $roll, horizon at y $horizon, focal length $focal, in blocks of $pixel, hazing into $fog
  * [r, g, b, a] by $fogDistance. One quad; the GPU works out every pixel. */
 PHP_METHOD(PhpSdl_Renderer, ground)
 {
     zend_string *path;
     HashTable *rect, *camera, *fog = NULL;
-    double horizon, focal, pixel = 1, fog_distance = 0, size = 0;
-    ZEND_PARSE_PARAMETERS_START(5, 9)
+    double horizon, focal, pixel = 1, fog_distance = 0, size = 0, pitch = 0, roll = 0;
+    ZEND_PARSE_PARAMETERS_START(5, 11)
         Z_PARAM_STR(path)
         Z_PARAM_ARRAY_HT(rect)
         Z_PARAM_ARRAY_HT(camera)
@@ -2083,6 +2083,8 @@ PHP_METHOD(PhpSdl_Renderer, ground)
         Z_PARAM_ARRAY_HT_OR_NULL(fog)
         Z_PARAM_DOUBLE(fog_distance)
         Z_PARAM_DOUBLE(size)
+        Z_PARAM_DOUBLE(pitch)
+        Z_PARAM_DOUBLE(roll)
     ZEND_PARSE_PARAMETERS_END();
     pr_renderer *r = renderer_of(ZEND_THIS);
     if (!renderer_init(r)) return;
@@ -2095,7 +2097,7 @@ PHP_METHOD(PhpSdl_Renderer, ground)
     float *p = instance(r, img->tex | TEX_REPEAT);
     float view[4] = {cam[0], cam[1], cosf(cam[2]), sinf(cam[2])};
     float lens[4] = {(float) horizon, cam[3], (float) focal, (float) (size > 0 ? size : img->w)};
-    float uv[4] = {0, 0, 1, 1};
+    float uv[4] = {(float) roll, 0, 0, 0};
     put4(p, rc);
     put4(p + 4, view);
     put4(p + 8, color);
@@ -2105,6 +2107,7 @@ PHP_METHOD(PhpSdl_Renderer, ground)
     p[24] = (float) pixel;
     p[25] = rc[0] + rc[2] / 2;
     p[26] = (float) fog_distance;
+    p[27] = (float) pitch;
     p[28] = 3;
 }
 

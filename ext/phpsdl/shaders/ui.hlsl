@@ -95,18 +95,27 @@ float4 PSMain(Varyings v) : SV_Target0
     if (v.kind.x == 3.0) {
         // A ground plane seen in perspective ("mode 7"): where this pixel's ray meets the
         // ground, from a camera at radii.xy turned by radii.zw (cos, sin), border.y high,
-        // looking at a horizon at border.x with focal length border.z; the texture repeats
-        // every border.w units. params: pixel size (blocky), screen center x, haze distance.
+        // pitched down params.w radians, with the horizon at y border.x and focal length
+        // border.z; the texture repeats every border.w units. params: pixel size (blocky),
+        // screen center x, haze distance, pitch; bottom.x: roll.
         float px = max(v.params.x, 1e-3);
         float2 p = (floor(v.pos / px) + 0.5) * px;
-        float below = p.y - v.border.x;
+        float cp = cos(v.params.w), sp = sin(v.params.w);
+        // Rolled by bottom.x about the view's center: turn the pixel back first.
+        float2 center = float2(v.params.y, v.border.x + v.border.z * sp / cp);
+        float2 q = p - center;
+        float cr = cos(v.bottom.x), sr = sin(v.bottom.x);
+        p = center + float2(cr * q.x + sr * q.y, -sr * q.x + cr * q.y);
+        float below = (p.y - v.border.x) * cp;
         if (below <= 0.0) discard;
-        float dist = v.border.y * v.border.z / below;
-        float lateral = (p.x - v.params.y) * dist / v.border.z;
+        float t = v.border.y / below;
+        float y = p.y - v.border.x - v.border.z * sp / cp;
+        float dist = t * (v.border.z * cp - y * sp);
+        float lateral = (p.x - v.params.y) * t;
         float2 forward = float2(v.radii.w, -v.radii.z);
         float2 right = float2(v.radii.z, v.radii.w);
         float2 world = v.radii.xy + forward * dist + right * lateral;
-        float lod = log2(max(1.0, px * dist / v.border.z * scale));
+        float lod = log2(max(1.0, px * t * scale * max(1.0, (v.border.z * cp - y * sp) / max(v.border.z, 1e-3))));
         float4 c = premul(tex.SampleLevel(texSampler, world / v.border.w, lod));
         float haze = v.params.z > 0.0 ? saturate(dist / v.params.z) : 0.0;
         return lerp(c, premul(v.top), haze * haze);

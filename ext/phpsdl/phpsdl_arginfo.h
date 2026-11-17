@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 16a284884247d02e53b9a070904007971b781229 */
+ * Stub hash: 6e10d2b1cbfaf0b37f54068aaa0c2b61299d0fa4 */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_PhpSdl_Window___construct, 0, 0, 3)
 	ZEND_ARG_TYPE_INFO(0, title, IS_STRING, 0)
@@ -197,6 +197,8 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Renderer_ground, 0,
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, fog, IS_ARRAY, 1, "null")
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, fogDistance, IS_DOUBLE, 0, "0")
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, size, IS_DOUBLE, 0, "0")
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, pitch, IS_DOUBLE, 0, "0")
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, roll, IS_DOUBLE, 0, "0")
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Renderer_savePng, 0, 4, _IS_BOOL, 0)

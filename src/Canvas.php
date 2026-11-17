@@ -471,18 +471,23 @@ final class Canvas
     /**
      * Not in the HTML canvas: a ground plane in perspective ("mode 7"), for games. $image
      * repeats every $size units (its width by default) under a camera at ($x, $y), turned
-     * $angle radians (0 looks toward -y), $height above it; the horizon is $horizon pixels
-     * down the canvas, $focal the focal length in pixels. $pixel draws it in blocks, and
-     * it fades into $fog by $fogDistance units. Fills the canvas below the horizon; the
-     * current transform does not apply.
+     * $angle radians (0 looks toward -y), $height above it, tilted down $pitch radians and
+     * rolled $roll (clockwise) about the view's center;
+     * the horizon is $horizon pixels down the canvas (above it when negative), $focal the
+     * focal length in pixels. $pixel draws it in blocks, and it fades into $fog by
+     * $fogDistance units. Fills the canvas below the horizon; the current transform does
+     * not apply. Camera3D works these out from a camera.
      */
     public function drawGround(string $image, float $x, float $y, float $angle, float $height, float $horizon, float $focal,
-        float $pixel = 1, string $fog = 'transparent', float $fogDistance = 0, float $size = 0): void
+        float $pixel = 1, string $fog = 'transparent', float $fogDistance = 0, float $size = 0, float $pitch = 0, float $roll = 0): void
     {
         [$ex, $ey] = [$this->base[4], $this->base[5]];
-        $rect = [$ex, $ey + max(0, $horizon), $this->width, max(0, $this->height - $horizon)];
+        // Rolled, the horizon slants: cover the canvas, and the GPU leaves out the sky.
+        $top = $roll == 0 ? max(0, $horizon) : 0;
+        if ($top >= $this->height) return;
+        $rect = [$ex, $ey + $top, $this->width, $this->height - $top];
         $color = CssColor::parse($fog);
-        $this->renderer->ground(realFile($image), $rect, [$x, $y, $angle, $height], $ey + $horizon, $focal, $pixel, $color, $fogDistance, $size);
+        $this->renderer->ground(realFile($image), $rect, [$x, $y, $angle, $height], $ey + $horizon, $focal, $pixel, $color, $fogDistance, $size, $pitch, $roll);
     }
 
     // Internals --------------------------------------------------------------

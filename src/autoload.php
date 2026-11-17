@@ -16,6 +16,7 @@ require __DIR__ . '/Element.php';
 require __DIR__ . '/Component.php';
 require __DIR__ . '/State.php';
 require __DIR__ . '/Canvas.php';
+require __DIR__ . '/Scene3D.php';
 require __DIR__ . '/Painter.php';
 require __DIR__ . '/HotReload.php';
 require __DIR__ . '/Layout.php';

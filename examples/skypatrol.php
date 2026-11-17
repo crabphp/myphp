@@ -6,44 +6,45 @@ require __DIR__ . '/../src/autoload.php';
 
 use PhpSdl\Renderer;
 use PhpSdl\Sound;
-use PhpUi\{App, Canvas, Key, Mouse};
+use PhpUi\{App, Camera3D, Canvas, Key, Mouse, Voxels};
 use function PhpUi\{canvas, col, dataDir, state};
 
-// Sky Patrol: a pixel-art arcade shooter over an endless archipelago. Everything is made
-// here: the islands from noise, the ships from text, the sounds from math.
+// Sky Patrol: an arcade shooter in 3D over an endless archipelago. The game plays on a
+// flat field (W by H) high above the sea; a tilted camera (PhpUi\Camera3D) shows it in
+// perspective over the ground, and every ship, tree, house, mountain and cloud is a
+// voxel model drawn as stacked slices (sprite stacking, PhpUi\Voxels). The ships are
+// their pixel art extruded into 3D. Everything is made here: the islands from noise, the
+// ships from text, the sounds from math.
 // Fly with the mouse or WASD/arrows; click or Space shoots, right-click or X fires a
 // homing missile; Esc pauses. Closures only, so `myphp run --watch` reloads it mid-flight.
 
-// The game's own pixels; the window shows them scaled up. (define(): a hot reload runs this again.)
+// The playing field, in world units. (define(): a hot reload runs this again.)
 defined('W') || define('W', 180);
 defined('H') || define('H', 270);
-defined('TERRAIN') || define('TERRAIN', 1024);
+defined('TERRAIN') || define('TERRAIN', 1024);  // ground texels; the world wraps every TERRAIN * 2 units
+defined('FIELD_Z') || define('FIELD_Z', 260);    // how high the field is over the ground
 
 // Assets -----------------------------------------------------------------------
 
-$dir = dataDir('myphp-skypatrol') . '/v3';
+$dir = dataDir('myphp-skypatrol') . '/v4';
 @mkdir($dir, 0777, true);
 
 $hex = fn (string $c) => [hexdec(substr($c, 1, 2)), hexdec(substr($c, 3, 2)), hexdec(substr($c, 5, 2))];
 
-/** A sprite from rows of letters (left halves, mirrored), as a PNG and its black shadow. */
-$sprite = function (string $name, array $half, array $palette, bool $mirror = true) use ($dir, $hex): array {
+/**
+ * A ship from rows of letters (left halves, mirrored when $mirror), extruded into
+ * voxels: each letter a color and a height, so the hull rises and the wings stay thin.
+ */
+$ship = function (array $half, array $palette, array $heights, bool $mirror = true): array {
     $rows = array_map(fn ($r) => $mirror ? $r . strrev(substr($r, 0, -1)) : $r, $half);
-    [$w, $h] = [strlen($rows[0]), count($rows)];
-    $file = "$dir/$name.png";
-    if (!is_file($file)) {
-        [$px, $shadow] = ['', ''];
-        foreach ($rows as $row) {
-            for ($x = 0; $x < $w; $x++) {
-                $c = $palette[$row[$x]] ?? null;
-                $px .= $c ? pack('C4', ...[...$hex($c), 255]) : "\0\0\0\0";
-                $shadow .= $c ? "\0\0\0\xff" : "\0\0\0\0";
-            }
-        }
-        Renderer::savePng($file, $w, $h, $px);
-        Renderer::savePng("$dir/$name-shadow.png", $w, $h, $shadow);
-    }
-    return ['file' => $file, 'shadow' => "$dir/$name-shadow.png", 'w' => $w, 'h' => $h];
+    [$w, $d] = [strlen($rows[0]), count($rows)];
+    $h = max($heights);
+    $voxel = function ($x, $y, $z) use ($rows, $palette, $heights) {
+        $letter = $rows[$y][$x];
+        if (!isset($palette[$letter]) || $z >= ($heights[$letter] ?? 1)) return null;
+        return $palette[$letter];
+    };
+    return ['size' => [$w, $d, $h], 'unit' => 1.25, 'voxel' => $voxel, 'rows' => $rows];
 };
 
 $ink = ['k' => '#151922', 'g' => '#343b4a', 'G' => '#566073', 'l' => '#8e99ad', 'w' => '#eef2f8',
@@ -53,92 +54,136 @@ $jet = [
     '....kgGGl', '...kgGGGl', '..kgGGGGl', '.kOgGGGGl', 'kOOgGGGgl', 'kOkkgGGgl', 'kk..kgGgl',
     '....kgGgl', '...kOgggg', '..kOOkgkk', '..kkk.k..',
 ];
-// The whole jet, and banked: one wing foreshortened (two of its columns dropped).
-$level = array_map(fn ($r) => $r . strrev(substr($r, 0, -1)), $jet);
-$banked = array_map(fn ($r) => '..' . $r[0] . $r[1] . $r[3] . $r[4] . substr($r, 6), $level);
-$sprites = [
-    'jet' => $sprite('jet', $level, $ink, false),
-    'jet-left' => $sprite('jet-left', $banked, $ink, false),
-    'jet-right' => $sprite('jet-right', array_map('strrev', $banked), $ink, false),
-    'drone' => $sprite('drone', [
-        'kk.....', 'kRk....', '.kRk..k', '..kRkkr', '...kRRr', '..kRrrr', '.kRrDDy', 'kRrrDDd', '.kkrrrd', '...kkrd', '.....kk',
-    ], ['k' => '#1a1016', 'R' => '#ff6b6b', 'r' => '#c8303e', 'D' => '#3a1f2b', 'd' => '#5c2733', 'y' => '#ffd23f']),
-    'bomber' => $sprite('bomber', [
-        '.......kkkk', '......kPPPp', 'kk...kPpppp', 'kPkkkPppppp', 'kPPPPpppppp', 'kPppppppkyy', '.kpppppkkYY',
-        '..kppppppkk', '...kkpppppp', '.....kkpppp', '.......kkkk',
-    ], ['k' => '#120f1c', 'P' => '#a78bfa', 'p' => '#5b47b8', 'y' => '#ffe066', 'Y' => '#ff9f1c']),
-];
-
-/** Value noise that repeats every TERRAIN pixels down, so the world scrolls forever. */
 $noise = function (int $seed, int $cell) {
     mt_srand($seed);
-    [$cols, $rows] = [intdiv(W, $cell) + 2, intdiv(TERRAIN, $cell)];
+    $n = intdiv(TERRAIN, $cell);
     $grid = [];
-    for ($i = 0; $i < $cols * $rows; $i++) $grid[] = mt_rand() / mt_getrandmax();
-    return function (float $x, float $y) use ($grid, $cols, $rows, $cell): float {
+    for ($i = 0; $i < $n * $n; $i++) $grid[] = mt_rand() / mt_getrandmax();
+    return function (float $x, float $y) use ($grid, $n, $cell): float {
         [$fx, $fy] = [$x / $cell, $y / $cell];
-        [$ix, $iy] = [(int) $fx, (int) floor($fy)];
+        [$ix, $iy] = [(int) floor($fx), (int) floor($fy)];
         [$tx, $ty] = [$fx - $ix, $fy - $iy];
         [$tx, $ty] = [$tx * $tx * (3 - 2 * $tx), $ty * $ty * (3 - 2 * $ty)];
-        $at = fn ($cx, $cy) => $grid[(($cy % $rows + $rows) % $rows) * $cols + min($cols - 1, $cx)];
+        $at = fn ($a, $b) => $grid[(($b % $n + $n) % $n) * $n + ($a % $n + $n) % $n];
         $a = $at($ix, $iy) + ($at($ix + 1, $iy) - $at($ix, $iy)) * $tx;
         $b = $at($ix, $iy + 1) + ($at($ix + 1, $iy + 1) - $at($ix, $iy + 1)) * $tx;
         return $a + ($b - $a) * $ty;
     };
 };
+$near = fn ($x, $y, $z, $cx, $cy, $cz, $r) => ($x - $cx) ** 2 + ($y - $cy) ** 2 + ($z - $cz) ** 2 < $r * $r;
+$shapes = [
+    'jet' => $ship($jet, $ink, ['k' => 2, 'g' => 3, 'G' => 3, 'l' => 4, 'c' => 5, 'C' => 5, 'o' => 2, 'O' => 2]),
+    'drone' => $ship([
+        'kk.....', 'kRk....', '.kRk..k', '..kRkkr', '...kRRr', '..kRrrr', '.kRrDDy', 'kRrrDDd', '.kkrrrd', '...kkrd', '.....kk',
+    ], ['k' => '#1a1016', 'R' => '#ff6b6b', 'r' => '#c8303e', 'D' => '#3a1f2b', 'd' => '#5c2733', 'y' => '#ffd23f'],
+        ['k' => 1, 'R' => 2, 'r' => 2, 'D' => 4, 'd' => 3, 'y' => 4]),
+    'bomber' => $ship([
+        '.......kkkk', '......kPPPp', 'kk...kPpppp', 'kPkkkPppppp', 'kPPPPpppppp', 'kPppppppkyy', '.kpppppkkYY',
+        '..kppppppkk', '...kkpppppp', '.....kkpppp', '.......kkkk',
+    ], ['k' => '#120f1c', 'P' => '#a78bfa', 'p' => '#5b47b8', 'y' => '#ffe066', 'Y' => '#ff9f1c'],
+        ['k' => 2, 'P' => 4, 'p' => 3, 'y' => 5, 'Y' => 5]),
+    'pine' => ['size' => [9, 9, 16], 'unit' => 0.8, 'voxel' => function ($x, $y, $z) {
+        if ($z <= 3 && $x === 4 && $y === 4) return '#5a3d22';
+        if ($z >= 3 && hypot($x - 4, $y - 4) <= (16 - $z) * 0.36) return $z % 3 === 0 ? '#1f5c34' : '#2c7a45';
+        return null;
+    }],
+    'oak' => ['size' => [11, 11, 13], 'unit' => 0.8, 'voxel' => function ($x, $y, $z) use ($near) {
+        if ($z <= 4 && $x === 5 && abs($y - 5) <= 1) return '#6b4a2b';
+        if ($near($x, $y, $z, 5, 5, 8, 4.4) && mt_rand(0, 12)) return ['#2f7a34', '#3d9440', '#56b04a', '#6cc25a'][min(3, intdiv($z - 4, 2))];
+        return null;
+    }],
+    'house' => ['size' => [14, 12, 12], 'unit' => 0.8, 'shade' => 0.6, 'voxel' => function ($x, $y, $z) {
+        if ($z <= 5 && $x >= 1 && $x <= 12 && $y >= 1 && $y <= 10) {
+            $edge = $x === 1 || $x === 12 || $y === 1 || $y === 10;
+            if ($edge && $z >= 2 && $z <= 3 && ($x % 3 === 0 || $y % 3 === 0)) return '#3b6ea8';
+            return $edge ? '#efe3c8' : '#d8c8a8';
+        }
+        if ($z >= 6 && abs($y - 5.5) <= 6.5 - ($z - 6) * 1.3) return $z === 11 ? '#8f2f24' : '#c4473a';
+        return null;
+    }],
+    'mountain' => ['size' => [36, 36, 24], 'unit' => 1.6, 'shade' => 0.5, 'voxel' => (function () use ($noise) {
+        $ridge = $noise(61, 4);
+        return function ($x, $y, $z) use ($ridge) {
+            $r = hypot($x - 17.5, $y - 17.5) / 17.5;
+            $top = 24 * (1 - $r) ** 1.2 + ($ridge($x * 3, $y * 3) - 0.5) * 7 * (1 - $r);
+            if ($r > 1 || $z > $top) return null;
+            $v = mt_rand(0, 9);
+            if ($z >= 17 - $v % 3) return $v ? '#f4f7fb' : '#d5dde8';
+            if ($z >= 6 + $v % 3) return ['#8b8478', '#7a7368', '#9a9284'][$v % 3];
+            return ['#3e9140', '#2b6e33', '#4f9e44'][$v % 3];
+        };
+    })()],
+];
+foreach (['cloud' => [30, 22, 8, 23], 'cloud2' => [24, 18, 7, 29]] as $name => [$w, $d, $h, $seed]) {
+    mt_srand($seed);
+    $puffs = [];
+    for ($i = 0; $i < 7; $i++) $puffs[] = [mt_rand(6, $w - 7), mt_rand(5, $d - 6), mt_rand(0, 2), mt_rand(35, 60) / 10];
+    $shapes[$name] = ['size' => [$w, $d, $h], 'unit' => 2.2, 'shade' => 0.86, 'voxel' => function ($x, $y, $z) use ($puffs, $near) {
+        foreach ($puffs as [$px, $py, $pz, $r]) if ($near($x, $y, $z * 1.4, $px, $py, $pz, $r)) return $z >= 4 ? '#ffffff' : '#f2f6fb';
+        return null;
+    }];
+}
+mt_srand(5);
+$voxels = new Voxels("$dir/models.png", $shapes);
+if ($voxels->built) Renderer::savePng("$dir/jet.png", 17, 18, $voxels->layer('jet', 1));
 
-/** The archipelago: sea, shallows, beaches, grass, forest, rock and snow, lit from the top left. */
+/** The archipelago: sea, shallows, beaches, grass, forest, rock and snow, lit from the top left; it wraps both ways. */
+$octaves = [[$noise(7, 128), 0.5], [$noise(11, 64), 0.27], [$noise(13, 32), 0.14], [$noise(17, 8), 0.09]];
+$height = function (float $x, float $y) use ($octaves): float {
+    $h = 0.0;
+    foreach ($octaves as [$n, $weight]) $h += $n($x, $y) * $weight;
+    return $h;
+};
 $terrainFile = "$dir/terrain.png";
 if (!is_file($terrainFile)) {
-    $octaves = [[$noise(7, 128), 0.5], [$noise(11, 64), 0.27], [$noise(13, 32), 0.14], [$noise(17, 8), 0.09]];
-    $height = [];
-    for ($y = 0; $y < TERRAIN; $y++) for ($x = 0; $x < W; $x++) {
-        $h = 0.0;
-        foreach ($octaves as [$n, $weight]) $h += $n($x, $y) * $weight;
-        $height[$y * W + $x] = $h;
-    }
     $bands = [[0.42, '#16467f'], [0.5, '#1f63a8'], [0.535, '#3f8fd0'], [0.555, '#7cc4e4'], [0.575, '#e9dba4'],
         [0.64, '#5fb34d'], [0.7, '#3e9140'], [0.76, '#2b6e33'], [0.8, '#7b7b6a'], [0.84, '#a3a291'], [9, '#f2f4f2']];
     $colors = array_map(fn ($b) => [$b[0], $hex($b[1])], $bands);
     mt_srand(3);
     $px = '';
+    $above = [];
+    for ($x = 0; $x < TERRAIN; $x++) $above[$x] = $height($x, -1);
     for ($y = 0; $y < TERRAIN; $y++) {
-        $row = [];
-        for ($x = 0; $x < W; $x++) {
-            $h = $height[$y * W + $x];
+        [$row, $line] = [[], []];
+        for ($x = 0; $x < TERRAIN; $x++) {
+            $h = $line[$x] = $height($x, $y);
             foreach ($colors as [$top, $c]) if ($h < $top) break;
             // Land facing the light is brighter; the sea glints.
-            $slope = $h - $height[(($y - 1 + TERRAIN) % TERRAIN) * W + max(0, $x - 1)];
+            $slope = $h - $above[($x + TERRAIN - 1) % TERRAIN];
             $k = $h >= 0.555 ? 1 + max(-0.18, min(0.18, $slope * 9)) : (mt_rand(0, 140) === 0 ? 1.35 : 1);
             foreach ($c as $v) $row[] = min(255, (int) ($v * $k));
             $row[] = 255;
         }
+        $above = $line;
         $px .= pack('C*', ...$row);
     }
-    Renderer::savePng($terrainFile, W, TERRAIN, $px);
+    Renderer::savePng($terrainFile, TERRAIN, TERRAIN, $px);
 }
+$world = TERRAIN * 2;
 
-/** Clouds, and their shadows on the ground. */
-$cloudFile = "$dir/clouds.png";
-if (!is_file($cloudFile)) {
-    $a = $noise(23, 32);
-    $b = $noise(29, 16);
-    [$px, $shadow] = ['', ''];
-    for ($y = 0; $y < TERRAIN; $y++) {
-        [$row, $srow] = [[], []];
-        for ($x = 0; $x < W; $x++) {
-            $v = $a($x, $y) * 0.75 + $b($x, $y) * 0.25;
-            if ($v < 0.73) { array_push($row, 0, 0, 0, 0); array_push($srow, 0, 0, 0, 0); continue; }
-            // A soft rim, a lit body.
-            [$lit, $alpha] = $v > 0.755 ? [255, 215] : [220, 150];
-            array_push($row, $lit, $lit, min(255, $lit + 8), $alpha);
-            array_push($srow, 0, 20, 40, 70);
-        }
-        $px .= pack('C*', ...$row);
-        $shadow .= pack('C*', ...$srow);
+// On the land: mountains on the high ground, woods and houses lower down. In the air,
+// clouds between the field and the camera. All in world units (2 a texel).
+$places = [];
+$taken = [];  // 64-unit cells => places in them, to keep things apart
+mt_srand(77);
+for ($i = 0; $i < 20000 && count($places) < 900; $i++) {
+    [$x, $y] = [mt_rand(0, TERRAIN - 1) * 2, mt_rand(0, TERRAIN - 1) * 2];
+    $h = $height($x / 2, $y / 2);
+    if ($h < 0.585) continue;
+    $kind = $h > 0.8 ? 'mountain' : ($h > 0.7 ? (mt_rand(0, 3) ? 'pine' : 'oak') : ['oak', 'pine', 'house', 'oak'][mt_rand(0, 3)]);
+    $room = $kind === 'mountain' ? 30 : 5;
+    [$cx, $cy] = [intdiv($x, 64), intdiv($y, 64)];
+    for ($a = -2; $a <= 2; $a++) for ($b = -2; $b <= 2; $b++) {
+        foreach ($taken[($cx + $a) . ',' . ($cy + $b)] ?? [] as $p) if (hypot($p['x'] - $x, $p['y'] - $y) < $room + $p['room']) continue 3;
     }
-    Renderer::savePng($cloudFile, W, TERRAIN, $px);
-    Renderer::savePng("$dir/clouds-shadow.png", W, TERRAIN, $shadow);
+    $place = ['kind' => $kind, 'x' => $x, 'y' => $y, 'z' => 0, 'yaw' => mt_rand(0, 3) * M_PI / 2, 'room' => $room];
+    $places[] = $place;
+    $taken["$cx,$cy"][] = $place;
+}
+unset($taken);
+for ($i = 0; $i < 70; $i++) {
+    $places[] = ['kind' => mt_rand(0, 1) ? 'cloud' : 'cloud2', 'x' => mt_rand(0, $world - 1), 'y' => mt_rand(0, $world - 1),
+        'z' => FIELD_Z + mt_rand(30, 140), 'yaw' => mt_rand(0, 628) / 100, 'room' => 0];
 }
 
 /** Sound effects, synthesized: 22 kHz mono WAV. */
@@ -389,79 +434,96 @@ $update = function (float $dt) use ($g, $reset, $burst, $explode, $sfx, $spawnDr
 
 // Drawing ------------------------------------------------------------------------
 
-$draw = function (Canvas $c) use ($g, $sprites, $terrainFile, $cloudFile, $dir) {
-    // Whole pixels when the window is big enough, centered.
-    $fit = min($c->width / W, $c->height / H);
-    $k = $fit >= 1 ? floor($fit) : $fit;
-    [$ox, $oy] = [round(($c->width - W * $k) / 2), round(($c->height - H * $k) / 2)];
-    // The mouse, in game pixels, for update().
-    [$mx, $my] = App::current()->pointerAt();
-    $g->toGame = [($mx - $ox) / $k, ($my - $oy) / $k];
-
+$draw = function (Canvas $c) use ($g, $voxels, $places, $terrainFile, $world) {
+    [$cw, $ch] = [$c->width, $c->height];
     $c->imageSmoothingEnabled = false;
-    $c->fillStyle = '#05080f';
-    $c->fillRect(0, 0, $c->width, $c->height);
-    $c->save();
-    $shake = $g->shake > 0 ? [mt_rand(-10, 10) / 10 * $g->shake, mt_rand(-10, 10) / 10 * $g->shake] : [0, 0];
-    $c->translate($ox + round($shake[0]) * $k, $oy + round($shake[1]) * $k);
-    $c->scale($k, $k);
+    // The camera: tilted down at the field from behind its bottom edge, drifting a little
+    // after the jet so the scene shifts in depth; shaken by hits. A field point (x, y)
+    // is world (x - W/2, y - scroll), FIELD_Z up; the ground scrolls under it.
+    $pitch = 0.8;
+    $focal = $ch * 2;
+    $reach = $focal / 2.7 * min(1, $cw / $ch / (W / H) * 1.05);
+    $shake = $g->shake > 0 ? [mt_rand(-10, 10) / 10 * $g->shake * 3, mt_rand(-10, 10) / 10 * $g->shake * 3] : [0, 0];
+    $cam = new Camera3D(($g->x - W / 2) * 0.25, H / 2 - $g->scroll + $reach * cos($pitch), FIELD_Z + $reach * sin($pitch),
+        0, $pitch, $focal, $cw / 2 + $shake[0], $ch * 0.5 + $shake[1], $world, -$g->bank * 0.04);
+    $at = fn (float $x, float $y, float $z = FIELD_Z) => $cam->project($x - W / 2, $y - $g->scroll, $z);
+    // The mouse on the field, for update().
+    [$mx, $my] = App::current()->pointerAt();
+    $hit = $cam->unproject($mx, $my, FIELD_Z);
+    $g->toGame = $hit ? [$hit[0] + W / 2, $hit[1] + $g->scroll] : null;
 
-    // A strip that repeats, shown from $offset down.
-    $strip = function (string $file, float $speed, float $dx = 0, float $dy = 0) use ($c, $g) {
-        $top = (int) (TERRAIN - fmod($g->scroll * $speed, TERRAIN)) % TERRAIN;
-        $first = min(H, TERRAIN - $top);
-        $c->drawImage($file, 0, $top, W, $first, $dx, $dy, W, $first);
-        if ($first < H) $c->drawImage($file, 0, 0, W, H - $first, $dx, $dy + $first, W, H - $first);
-    };
-    $strip($terrainFile, 1);
-    $c->globalAlpha = 1;
-    $strip("$dir/clouds-shadow.png", 1.6, 7, 12);
+    $c->fillStyle = '#bcd7ea';
+    $c->fillRect(0, 0, $cw, $ch);
+    $cam->ground($c, $terrainFile, $world, 2, '#bcd7ea', 2600);
 
-    $put = function (array $s, float $x, float $y, bool $shadow = true) use ($c) {
-        if ($shadow) {
-            $c->globalAlpha = 0.28;
-            $c->drawImage($s['shadow'], round($x - $s['w'] / 2) + 8, round($y - $s['h'] / 2) + 14);
-            $c->globalAlpha = 1;
+    // Shadows of the ships on the sea, far below.
+    $ships = [];
+    foreach ($g->enemies as $e) $ships[] = [$e['kind'], $e['x'], $e['y'], $e];
+    $showJet = $g->mode === 'play' && ($g->invulnerable <= 0 || fmod($g->time, 0.16) < 0.1);
+    if ($showJet) $ships[] = ['jet', $g->x, $g->y, null];
+    foreach ($ships as [$kind, $x, $y]) $cam->shadow($c, $x - W / 2, $y - $g->scroll, $kind === 'bomber' ? 11 : 8, 0.22);
+
+    // Everything else far to near: what stands on the land, clouds, ships, shots.
+    $things = [];
+    foreach ($places as $p) {
+        $q = $cam->project($p['x'], $p['y'], $p['z']);
+        if ($q && $q[1] > -200 && $q[1] < $ch + 200) $things[] = [$q[3], 'model', $p['kind'], $cam->near($p['x'], $p['y']), $p['z'], $p['yaw'], 0, 1];
+    }
+    foreach ($ships as [$kind, $x, $y, $e]) {
+        if (!$q = $at($x, $y)) continue;
+        // Enemies face where they fly, and lean into their weaving.
+        [$yaw, $roll] = [0, $g->bank * 0.7];
+        if ($e) {
+            $vx = cos($g->time * 1.6 + $e['phase']) * 1.6 * $e['amp'];
+            [$yaw, $roll] = [-atan2($vx, $e['vy']) * 0.6, max(-0.5, min(0.5, $vx / 90))];
         }
-        $c->drawImage($s['file'], round($x - $s['w'] / 2), round($y - $s['h'] / 2));
-    };
-    foreach ($g->enemies as $e) {
-        $put($sprites[$e['kind']], $e['x'], $e['y']);
-        if ($e['flash'] > 0) {
-            $c->fillStyle = 'rgba(255, 255, 255, 0.7)';
-            $c->fillRect(round($e['x'] - $e['r']), round($e['y'] - $e['r'] / 2), $e['r'] * 2, $e['r']);
+        $things[] = [$q[3] - 1, 'model', $kind, [$x - W / 2, $y - $g->scroll], FIELD_Z, $yaw, $roll, $e && $e['flash'] > 0 ? 0.45 : 1];
+    }
+    foreach ($g->bullets as $b) if ($q = $at($b['x'], $b['y'])) $things[] = [$q[3], 'bullet', $q];
+    foreach ($g->rockets as $r) if ($q = $at($r['x'], $r['y'])) $things[] = [$q[3], 'rocket', $q];
+    foreach ($g->enemyShots as $s) if ($q = $at($s['x'], $s['y'])) $things[] = [$q[3], 'shot', $q];
+    foreach ($g->particles as $p) if ($q = $at($p['x'], $p['y'])) $things[] = [$q[3] - 2, 'spark', $q, $p];
+    usort($things, fn ($a, $b) => $b[0] <=> $a[0]);
+
+    foreach ($things as $t) {
+        switch ($t[1]) {
+            case 'model':
+                [, , $name, [$x, $y], $z, $yaw, $roll, $alpha] = $t;
+                if (str_starts_with($name, 'cloud')) $alpha = 0.85;
+                $cam->stack($c, $voxels, $name, $x, $y, $z, $yaw, $alpha, $roll, 10);
+                break;
+            case 'bullet':
+                [$x, $y, $s] = $t[2];
+                $c->fillStyle = '#fff6c4';
+                $c->fillRect($x - $s * 0.6, $y - $s * 2.5, $s * 1.2, $s * 5);
+                break;
+            case 'rocket':
+                [$x, $y, $s] = $t[2];
+                $c->fillStyle = '#ffffff';
+                $c->fillRect($x - $s * 1.5, $y - $s * 1.5, $s * 3, $s * 3);
+                break;
+            case 'shot':
+                [$x, $y, $s] = $t[2];
+                $c->fillStyle = 'rgba(255, 80, 120, 0.35)';
+                $c->beginPath();
+                $c->arc($x, $y, $s * 3, 0, 2 * M_PI);
+                $c->fill();
+                $c->fillStyle = '#ffd0dc';
+                $c->beginPath();
+                $c->arc($x, $y, $s * 1.6, 0, 2 * M_PI);
+                $c->fill();
+                break;
+            case 'spark':
+                [[$x, $y, $s], $p] = [$t[2], $t[3]];
+                $c->globalAlpha = max(0, min(1, $p['life'] / $p['max'] * 1.4));
+                $c->fillStyle = $p['color'];
+                $z = $p['size'] * $s;
+                $c->fillRect($x - $z / 2, $y - $z / 2, $z, $z);
+                $c->globalAlpha = 1;
+                break;
         }
     }
-    if ($g->mode === 'play' && ($g->invulnerable <= 0 || fmod($g->time, 0.16) < 0.1)) {
-        $put($sprites[$g->bank < -0.35 ? 'jet-left' : ($g->bank > 0.35 ? 'jet-right' : 'jet')], $g->x, $g->y);
-    }
-    foreach ($g->particles as $p) {
-        $c->globalAlpha = max(0, min(1, $p['life'] / $p['max'] * 1.4));
-        $c->fillStyle = $p['color'];
-        $c->fillRect(round($p['x']), round($p['y']), $p['size'], $p['size']);
-    }
-    $c->globalAlpha = 1;
-    $c->fillStyle = '#fff6c4';
-    foreach ($g->bullets as $b) $c->fillRect(round($b['x']), round($b['y']), 1, 4);
-    foreach ($g->rockets as $r) {
-        $c->fillStyle = '#ffffff';
-        $c->fillRect(round($r['x']) - 1, round($r['y']) - 1, 3, 3);
-    }
-    foreach ($g->enemyShots as $s) {
-        $c->fillStyle = 'rgba(255, 80, 120, 0.35)';
-        $c->fillRect(round($s['x']) - 2, round($s['y']) - 2, 5, 5);
-        $c->fillStyle = '#ffd0dc';
-        $c->fillRect(round($s['x']) - 1, round($s['y']) - 1, 3, 3);
-    }
-    $strip($cloudFile, 1.6);
-    $c->restore();
-
-    // Letterbox, then the HUD in window pixels.
-    $c->fillStyle = '#05080f';
-    $c->fillRect(0, 0, $ox, $c->height);
-    $c->fillRect($ox + W * $k, 0, $c->width, $c->height);
-    $c->fillRect(0, 0, $c->width, $oy);
-    $c->fillRect(0, $oy + H * $k, $c->width, $c->height);
+    [$ox, $oy] = [0, 0];
 
     /** A HUD chip: a label, and a bar of $full of $of cells when given. */
     $chip = function (string $text, float $x, float $y, string $align = 'left', int $full = -1, int $of = 0, string $color = '#ffffff') use ($c) {
@@ -484,32 +546,32 @@ $draw = function (Canvas $c) use ($g, $sprites, $terrainFile, $cloudFile, $dir) 
         }
         return $w;
     };
-    $right = $ox + W * $k - 12;
-    $center = $ox + W * $k / 2;
+    $right = $cw - 12;
+    $center = $cw / 2;
     if ($g->mode === 'play') {
-        $chip(sprintf('SCORE %06d', $g->score), $ox + 12, $oy + 12);
-        $chip('BEST ' . $g->best, $right, $oy + 12, 'right');
-        $chip('HULL', $ox + 12, $oy + H * $k - 34, 'left', $g->hp, 5, $g->hp <= 1 ? '#ff6b6b' : '#7ee787');
-        $chip('MSL', $right, $oy + H * $k - 34, 'right', $g->missiles, 6, '#ffd23f');
+        $chip(sprintf('SCORE %06d', $g->score), 12, 12);
+        $chip('BEST ' . $g->best, $right, 12, 'right');
+        $chip('HULL', 12, $ch - 34, 'left', $g->hp, 5, $g->hp <= 1 ? '#ff6b6b' : '#7ee787');
+        $chip('MSL', $right, $ch - 34, 'right', $g->missiles, 6, '#ffd23f');
     }
     $c->textAlign = 'center';
     $c->textBaseline = 'middle';
-    $title = function (string $big, string $small, string $hint) use ($c, $center, $oy, $k, $g) {
+    $title = function (string $big, string $small, string $hint) use ($c, $center, $ch, $g) {
         $c->fillStyle = 'rgba(5, 8, 15, 0.45)';
-        $c->fillRect(0, $oy + H * $k * 0.32, $c->width, H * $k * 0.36);
+        $c->fillRect(0, $ch * 0.32, $c->width, $ch * 0.36);
         $c->font = 'bold 40px sans-serif';
         $c->letterSpacing = '6px';
         $c->fillStyle = '#0b1220';
-        $c->fillText($big, $center + 3, $oy + H * $k * 0.42 + 3);
+        $c->fillText($big, $center + 3, $ch * 0.42 + 3);
         $c->fillStyle = '#ffffff';
-        $c->fillText($big, $center, $oy + H * $k * 0.42);
+        $c->fillText($big, $center, $ch * 0.42);
         $c->letterSpacing = '2px';
         $c->font = '13px mono-semibold';
         $c->fillStyle = '#9fb3cf';
-        $c->fillText($small, $center, $oy + H * $k * 0.5);
+        $c->fillText($small, $center, $ch * 0.5);
         if (fmod($g->time, 1.2) < 0.8) {
             $c->fillStyle = '#ffd23f';
-            $c->fillText($hint, $center, $oy + H * $k * 0.6);
+            $c->fillText($hint, $center, $ch * 0.6);
         }
         $c->letterSpacing = '0px';
     };
@@ -518,7 +580,7 @@ $draw = function (Canvas $c) use ($g, $sprites, $terrainFile, $cloudFile, $dir) 
     if ($g->mode === 'play' && $g->paused) $title('PAUSED', 'ESC TO GO ON', '');
 };
 
-$app = new App('Sky Patrol', W * 3, H * 3, fn () => col()->full()->bg('#05080f')->schema([canvas($draw)->flex1()->id('game')]));
+$app = new App('Sky Patrol', 600, 800, fn () => col()->full()->bg('#05080f')->schema([canvas($draw)->flex1()->id('game')]));
 $app->icon(file_exists("$dir/jet.png") ? "$dir/jet.png" : '');
 $last = microtime(true);
 $app->every(1 / 120, function () use ($update, &$last) {
@@ -543,7 +605,7 @@ if ($shots = getenv('PHPUI_SCREENSHOTS')) {
         if ($i > 500 && count($g->enemies) >= 4 && count($g->particles) > 40) break;
     }
     [$g->hp, $g->invulnerable] = [4, 0];
-    $app->screenshot("$shots/skypatrol.png", W * 3, H * 3, 1);
+    $app->screenshot("$shots/skypatrol.png", 600, 800, 1);
     exit;
 }
 if (!getenv('PHPUI_NO_RUN')) $app->run();
