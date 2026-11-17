@@ -64,7 +64,8 @@ namespace PhpSdl {
         /** An SVG drawn as a mask in $color: its own colors are ignored. */
         public function icon(string $svg, float $x, float $y, float $size, array $color, ?array $clip = null): void {}
         /** A picture at x, y, w, h, cut to $box with its corner $radii. */
-        public function image(string $path, float $x, float $y, float $width, float $height, array $box, array $radii, float $opacity = 1, ?array $clip = null, ?array $source = null): void {}
+        /** $source: [x, y, w, h] of the image to draw; $smooth false samples it nearest (pixel art). */
+        public function image(string $path, float $x, float $y, float $width, float $height, array $box, array $radii, float $opacity = 1, ?array $clip = null, ?array $source = null, bool $smooth = true): void {}
         /**
          * A canvas path (in the canvas's pixels, placed by 'transform'; 'ctm' is the current transform, which
          * strokes and paints follow), filled, or stroked with 'stroke' => [width, join, cap, miterLimit, dashes, dashOffset]
@@ -80,6 +81,8 @@ namespace PhpSdl {
         public function forget(): void {}
         /** @return array{int, int} */
         public static function imageSize(string $path): array {}
+        /** $rgba (4 bytes a pixel, rows top down) saved as a PNG at $path. */
+        public static function savePng(string $path, int $width, int $height, string $rgba): bool {}
         /** $from (PNG, JPEG, ...) scaled to $width×$height and saved as a PNG at $to, averaging what each pixel covers. */
         public static function resizeImage(string $from, string $to, int $width, int $height): bool {}
     }

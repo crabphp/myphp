@@ -57,6 +57,8 @@ final class App
     private ?string $composingIn = null;
     /** Shutdown handlers from here on are the app's own (the toolkit's come first). */
     private int $ownShutdown = 0;
+    /** @var array<int, true> Keys and mouse buttons held down, for games. */
+    private array $keysDown = [], $buttonsDown = [];
 
     public function __construct(string $title, int $width, int $height, callable $render)
     {
@@ -94,6 +96,7 @@ final class App
         $this->window
             ->on('pointer', fn (float $x, float $y) => $this->pointer($x / $this->zoom, $y / $this->zoom))
             ->on('button', function (int $button, bool $pressed) {
+                if ($pressed) $this->buttonsDown[$button] = true; else unset($this->buttonsDown[$button]);
                 if ($button === Mouse::RIGHT && $pressed) $this->rightClick($this->mouseX, $this->mouseY);
                 if ($button !== Mouse::LEFT) return;
                 $pressed ? $this->press($this->mouseX, $this->mouseY) : $this->release($this->mouseX, $this->mouseY);
@@ -102,7 +105,10 @@ final class App
             ->on('drop', fn (array $paths) => $this->drop($paths))
             ->on('text', fn (string $text) => $this->type($text))
             ->on('preedit', fn (string $text, int $caret) => $this->preedit($text, $caret))
-            ->on('key', fn (int $key, int $mods) => $this->key($key, $mods))
+            ->on('key', function (int $key, int $mods) { $this->keysDown[$key] = true; $this->key($key, $mods); })
+            ->on('keyUp', function (int $key) { unset($this->keysDown[$key]); })
+            // Keys released in another window never come back up here.
+            ->on('focus', function (bool $focused) { if (!$focused) [$this->keysDown, $this->buttonsDown] = [[], []]; })
             ->on('refresh', function () { $this->dirty = true; });
     }
 
@@ -111,7 +117,7 @@ final class App
     {
         [$this->painter, $this->layout] = [$old->painter, $old->layout];
         foreach (['focusId', 'keyboardFocus', 'edits', 'history', 'zoom', 'mouseX', 'mouseY', 'textSelection',
-            'composing', 'composingCaret', 'composingIn', 'cursor', 'accessKit', 'accessKitTried'] as $k) {
+            'composing', 'composingCaret', 'composingIn', 'cursor', 'accessKit', 'accessKitTried', 'keysDown', 'buttonsDown'] as $k) {
             $this->$k = $old->$k;
         }
         $this->accessKit?->rebind($this);
@@ -140,6 +146,24 @@ final class App
     {
         $this->painter->forgetAssets();
         $this->invalidate();
+    }
+
+    /** Whether $key (Key::*) is held down now: for games, read each frame. */
+    public function isKeyDown(int $key): bool
+    {
+        return isset($this->keysDown[$key]);
+    }
+
+    /** Whether a mouse button (Mouse::*) is held down now. */
+    public function isMouseDown(int $button = Mouse::LEFT): bool
+    {
+        return isset($this->buttonsDown[$button]);
+    }
+
+    /** @return array{float, float} Where the pointer is, in window points. */
+    public function pointerAt(): array
+    {
+        return [$this->mouseX, $this->mouseY];
     }
 
     /** The window's icon in the taskbar and Dock: a PNG (1024×1024 works everywhere). */

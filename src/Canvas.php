@@ -434,8 +434,10 @@ final class Canvas
      */
     public function drawImage(string $image, float ...$args): void
     {
+        static $sizes = [];
         $file = realFile($image);
-        [$iw, $ih] = \PhpSdl\Renderer::imageSize($file);
+        // Read once: games draw the same images every frame.
+        [$iw, $ih] = $sizes[$file] ??= \PhpSdl\Renderer::imageSize($file);
         if ($iw <= 0 || $ih <= 0) return;
         [$sx, $sy, $sw, $sh, $dx, $dy, $dw, $dh] = match (count($args)) {
             2 => [0, 0, $iw, $ih, $args[0], $args[1], $iw, $ih],
@@ -450,7 +452,7 @@ final class Canvas
             $y = $this->base[5] + $m[3] * $dy + $m[5];
             [$w, $h] = [$m[0] * $dw, $m[3] * $dh];
             $box = [$x, $y, $w, $h];
-            $this->renderer->image($file, $x, $y, $w, $h, $box, [0, 0, 0, 0], $this->globalAlpha * $this->opacity, $this->clip, [$sx, $sy, $sw, $sh]);
+            $this->renderer->image($file, $x, $y, $w, $h, $box, [0, 0, 0, 0], $this->globalAlpha * $this->opacity, $this->clip, [$sx, $sy, $sw, $sh], $this->imageSmoothingEnabled);
             return;
         }
         // Rotated, flipped, clipped or shadowed: the destination filled with the image as a pattern.

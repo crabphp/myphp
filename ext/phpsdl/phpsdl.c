@@ -450,6 +450,15 @@ static void phpsdl_add_event(zval *list, SDL_Event *ev)
             add_assoc_bool(&e, "repeat", ev->key.repeat);
             break;
         }
+        case SDL_EVENT_KEY_UP: {
+            /* Released: games tell which keys are held. */
+            int key = phpsdl_key(ev->key.scancode);
+            if (key < 0) return;
+            array_init(&e);
+            add_assoc_string(&e, "type", "keyup");
+            add_assoc_long(&e, "key", key);
+            break;
+        }
         case SDL_EVENT_DROP_FILE:
             array_init(&e);
             add_assoc_string(&e, "type", "drop");

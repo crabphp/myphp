@@ -21,7 +21,8 @@ abstract class Window
 
     /**
      * Events: pointer(x, y), button(button, pressed), scroll(dy), drop(paths), text(string),
-     * preedit(text, caret), key(key, mods), refresh(). Coordinates are window points.
+     * preedit(text, caret), key(key, mods), keyUp(key), focus(focused), refresh().
+     * Coordinates are window points.
      */
     public function on(string $event, callable $fn): static
     {

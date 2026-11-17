@@ -38,8 +38,9 @@
 #include "path.h"
 #include "raster.h"
 
-/* A texture: an SDL_GPUTexture. */
+/* A texture: an SDL_GPUTexture, its lowest bit set to sample it nearest (pixel art). */
 typedef uintptr_t pr_tex;
+#define TEX_NEAREST ((pr_tex) 1)
 
 /* Fonts --------------------------------------------------------------------- */
 
@@ -365,7 +366,7 @@ static pr_slot *icon_slot(zend_string *svg, int px)
 
 static SDL_GPUDevice *device = NULL;
 static SDL_GPUShader *gpu_vs = NULL, *gpu_fs = NULL;
-static SDL_GPUSampler *gpu_sampler = NULL;
+static SDL_GPUSampler *gpu_sampler = NULL, *gpu_sampler_nearest = NULL;
 static struct { SDL_GPUTextureFormat format; SDL_GPUGraphicsPipeline *pipeline; } gpu_pipelines[4];
 static int gpu_pipeline_count = 0;
 static SDL_GPUBuffer *gpu_instances = NULL;
@@ -463,6 +464,9 @@ static bool gpu_init(void)
     s.address_mode_u = s.address_mode_v = s.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
     s.max_lod = 1000;
     gpu_sampler = SDL_CreateGPUSampler(device, &s);
+    s.min_filter = s.mag_filter = SDL_GPU_FILTER_NEAREST;
+    s.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
+    gpu_sampler_nearest = SDL_CreateGPUSampler(device, &s);
     SDL_GPUTextureCreateInfo t = {0};
     t.type = SDL_GPU_TEXTURETYPE_2D;
     t.format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
@@ -713,7 +717,8 @@ static void renderer_flush_gpu(pr_renderer *r)
     SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
     for (int c = 0; c < r->command_count; c++) {
         pr_command *cmd = &r->commands[c];
-        SDL_GPUTextureSamplerBinding sampler = {(SDL_GPUTexture *) (cmd->tex ? cmd->tex : atlas_tex), gpu_sampler};
+        pr_tex tex = cmd->tex ? cmd->tex : atlas_tex;
+        SDL_GPUTextureSamplerBinding sampler = {(SDL_GPUTexture *) (tex & ~TEX_NEAREST), (tex & TEX_NEAREST) ? gpu_sampler_nearest : gpu_sampler};
         SDL_BindGPUFragmentSamplers(pass, 0, &sampler, 1);
         SDL_DrawGPUPrimitives(pass, 4, (Uint32) cmd->count, 0, (Uint32) cmd->first);
     }
@@ -1654,7 +1659,8 @@ PHP_METHOD(PhpSdl_Renderer, image)
     zend_string *path;
     double x, y, w, h, opacity = 1;
     HashTable *box, *radii, *clip = NULL, *source = NULL;
-    ZEND_PARSE_PARAMETERS_START(7, 10)
+    bool smooth = true;
+    ZEND_PARSE_PARAMETERS_START(7, 11)
         Z_PARAM_STR(path)
         Z_PARAM_DOUBLE(x)
         Z_PARAM_DOUBLE(y)
@@ -1666,12 +1672,13 @@ PHP_METHOD(PhpSdl_Renderer, image)
         Z_PARAM_DOUBLE(opacity)
         Z_PARAM_ARRAY_HT_OR_NULL(clip)
         Z_PARAM_ARRAY_HT_OR_NULL(source)
+        Z_PARAM_BOOL(smooth)
     ZEND_PARSE_PARAMETERS_END();
     pr_renderer *r = renderer_of(ZEND_THIS);
     if (!renderer_init(r)) return;
     pr_image *img = image_load(path);
     if (!img) return;
-    float *p = instance(r, img->tex);
+    float *p = instance(r, smooth ? img->tex : img->tex | TEX_NEAREST);
     float rect[4] = {(float) x, (float) y, (float) w, (float) h}, v[4];
     float uv[4] = {0, 0, 1, 1};
     /* Part of the image ([x, y, w, h] in its pixels), as canvas's drawImage takes. */
@@ -2074,6 +2081,22 @@ PHP_METHOD(PhpSdl_Renderer, resizeImage)
     RETURN_BOOL(ok);
 }
 
+/* $rgba ($width×$height pixels, 4 bytes each, rows top down) saved as a PNG: images an
+ * app makes itself, such as a game's generated art. */
+PHP_METHOD(PhpSdl_Renderer, savePng)
+{
+    zend_string *path, *rgba;
+    zend_long width, height;
+    ZEND_PARSE_PARAMETERS_START(4, 4)
+        Z_PARAM_PATH_STR(path) Z_PARAM_LONG(width) Z_PARAM_LONG(height) Z_PARAM_STR(rgba)
+    ZEND_PARSE_PARAMETERS_END();
+    if (width < 1 || height < 1 || width > 16384 || height > 16384 || ZSTR_LEN(rgba) != (size_t) width * height * 4) {
+        zend_value_error("The pixels are not width × height × 4 bytes");
+        RETURN_THROWS();
+    }
+    RETURN_BOOL(stbi_write_png(ZSTR_VAL(path), (int) width, (int) height, 4, ZSTR_VAL(rgba), (int) width * 4) != 0);
+}
+
 PHP_METHOD(PhpSdl_Renderer, imageSize)
 {
     zend_string *path;
@@ -2122,6 +2145,8 @@ void phpsdl_render_shutdown(void)
         if (gpu_vs) SDL_ReleaseGPUShader(device, gpu_vs);
         if (gpu_fs) SDL_ReleaseGPUShader(device, gpu_fs);
         if (gpu_sampler) SDL_ReleaseGPUSampler(device, gpu_sampler);
+        if (gpu_sampler_nearest) SDL_ReleaseGPUSampler(device, gpu_sampler_nearest);
+        gpu_sampler_nearest = NULL;
         if (gpu_instances) SDL_ReleaseGPUBuffer(device, gpu_instances);
         if (gpu_instances_upload) SDL_ReleaseGPUTransferBuffer(device, gpu_instances_upload);
         if (gpu_atlas_upload) SDL_ReleaseGPUTransferBuffer(device, gpu_atlas_upload);

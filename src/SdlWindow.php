@@ -58,6 +58,8 @@ final class SdlWindow extends Window
                 'text' => $this->emit('text', $e['text']),
                 'preedit' => $this->emit('preedit', $e['text'], $e['caret']),
                 'key' => $this->emit('key', $e['key'], $e['mods']),
+                'keyup' => $this->emit('keyUp', $e['key']),
+                'focus' => $this->emit('focus', $e['focused']),
                 'drop' => $drops[] = $e['path'],
                 'refresh' => $this->emit('refresh'),
                 default => null,
