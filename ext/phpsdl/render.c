@@ -2249,7 +2249,7 @@ PHP_METHOD(PhpSdl_Renderer, terrain)
 {
     zend_string *path;
     HashTable *rect, *camera, *fog = NULL;
-    double size, height_scale, pixel = 1, fog_distance = 0, far = 4000, time = 0;
+    double size, height_scale, pixel = 1, fog_distance = 0, reach = 4000, time = 0;
     ZEND_PARSE_PARAMETERS_START(5, 10)
         Z_PARAM_STR(path)
         Z_PARAM_ARRAY_HT(rect)
@@ -2260,7 +2260,7 @@ PHP_METHOD(PhpSdl_Renderer, terrain)
         Z_PARAM_DOUBLE(pixel)
         Z_PARAM_ARRAY_HT_OR_NULL(fog)
         Z_PARAM_DOUBLE(fog_distance)
-        Z_PARAM_DOUBLE(far)
+        Z_PARAM_DOUBLE(reach)
         Z_PARAM_DOUBLE(time)
     ZEND_PARSE_PARAMETERS_END();
     pr_renderer *r = renderer_of(ZEND_THIS);
@@ -2277,7 +2277,7 @@ PHP_METHOD(PhpSdl_Renderer, terrain)
     float view[4] = {cam[0], cam[1], cosf(cam[3]), sinf(cam[3])};
     float more[4] = {cam[5], cam[8], cam[2], (float) height_scale};
     float lens[4] = {cam[7], cam[6], (float) (size > 0 ? size : img->w), (float) fog_distance};
-    float params[4] = {(float) pixel, cam[4], (float) time, (float) far};
+    float params[4] = {(float) pixel, cam[4], (float) time, (float) reach};
     put4(p, rc);
     put4(p + 4, view);
     put4(p + 8, color);
