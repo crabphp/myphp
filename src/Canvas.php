@@ -455,7 +455,13 @@ final class Canvas
             $this->renderer->image($file, $x, $y, $w, $h, $box, [0, 0, 0, 0], $this->globalAlpha * $this->opacity, $this->clip, [$sx, $sy, $sw, $sh], $this->imageSmoothingEnabled);
             return;
         }
-        // Rotated, flipped, clipped or shadowed: the destination filled with the image as a pattern.
+        // Rotated, scaled or flipped: still one GPU quad.
+        if (!$this->clips && !$this->shadows()) {
+            $this->renderer->imageTransformed($file, [$sx, $sy, $sw, $sh], [$dx, $dy, $dw, $dh], self::multiply($this->base, $m),
+                $this->globalAlpha * $this->opacity, $this->clip, $this->imageSmoothingEnabled);
+            return;
+        }
+        // Clipped to a path or shadowed: the destination filled with the image as a pattern.
         $p = $this->scratch();
         $p->rect($dx, $dy, $dw, $dh);
         $matrix = [$dw / $sw, 0, 0, $dh / $sh, $dx - $sx * $dw / $sw, $dy - $sy * $dh / $sh];

@@ -81,6 +81,11 @@ namespace PhpSdl {
         public function forget(): void {}
         /** @return array{int, int} */
         public static function imageSize(string $path): array {}
+        /**
+         * Part of an image ($source [x, y, w, h] in its pixels) on $dest [x, y, w, h], placed by
+         * $matrix [a, b, c, d, e, f]: rotated, scaled or flipped, on the GPU.
+         */
+        public function imageTransformed(string $path, array $source, array $dest, array $matrix, float $opacity = 1, ?array $clip = null, bool $smooth = true): void {}
         /** $rgba (4 bytes a pixel, rows top down) saved as a PNG at $path. */
         public static function savePng(string $path, int $width, int $height, string $rgba): bool {}
         /** $from (PNG, JPEG, ...) scaled to $width×$height and saved as a PNG at $to, averaging what each pixel covers. */

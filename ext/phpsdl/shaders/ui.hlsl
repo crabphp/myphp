@@ -11,7 +11,7 @@ struct Instance
     float4 border : TEXCOORD4; // the box an image fills
     float4 clip   : TEXCOORD5;
     float4 params : TEXCOORD6; // border width, blur, spread, shadow offset
-    float4 kind   : TEXCOORD7; // 0 box, 1 mask (y: 1 when color), 2 image
+    float4 kind   : TEXCOORD7; // 0 box, 1 mask (y: 1 when color), 2 image (y: 1 when transformed)
 };
 
 struct Varyings
@@ -26,6 +26,7 @@ struct Varyings
     nointerpolation float4 border : TEXCOORD6;
     nointerpolation float4 params : TEXCOORD7;
     nointerpolation float4 kind : TEXCOORD8;
+    nointerpolation float4 clip : TEXCOORD9;
 };
 
 [[vk::binding(0, 1)]]
@@ -43,11 +44,18 @@ Varyings VSMain(Instance i, uint id : SV_VertexID)
     float2 lo = max(i.rect.xy - pad, i.clip.xy);
     float2 hi = max(lo, min(i.rect.xy + i.rect.zw + pad, i.clip.xy + i.clip.zw));
     Varyings o;
-    o.pos = lerp(lo, hi, corner);
-    float2 t = (o.pos - i.rect.xy) / max(i.rect.zw, float2(1e-6, 1e-6));
-    o.uv = lerp(i.bottom.xy, i.bottom.zw, t);
+    if (i.kind.x == 2.0 && i.kind.y == 1.0) {
+        // A transformed image: rect in its own units, radii the 2×2 matrix, border.xy the offset.
+        float2 local = lerp(i.rect.xy, i.rect.xy + i.rect.zw, corner);
+        o.pos = float2(i.radii.x * local.x + i.radii.z * local.y, i.radii.y * local.x + i.radii.w * local.y) + i.border.xy;
+        o.uv = lerp(i.bottom.xy, i.bottom.zw, corner);
+    } else {
+        o.pos = lerp(lo, hi, corner);
+        float2 t = (o.pos - i.rect.xy) / max(i.rect.zw, float2(1e-6, 1e-6));
+        o.uv = lerp(i.bottom.xy, i.bottom.zw, t);
+    }
     o.rect = i.rect; o.radii = i.radii; o.top = i.top; o.bottom = i.bottom;
-    o.border = i.border; o.params = i.params; o.kind = i.kind;
+    o.border = i.border; o.params = i.params; o.kind = i.kind; o.clip = i.clip;
     o.position = float4(o.pos.x / view.x * 2.0 - 1.0, 1.0 - o.pos.y / view.y * 2.0, 0.0, 1.0);
     return o;
 }
@@ -83,6 +91,12 @@ float4 PSMain(Varyings v) : SV_Target0
         // already in premultiplied color, faded by the color's alpha.
         float4 t = tex.Sample(texSampler, v.uv);
         return v.kind.y == 1.0 ? t * v.top.a : premul(v.top) * t.r;
+    }
+    if (v.kind.x == 2.0 && v.kind.y == 1.0) {
+        // A transformed image (rotated, flipped): clipped here, as its quad is not upright.
+        float2 lo = v.clip.xy, hi = v.clip.xy + v.clip.zw;
+        float inside = step(lo.x, v.pos.x) * step(v.pos.x, hi.x) * step(lo.y, v.pos.y) * step(v.pos.y, hi.y);
+        return premul(tex.Sample(texSampler, v.uv)) * v.top.a * inside;
     }
     if (v.kind.x == 2.0) {
         // An image: its corners follow the box it fills, and it fades with the top color's alpha.

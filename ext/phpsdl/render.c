@@ -2015,6 +2015,48 @@ PHP_METHOD(PhpSdl_Renderer, forget)
     while (mask_count) mask_release(mask_count - 1);
 }
 
+/* Part of an image ($source [x, y, w, h] in its pixels) on $dest [x, y, w, h] in its own
+ * units, placed by $matrix [a, b, c, d, e, f] (rotated, scaled, flipped): one GPU quad,
+ * so games can draw hundreds a frame (sprite stacks). */
+PHP_METHOD(PhpSdl_Renderer, imageTransformed)
+{
+    zend_string *path;
+    HashTable *source, *dest, *matrix, *clip = NULL;
+    double opacity = 1;
+    bool smooth = true;
+    ZEND_PARSE_PARAMETERS_START(4, 7)
+        Z_PARAM_STR(path)
+        Z_PARAM_ARRAY_HT(source)
+        Z_PARAM_ARRAY_HT(dest)
+        Z_PARAM_ARRAY_HT(matrix)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_DOUBLE(opacity)
+        Z_PARAM_ARRAY_HT_OR_NULL(clip)
+        Z_PARAM_BOOL(smooth)
+    ZEND_PARSE_PARAMETERS_END();
+    pr_renderer *r = renderer_of(ZEND_THIS);
+    if (!renderer_init(r)) return;
+    pr_image *img = image_load(path);
+    if (!img || img->w <= 0 || img->h <= 0) return;
+    float src[4] = {0, 0, (float) img->w, (float) img->h}, dst[4] = {0, 0, 1, 1}, m[6] = {1, 0, 0, 1, 0, 0}, cl[4];
+    read_floats(source, src, 4);
+    read_floats(dest, dst, 4);
+    read_floats(matrix, m, 6);
+    read4(clip, cl, NO_CLIP);
+    float *p = instance(r, smooth ? img->tex : img->tex | TEX_NEAREST);
+    float uv[4] = {src[0] / img->w, src[1] / img->h, (src[0] + src[2]) / img->w, (src[1] + src[3]) / img->h};
+    float tint[4] = {1, 1, 1, (float) opacity};
+    float lin[4] = {m[0], m[1], m[2], m[3]}, off[4] = {m[4], m[5], 0, 0};
+    put4(p, dst);
+    put4(p + 4, lin);
+    put4(p + 8, tint);
+    put4(p + 12, uv);
+    put4(p + 16, off);
+    put4(p + 20, cl);
+    p[28] = KIND_IMAGE;
+    p[29] = 1;
+}
+
 PHP_METHOD(PhpSdl_Renderer, flush)
 {
     ZEND_PARSE_PARAMETERS_NONE();
