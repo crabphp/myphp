@@ -92,6 +92,18 @@ namespace PhpSdl {
          * of $pixel, hazing into $fog by $fogDistance.
          */
         public function ground(string $path, array $rect, array $camera, float $horizon, float $focal, float $pixel = 1, ?array $fog = null, float $fogDistance = 0, float $size = 0, float $pitch = 0, float $roll = 0): void {}
+        /** What is drawn from now on lies $distance from the camera: it hides behind nearer things and terrain. 0 draws over everything. */
+        public function depth(float $distance): void {}
+        /**
+         * A sprite stack in one call: model [row, w, d, h] of the atlas $path, its image axes on screen $foot [a, b, c, d]
+         * at the bottom and $head at the top, its middle at $middle [x, y], a layer up on screen $lean [x, y], $steps slices a layer.
+         */
+        public function stack(string $path, array $model, array $foot, array $head, array $middle, array $lean, int $steps, float $opacity = 1, bool $below = false, ?array $clip = null, bool $smooth = true): void {}
+        /**
+         * Terrain from a height map, ray marched on the GPU: $path's colors with heights in alpha (0 to $heightScale units),
+         * repeating every $size units, under $camera [x, y, z, yaw, pitch, roll, focal, center x, center y]; it writes depth.
+         */
+        public function terrain(string $path, array $rect, array $camera, float $size, float $heightScale, float $pixel = 1, ?array $fog = null, float $fogDistance = 0, float $far = 4000, float $time = 0): void {}
         /** $rgba (4 bytes a pixel, rows top down) saved as a PNG at $path. */
         public static function savePng(string $path, int $width, int $height, string $rgba): bool {}
         /** $from (PNG, JPEG, ...) scaled to $width×$height and saved as a PNG at $to, averaging what each pixel covers. */

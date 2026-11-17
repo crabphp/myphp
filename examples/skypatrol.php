@@ -11,10 +11,10 @@ use function PhpUi\{canvas, col, dataDir, state};
 
 // Sky Patrol: an arcade shooter in 3D over an endless archipelago. The game plays on a
 // flat field (W by H) high above the sea; a tilted camera (PhpUi\Camera3D) shows it in
-// perspective over the ground, and every ship, tree, house, mountain and cloud is a
-// voxel model drawn as stacked slices (sprite stacking, PhpUi\Voxels). The ships are
-// their pixel art extruded into 3D. Everything is made here: the islands from noise, the
-// ships from text, the sounds from math.
+// perspective over hilly islands (a height map ray marched on the GPU), and every ship,
+// tree, house and cloud is a voxel model drawn as stacked slices (sprite stacking,
+// PhpUi\Voxels). The ships are their pixel art extruded into 3D. Everything is made
+// here: the islands from noise, the ships from text, the sounds from math.
 // Fly with the mouse or WASD/arrows; click or Space shoots, right-click or X fires a
 // homing missile; Esc pauses. Closures only, so `myphp run --watch` reloads it mid-flight.
 
@@ -22,11 +22,12 @@ use function PhpUi\{canvas, col, dataDir, state};
 defined('W') || define('W', 180);
 defined('H') || define('H', 270);
 defined('TERRAIN') || define('TERRAIN', 1024);  // ground texels; the world wraps every TERRAIN * 2 units
-defined('FIELD_Z') || define('FIELD_Z', 260);    // how high the field is over the ground
+defined('FIELD_Z') || define('FIELD_Z', 260);
+defined('PEAK') || define('PEAK', 150);        // the highest ground    // how high the field is over the ground
 
 // Assets -----------------------------------------------------------------------
 
-$dir = dataDir('myphp-skypatrol') . '/v4';
+$dir = dataDir('myphp-skypatrol') . '/v5';
 @mkdir($dir, 0777, true);
 
 $hex = fn (string $c) => [hexdec(substr($c, 1, 2)), hexdec(substr($c, 3, 2)), hexdec(substr($c, 5, 2))];
@@ -101,18 +102,6 @@ $shapes = [
         if ($z >= 6 && abs($y - 5.5) <= 6.5 - ($z - 6) * 1.3) return $z === 11 ? '#8f2f24' : '#c4473a';
         return null;
     }],
-    'mountain' => ['size' => [36, 36, 24], 'unit' => 1.6, 'shade' => 0.5, 'voxel' => (function () use ($noise) {
-        $ridge = $noise(61, 4);
-        return function ($x, $y, $z) use ($ridge) {
-            $r = hypot($x - 17.5, $y - 17.5) / 17.5;
-            $top = 24 * (1 - $r) ** 1.2 + ($ridge($x * 3, $y * 3) - 0.5) * 7 * (1 - $r);
-            if ($r > 1 || $z > $top) return null;
-            $v = mt_rand(0, 9);
-            if ($z >= 17 - $v % 3) return $v ? '#f4f7fb' : '#d5dde8';
-            if ($z >= 6 + $v % 3) return ['#8b8478', '#7a7368', '#9a9284'][$v % 3];
-            return ['#3e9140', '#2b6e33', '#4f9e44'][$v % 3];
-        };
-    })()],
 ];
 foreach (['cloud' => [30, 22, 8, 23], 'cloud2' => [24, 18, 7, 29]] as $name => [$w, $d, $h, $seed]) {
     mt_srand($seed);
@@ -134,6 +123,10 @@ $height = function (float $x, float $y) use ($octaves): float {
     foreach ($octaves as [$n, $weight]) $h += $n($x, $y) * $weight;
     return $h;
 };
+/** How high the land rises, 0 (the sea) to 1, from the noise's height. */
+$rise = fn (float $h) => $h < 0.555 ? 0.0 : min(1, ($h - 0.555) / 0.445 * 1.7) ** 1.5;
+/** The ground's height in world units at world (x, y). */
+$groundAt = fn (float $x, float $y) => $rise($height($x / 2, $y / 2)) * PEAK;
 $terrainFile = "$dir/terrain.png";
 if (!is_file($terrainFile)) {
     $bands = [[0.42, '#16467f'], [0.5, '#1f63a8'], [0.535, '#3f8fd0'], [0.555, '#7cc4e4'], [0.575, '#e9dba4'],
@@ -150,9 +143,10 @@ if (!is_file($terrainFile)) {
             foreach ($colors as [$top, $c]) if ($h < $top) break;
             // Land facing the light is brighter; the sea glints.
             $slope = $h - $above[($x + TERRAIN - 1) % TERRAIN];
-            $k = $h >= 0.555 ? 1 + max(-0.18, min(0.18, $slope * 9)) : (mt_rand(0, 140) === 0 ? 1.35 : 1);
+            $k = $h >= 0.555 ? 1 + max(-0.3, min(0.3, $slope * 14)) : 1;
             foreach ($c as $v) $row[] = min(255, (int) ($v * $k));
-            $row[] = 255;
+            // The land's height in alpha, for the GPU's ray march: the sea 0.
+            $row[] = $h < 0.555 ? 0 : max(1, (int) round($rise($h) * 255));
         }
         $above = $line;
         $px .= pack('C*', ...$row);
@@ -161,22 +155,22 @@ if (!is_file($terrainFile)) {
 }
 $world = TERRAIN * 2;
 
-// On the land: mountains on the high ground, woods and houses lower down. In the air,
-// clouds between the field and the camera. All in world units (2 a texel).
+// On the land: woods, and houses lower down. In the air, clouds between the field and
+// the camera. All in world units (2 a texel).
 $places = [];
 $taken = [];  // 64-unit cells => places in them, to keep things apart
 mt_srand(77);
 for ($i = 0; $i < 20000 && count($places) < 900; $i++) {
     [$x, $y] = [mt_rand(0, TERRAIN - 1) * 2, mt_rand(0, TERRAIN - 1) * 2];
     $h = $height($x / 2, $y / 2);
-    if ($h < 0.585) continue;
-    $kind = $h > 0.8 ? 'mountain' : ($h > 0.7 ? (mt_rand(0, 3) ? 'pine' : 'oak') : ['oak', 'pine', 'house', 'oak'][mt_rand(0, 3)]);
-    $room = $kind === 'mountain' ? 30 : 5;
+    if ($h < 0.585 || $h > 0.75) continue;
+    $kind = $h > 0.68 ? (mt_rand(0, 3) ? 'pine' : 'oak') : ['oak', 'pine', 'house', 'oak'][mt_rand(0, 3)];
+    $room = 5;
     [$cx, $cy] = [intdiv($x, 64), intdiv($y, 64)];
     for ($a = -2; $a <= 2; $a++) for ($b = -2; $b <= 2; $b++) {
         foreach ($taken[($cx + $a) . ',' . ($cy + $b)] ?? [] as $p) if (hypot($p['x'] - $x, $p['y'] - $y) < $room + $p['room']) continue 3;
     }
-    $place = ['kind' => $kind, 'x' => $x, 'y' => $y, 'z' => 0, 'yaw' => mt_rand(0, 3) * M_PI / 2, 'room' => $room];
+    $place = ['kind' => $kind, 'x' => $x, 'y' => $y, 'z' => $groundAt($x, $y) - 1, 'yaw' => mt_rand(0, 3) * M_PI / 2, 'room' => $room];
     $places[] = $place;
     $taken["$cx,$cy"][] = $place;
 }
@@ -434,7 +428,7 @@ $update = function (float $dt) use ($g, $reset, $burst, $explode, $sfx, $spawnDr
 
 // Drawing ------------------------------------------------------------------------
 
-$draw = function (Canvas $c) use ($g, $voxels, $places, $terrainFile, $world) {
+$draw = function (Canvas $c) use ($g, $voxels, $places, $terrainFile, $world, $groundAt) {
     [$cw, $ch] = [$c->width, $c->height];
     $c->imageSmoothingEnabled = false;
     // The camera: tilted down at the field from behind its bottom edge, drifting a little
@@ -454,14 +448,17 @@ $draw = function (Canvas $c) use ($g, $voxels, $places, $terrainFile, $world) {
 
     $c->fillStyle = '#bcd7ea';
     $c->fillRect(0, 0, $cw, $ch);
-    $cam->ground($c, $terrainFile, $world, 2, '#bcd7ea', 2600);
+    $cam->terrain($c, $terrainFile, $world, PEAK, 2, '#bcd7ea', 2600, 3200, $g->time);
 
     // Shadows of the ships on the sea, far below.
     $ships = [];
     foreach ($g->enemies as $e) $ships[] = [$e['kind'], $e['x'], $e['y'], $e];
     $showJet = $g->mode === 'play' && ($g->invulnerable <= 0 || fmod($g->time, 0.16) < 0.1);
     if ($showJet) $ships[] = ['jet', $g->x, $g->y, null];
-    foreach ($ships as [$kind, $x, $y]) $cam->shadow($c, $x - W / 2, $y - $g->scroll, $kind === 'bomber' ? 11 : 8, 0.22);
+    foreach ($ships as [$kind, $x, $y]) {
+        [$wx, $wy] = [$x - W / 2, $y - $g->scroll];
+        $cam->shadow($c, $wx, $wy, $kind === 'bomber' ? 11 : 8, 0.22, $groundAt(...$cam->near($wx, $wy)) + 0.5);
+    }
 
     // Everything else far to near: what stands on the land, clouds, ships, shots.
     $things = [];

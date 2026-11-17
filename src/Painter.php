@@ -302,7 +302,12 @@ final class Painter
     private function canvas(Element $e): void
     {
         $clip = $this->intersect($this->clip, [$e->x, $e->y, $e->w, $e->h]);
-        ($e->draw)(new Canvas($this->r, $e->x, $e->y, $e->w, $e->h, $clip, $this->alpha), $e, $this);
+        try {
+            ($e->draw)(new Canvas($this->r, $e->x, $e->y, $e->w, $e->h, $clip, $this->alpha), $e, $this);
+        } finally {
+            // A 3D scene's depth ends with its canvas.
+            $this->r->depth(0);
+        }
     }
 
     /** Keyboard focus shows a ring around the control, as inputs show while editing. */

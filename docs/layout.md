@@ -157,24 +157,35 @@ side. Two classes do the work:
   The functions run only when the atlas file is missing.
 - `PhpUi\Camera3D` is a camera (position, yaw, pitch, roll, focal length) over a
   canvas. `project()` and `unproject()` map world points to the canvas and back (to
-  aim with the mouse), `ground()` draws the ground plane, `stack()` draws a model
-  turned and banked, and `shadow()` puts a shadow under it. With `wrap`, the world
-  repeats.
+  aim with the mouse), `toward()` places a direction (the sun), `terrain()` and
+  `ground()` draw the land, `stack()` draws a model turned and banked (truly: the
+  stacking leans and the wings narrow), and `shadow()` puts a shadow under it. With
+  `wrap`, the world repeats.
 
 ```php
-$cam = new Camera3D($x, $y, 80, $yaw, 0.3, $c->height * 0.8, $c->width / 2, $c->height * 0.4);
-$cam->ground($c, $groundImage, 1024, 2, '#d4ebf7', 900);
-foreach ($trees as $t) $cam->stack($c, $voxels, 'tree', $t['x'], $t['y'], 0);  // far ones first
+$cam = new Camera3D($x, $y, 80, $yaw, 0.1, $c->height * 0.8, $c->width / 2, $c->height * 0.4, wrap: 2048);
+$cam->terrain($c, $heightMap, 2048, 230, 2, '#d6ebf6', 1900);
+foreach ($trees as $t) $cam->stack($c, $voxels, 'tree', $t['x'], $t['y'], $t['z']);  // far ones first
 ```
 
-The ground is `$c->drawGround()`, a plane in perspective ("mode 7") under a camera: the
-GPU works out every pixel in one quad, with mipmaps, fog toward the horizon, tilt and
-roll. Draw stacks far to near.
+Models are lit when sliced: each voxel is shaded by which way its surface faces the
+sun and darkened where neighbors crowd it (`'lit' => false` keeps flat colors).
 
-`examples/islandhop.php` flies a jet over islands with a chase camera, or from the
-cockpit (V). `examples/skypatrol.php` tilts a camera over a shooter's playing field:
-its ships are the pixel art extruded into voxels, high over woods, houses and
-mountains, under clouds.
+**Terrain** (`$c->drawTerrain()`, or `Camera3D::terrain()`) is land from a height map,
+ray marched on the GPU in the manner of "voxel space": the image's colors are the
+ground's (light them when you make it), its alpha the height, 0 (the sea, which
+shimmers) to `$heightScale` units. It writes the depth buffer: whatever is drawn after
+it with a depth (`$c->setDepth($distance)`, which `stack()` sets for you) hides behind
+hills, while things drawn without one (the HUD) stay in front. For a flat ground
+instead, `$c->drawGround()` draws a plane in perspective ("mode 7"). A model's slices
+are drawn in one call (`$c->drawStack()`), so scenes of hundreds of models are cheap.
+Draw stacks far to near; keep full-screen gradients out of the frame (stretch a small
+image instead), as they are drawn on the CPU.
+
+`examples/islandhop.php` is a flight game over hilly islands with a chase camera or a
+cockpit (V), drones that shoot back, music and engine sound.
+`examples/skypatrol.php` tilts a camera over a shooter's playing field: its ships are
+the pixel art extruded into voxels, high over wooded hills, under clouds.
 
 ## State
 

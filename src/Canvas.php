@@ -490,6 +490,45 @@ final class Canvas
         $this->renderer->ground(realFile($image), $rect, [$x, $y, $angle, $height], $ey + $horizon, $focal, $pixel, $color, $fogDistance, $size, $pitch, $roll);
     }
 
+    /**
+     * Not in the HTML canvas: for 3D scenes, what is drawn from now on lies $distance
+     * from the camera, so it hides behind terrain (drawTerrain) and nearer things drawn
+     * at a depth. 0, the default, draws over everything. Ends with the canvas.
+     */
+    public function setDepth(float $distance): void
+    {
+        $this->renderer->depth($distance);
+    }
+
+    /**
+     * Not in the HTML canvas: a sprite stack in one call, the slices of model [row, w, d,
+     * h] in a Voxels atlas $image. Camera3D::stack() works out the rest; the transform
+     * does not apply, but the clip (rectangles) and globalAlpha do.
+     */
+    public function drawStack(string $image, array $model, array $foot, array $head, array $middle, array $lean, int $steps, bool $below = false): void
+    {
+        [$ex, $ey] = [$this->base[4], $this->base[5]];
+        $this->renderer->stack(realFile($image), $model, $foot, $head, [$middle[0] + $ex, $middle[1] + $ey], $lean, $steps,
+            $this->globalAlpha * $this->opacity, $below, $this->clip, $this->imageSmoothingEnabled);
+    }
+
+    /**
+     * Not in the HTML canvas: terrain from a height map, ray marched on the GPU. $image
+     * holds colors with heights in alpha (0 to $heightScale units) and repeats every
+     * $size units; $camera is [x, y, z, yaw, pitch, roll, focal, center x, center y] in
+     * canvas pixels. It fills the canvas where there is ground (the sky stays) and writes
+     * depth. Camera3D::terrain() calls it.
+     */
+    public function drawTerrain(string $image, array $camera, float $size, float $heightScale, float $pixel = 1,
+        string $fog = 'transparent', float $fogDistance = 0, float $far = 4000, float $time = 0): void
+    {
+        [$ex, $ey] = [$this->base[4], $this->base[5]];
+        $camera[7] += $ex;
+        $camera[8] += $ey;
+        $this->renderer->terrain(realFile($image), [$ex, $ey, $this->width, $this->height], $camera, $size, $heightScale, $pixel,
+            CssColor::parse($fog), $fogDistance, $far, $time);
+    }
+
     // Internals --------------------------------------------------------------
 
     /** A path to draw in a single call, under the current transform. */

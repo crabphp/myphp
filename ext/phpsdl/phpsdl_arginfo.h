@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 6e10d2b1cbfaf0b37f54068aaa0c2b61299d0fa4 */
+ * Stub hash: 0c1c385eb51699da0ab57e6c604f1a0754154cd7 */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_PhpSdl_Window___construct, 0, 0, 3)
 	ZEND_ARG_TYPE_INFO(0, title, IS_STRING, 0)
@@ -199,6 +199,37 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Renderer_ground, 0,
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, size, IS_DOUBLE, 0, "0")
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, pitch, IS_DOUBLE, 0, "0")
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, roll, IS_DOUBLE, 0, "0")
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Renderer_depth, 0, 1, IS_VOID, 0)
+	ZEND_ARG_TYPE_INFO(0, distance, IS_DOUBLE, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Renderer_stack, 0, 7, IS_VOID, 0)
+	ZEND_ARG_TYPE_INFO(0, path, IS_STRING, 0)
+	ZEND_ARG_TYPE_INFO(0, model, IS_ARRAY, 0)
+	ZEND_ARG_TYPE_INFO(0, foot, IS_ARRAY, 0)
+	ZEND_ARG_TYPE_INFO(0, head, IS_ARRAY, 0)
+	ZEND_ARG_TYPE_INFO(0, middle, IS_ARRAY, 0)
+	ZEND_ARG_TYPE_INFO(0, lean, IS_ARRAY, 0)
+	ZEND_ARG_TYPE_INFO(0, steps, IS_LONG, 0)
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, opacity, IS_DOUBLE, 0, "1")
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, below, _IS_BOOL, 0, "false")
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, clip, IS_ARRAY, 1, "null")
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, smooth, _IS_BOOL, 0, "true")
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Renderer_terrain, 0, 5, IS_VOID, 0)
+	ZEND_ARG_TYPE_INFO(0, path, IS_STRING, 0)
+	ZEND_ARG_TYPE_INFO(0, rect, IS_ARRAY, 0)
+	ZEND_ARG_TYPE_INFO(0, camera, IS_ARRAY, 0)
+	ZEND_ARG_TYPE_INFO(0, size, IS_DOUBLE, 0)
+	ZEND_ARG_TYPE_INFO(0, heightScale, IS_DOUBLE, 0)
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, pixel, IS_DOUBLE, 0, "1")
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, fog, IS_ARRAY, 1, "null")
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, fogDistance, IS_DOUBLE, 0, "0")
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, far, IS_DOUBLE, 0, "4000")
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, time, IS_DOUBLE, 0, "0")
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Renderer_savePng, 0, 4, _IS_BOOL, 0)
@@ -414,6 +445,9 @@ ZEND_METHOD(PhpSdl_Renderer, forget);
 ZEND_METHOD(PhpSdl_Renderer, imageSize);
 ZEND_METHOD(PhpSdl_Renderer, imageTransformed);
 ZEND_METHOD(PhpSdl_Renderer, ground);
+ZEND_METHOD(PhpSdl_Renderer, depth);
+ZEND_METHOD(PhpSdl_Renderer, stack);
+ZEND_METHOD(PhpSdl_Renderer, terrain);
 ZEND_METHOD(PhpSdl_Renderer, savePng);
 ZEND_METHOD(PhpSdl_Renderer, resizeImage);
 ZEND_METHOD(PhpSdl_Path, moveTo);
@@ -499,6 +533,9 @@ static const zend_function_entry class_PhpSdl_Renderer_methods[] = {
 	ZEND_ME(PhpSdl_Renderer, imageSize, arginfo_class_PhpSdl_Renderer_imageSize, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_ME(PhpSdl_Renderer, imageTransformed, arginfo_class_PhpSdl_Renderer_imageTransformed, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Renderer, ground, arginfo_class_PhpSdl_Renderer_ground, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Renderer, depth, arginfo_class_PhpSdl_Renderer_depth, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Renderer, stack, arginfo_class_PhpSdl_Renderer_stack, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Renderer, terrain, arginfo_class_PhpSdl_Renderer_terrain, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Renderer, savePng, arginfo_class_PhpSdl_Renderer_savePng, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_ME(PhpSdl_Renderer, resizeImage, arginfo_class_PhpSdl_Renderer_resizeImage, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_FE_END

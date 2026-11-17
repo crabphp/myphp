@@ -369,11 +369,17 @@ static pr_slot *icon_slot(zend_string *svg, int px)
 static SDL_GPUDevice *device = NULL;
 static SDL_GPUShader *gpu_vs = NULL, *gpu_fs = NULL;
 static SDL_GPUSampler *gpu_sampler = NULL, *gpu_sampler_nearest = NULL, *gpu_sampler_repeat = NULL;
-static struct { SDL_GPUTextureFormat format; SDL_GPUGraphicsPipeline *pipeline; } gpu_pipelines[4];
+/* Per target format: flat (2D, no depth test) and deep (3D: depth tested and written). */
+static struct { SDL_GPUTextureFormat format; SDL_GPUGraphicsPipeline *pipeline, *deep; } gpu_pipelines[4];
 static int gpu_pipeline_count = 0;
 static SDL_GPUBuffer *gpu_instances = NULL;
 static SDL_GPUTransferBuffer *gpu_instances_upload = NULL, *gpu_atlas_upload = NULL;
 static Uint32 gpu_instances_size = 0;
+/* Depth, for 3D scenes: things drawn with a depth (Renderer::depth) hide behind nearer
+ * ones and behind terrain; everything else has depth 0 and is drawn over all of it. */
+static SDL_GPUTexture *gpu_depth = NULL;
+static Uint32 gpu_depth_w = 0, gpu_depth_h = 0;
+static SDL_GPUTextureFormat gpu_depth_format = SDL_GPU_TEXTUREFORMAT_INVALID;
 
 /* The frame being drawn: into a window's swapchain texture, or off screen. */
 static struct {
@@ -383,7 +389,7 @@ static struct {
     SDL_GPUTextureFormat format;
     int width, height;          /* asked for */
     Uint32 target_w, target_h;  /* what the target is */
-    bool clear;
+    bool clear, depth_clear;
     SDL_FColor color;
 } frame;
 
@@ -459,6 +465,10 @@ static bool gpu_init(void)
     gpu_vs = gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX);
     gpu_fs = gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT);
     if (!gpu_vs || !gpu_fs) { zend_throw_error(NULL, "Renderer shaders: %s", SDL_GetError()); return false; }
+    SDL_GPUTextureFormat depths[] = {SDL_GPU_TEXTUREFORMAT_D32_FLOAT, SDL_GPU_TEXTUREFORMAT_D24_UNORM, SDL_GPU_TEXTUREFORMAT_D16_UNORM};
+    for (int i = 0; i < 3 && gpu_depth_format == SDL_GPU_TEXTUREFORMAT_INVALID; i++) {
+        if (SDL_GPUTextureSupportsFormat(device, depths[i], SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) gpu_depth_format = depths[i];
+    }
     SDL_GPUSamplerCreateInfo s = {0};
     s.min_filter = SDL_GPU_FILTER_LINEAR;
     s.mag_filter = SDL_GPU_FILTER_LINEAR;
@@ -488,9 +498,9 @@ static bool gpu_init(void)
     return true;
 }
 
-static SDL_GPUGraphicsPipeline *gpu_pipeline(SDL_GPUTextureFormat format)
+static SDL_GPUGraphicsPipeline *gpu_pipeline(SDL_GPUTextureFormat format, bool deep)
 {
-    for (int i = 0; i < gpu_pipeline_count; i++) if (gpu_pipelines[i].format == format) return gpu_pipelines[i].pipeline;
+    for (int i = 0; i < gpu_pipeline_count; i++) if (gpu_pipelines[i].format == format) return deep ? gpu_pipelines[i].deep : gpu_pipelines[i].pipeline;
     if (gpu_pipeline_count == 4) return NULL;
     /* One instance per quad: eight float4 attributes, 128 bytes, a 4-vertex strip each. */
     SDL_GPUVertexBufferDescription buffer = {0, 128, SDL_GPU_VERTEXINPUTRATE_INSTANCE, 0};
@@ -519,11 +529,18 @@ static SDL_GPUGraphicsPipeline *gpu_pipeline(SDL_GPUTextureFormat format)
     info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
     info.target_info.color_target_descriptions = &target;
     info.target_info.num_color_targets = 1;
+    info.target_info.has_depth_stencil_target = true;
+    info.target_info.depth_stencil_format = gpu_depth_format;
     SDL_GPUGraphicsPipeline *pipeline = SDL_CreateGPUGraphicsPipeline(device, &info);
-    if (!pipeline) { zend_throw_error(NULL, "Renderer pipeline: %s", SDL_GetError()); return NULL; }
+    info.depth_stencil_state.enable_depth_test = true;
+    info.depth_stencil_state.enable_depth_write = true;
+    info.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
+    SDL_GPUGraphicsPipeline *deep_pipeline = pipeline ? SDL_CreateGPUGraphicsPipeline(device, &info) : NULL;
+    if (!pipeline || !deep_pipeline) { zend_throw_error(NULL, "Renderer pipeline: %s", SDL_GetError()); return NULL; }
     gpu_pipelines[gpu_pipeline_count].format = format;
+    gpu_pipelines[gpu_pipeline_count].deep = deep_pipeline;
     gpu_pipelines[gpu_pipeline_count++].pipeline = pipeline;
-    return pipeline;
+    return deep ? deep_pipeline : pipeline;
 }
 
 /* A texture uploaded on a command buffer of its own: RGBA ($bpp 4) or coverage ($bpp 1),
@@ -575,7 +592,31 @@ static SDL_GPURenderPass *gpu_begin_pass(void)
     target.load_op = frame.clear ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
     target.store_op = SDL_GPU_STOREOP_STORE;
     frame.clear = false;
-    return SDL_BeginGPURenderPass(frame.cmd, &target, 1, NULL);
+    /* The depth buffer, the size of the target, kept through the frame's passes. */
+    if (!gpu_depth || gpu_depth_w != frame.target_w || gpu_depth_h != frame.target_h) {
+        if (gpu_depth) SDL_ReleaseGPUTexture(device, gpu_depth);
+        SDL_GPUTextureCreateInfo t = {0};
+        t.type = SDL_GPU_TEXTURETYPE_2D;
+        t.format = gpu_depth_format;
+        t.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
+        t.width = frame.target_w;
+        t.height = frame.target_h;
+        t.layer_count_or_depth = 1;
+        t.num_levels = 1;
+        gpu_depth = SDL_CreateGPUTexture(device, &t);
+        gpu_depth_w = frame.target_w; gpu_depth_h = frame.target_h;
+        frame.depth_clear = true;
+        if (!gpu_depth) return NULL;
+    }
+    SDL_GPUDepthStencilTargetInfo depth = {0};
+    depth.texture = gpu_depth;
+    depth.clear_depth = 1;
+    depth.load_op = frame.depth_clear ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
+    depth.store_op = SDL_GPU_STOREOP_STORE;
+    depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+    depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+    frame.depth_clear = false;
+    return SDL_BeginGPURenderPass(frame.cmd, &target, 1, &depth);
 }
 
 /* Images ------------------------------------------------------------------ */
@@ -611,7 +652,7 @@ static pr_image *image_load(zend_string *path)
 #define STRIDE 32
 enum { KIND_BOX = 0, KIND_MASK = 1, KIND_IMAGE = 2 };
 
-typedef struct { pr_tex tex; int first, count; } pr_command;
+typedef struct { pr_tex tex; int first, count; bool deep; } pr_command;
 
 typedef struct {
     float *data;
@@ -619,6 +660,8 @@ typedef struct {
     pr_command *commands;
     int command_count, command_cap;
     float width, height, ratio;
+    float depth;  /* what is drawn now: its distance from the camera (0, in front of everything) */
+    bool deep;    /* drawn with the depth test though at depth 0 (terrain, which works its depth out) */
 } pr_renderer;
 
 static int renderer_init(pr_renderer *r)
@@ -635,19 +678,21 @@ static float *instance(pr_renderer *r, pr_tex tex)
     }
     /* Boxes need no texture: they join whatever command is open. */
     pr_command *last = r->command_count ? &r->commands[r->command_count - 1] : NULL;
-    if (!last || (tex && last->tex && last->tex != tex)) {
+    bool deep = r->depth > 0 || r->deep;
+    if (!last || (tex && last->tex && last->tex != tex) || last->deep != deep) {
         if (r->command_count == r->command_cap) {
             r->command_cap = r->command_cap ? r->command_cap * 2 : 64;
             r->commands = erealloc(r->commands, sizeof(pr_command) * r->command_cap);
         }
         last = &r->commands[r->command_count++];
-        last->tex = tex; last->first = r->count; last->count = 0;
+        last->tex = tex; last->first = r->count; last->count = 0; last->deep = deep;
     } else if (tex && !last->tex) {
         last->tex = tex;
     }
     last->count++;
     float *p = r->data + (size_t) STRIDE * r->count++;
     memset(p, 0, sizeof(float) * STRIDE);
+    p[30] = r->depth;
     return p;
 }
 
@@ -667,8 +712,8 @@ static void renderer_flush(pr_renderer *r)
  * render pass draws them, one call per texture run. */
 static void renderer_flush_gpu(pr_renderer *r)
 {
-    SDL_GPUGraphicsPipeline *pipeline = NULL;
-    if (!frame.cmd || !frame.target || !gpu_init() || !(pipeline = gpu_pipeline(frame.format))) {
+    SDL_GPUGraphicsPipeline *pipeline = NULL, *deep = NULL;
+    if (!frame.cmd || !frame.target || !gpu_init() || !(pipeline = gpu_pipeline(frame.format, false)) || !(deep = gpu_pipeline(frame.format, true))) {
         r->count = r->command_count = 0;
         return;
     }
@@ -717,11 +762,16 @@ static void renderer_flush_gpu(pr_renderer *r)
     if (!pass) { r->count = r->command_count = 0; return; }
     SDL_GPUViewport viewport = {0, 0, r->width * r->ratio, r->height * r->ratio, 0, 1};
     SDL_SetGPUViewport(pass, &viewport);
-    SDL_BindGPUGraphicsPipeline(pass, pipeline);
     SDL_GPUBufferBinding binding = {gpu_instances, 0};
-    SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
+    SDL_GPUGraphicsPipeline *bound = NULL;
     for (int c = 0; c < r->command_count; c++) {
         pr_command *cmd = &r->commands[c];
+        SDL_GPUGraphicsPipeline *want = cmd->deep ? deep : pipeline;
+        if (want != bound) {
+            SDL_BindGPUGraphicsPipeline(pass, want);
+            SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
+            bound = want;
+        }
         pr_tex tex = cmd->tex ? cmd->tex : atlas_tex;
         SDL_GPUSampler *smp = (tex & TEX_REPEAT) ? gpu_sampler_repeat : (tex & TEX_NEAREST) ? gpu_sampler_nearest : gpu_sampler;
         SDL_GPUTextureSamplerBinding sampler = {(SDL_GPUTexture *) (tex & ~TEX_FLAGS), smp};
@@ -1244,7 +1294,7 @@ bool phpsdl_frame_begin(SDL_Window *window, int width, int height, const float c
     frame.cmd = SDL_AcquireGPUCommandBuffer(device);
     if (!frame.cmd) return false;
     frame.width = width; frame.height = height;
-    frame.clear = true;
+    frame.clear = frame.depth_clear = true;
     frame.color = (SDL_FColor) {clear[0], clear[1], clear[2], clear[3]};
     if (window) {
         Uint32 w, h;
@@ -2111,6 +2161,134 @@ PHP_METHOD(PhpSdl_Renderer, ground)
     p[28] = 3;
 }
 
+/* What is drawn from now on lies $distance from the camera (along its view): it hides
+ * behind nearer things and terrain drawn with a depth. 0 (the default) draws over all. */
+PHP_METHOD(PhpSdl_Renderer, depth)
+{
+    double distance;
+    ZEND_PARSE_PARAMETERS_START(1, 1) Z_PARAM_DOUBLE(distance) ZEND_PARSE_PARAMETERS_END();
+    renderer_of(ZEND_THIS)->depth = distance > 0 ? (float) distance : 0;
+}
+
+/* A sprite stack in one call: model [row, w, d, h] of the atlas at $path (each layer a
+ * top and a side image side by side, w by d, in row $row), its image axes on screen
+ * $foot [a, b, c, d] at the bottom and $head at the top, the stack's middle at $middle
+ * [x, y], a layer up on screen $lean [x, y], $steps slices a layer. From $below, the
+ * layers go top first, all shaded. */
+PHP_METHOD(PhpSdl_Renderer, stack)
+{
+    zend_string *path;
+    HashTable *model, *foot_ht, *head_ht, *middle_ht, *lean_ht, *clip = NULL;
+    zend_long steps = 1;
+    double opacity = 1;
+    bool below = false, smooth = true;
+    ZEND_PARSE_PARAMETERS_START(7, 11)
+        Z_PARAM_STR(path)
+        Z_PARAM_ARRAY_HT(model)
+        Z_PARAM_ARRAY_HT(foot_ht)
+        Z_PARAM_ARRAY_HT(head_ht)
+        Z_PARAM_ARRAY_HT(middle_ht)
+        Z_PARAM_ARRAY_HT(lean_ht)
+        Z_PARAM_LONG(steps)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_DOUBLE(opacity)
+        Z_PARAM_BOOL(below)
+        Z_PARAM_ARRAY_HT_OR_NULL(clip)
+        Z_PARAM_BOOL(smooth)
+    ZEND_PARSE_PARAMETERS_END();
+    pr_renderer *r = renderer_of(ZEND_THIS);
+    if (!renderer_init(r)) return;
+    pr_image *img = image_load(path);
+    if (!img || img->w <= 0 || img->h <= 0) return;
+    float m[4] = {0, 0, 1, 1}, foot[4], head[4], mid[2] = {0, 0}, lean[2] = {0, -1}, cl[4];
+    read_floats(model, m, 4);
+    read_floats(foot_ht, foot, 4);
+    read_floats(head_ht, head, 4);
+    read_floats(middle_ht, mid, 2);
+    read_floats(lean_ht, lean, 2);
+    read4(clip, cl, NO_CLIP);
+    int layers = (int) m[3];
+    if (steps < 1) steps = 1;
+    if (steps > 64) steps = 64;
+    if (layers < 1 || layers > 4096) return;
+    float w = m[1], d = m[2], half = layers / 2.0f;
+    pr_tex tex = smooth ? img->tex : img->tex | TEX_NEAREST;
+    float tint[4] = {1, 1, 1, (float) opacity};
+    float dst[4] = {-w / 2, -d / 2, w, d};
+    for (int n = 0; n < layers; n++) {
+        int layer = below ? layers - 1 - n : n;
+        for (int i = 0; i < steps; i++) {
+            float l = layer + (float) (below ? steps - 1 - i : i) / (float) steps;
+            float f = l / layers;
+            bool top = !below && i == steps - 1;
+            float sx = (layer * 2 + (top ? 0 : 1)) * w;
+            float *p = instance(r, tex);
+            float uv[4] = {sx / img->w, m[0] / img->h, (sx + w) / img->w, (m[0] + d) / img->h};
+            float lin[4];
+            for (int k = 0; k < 4; k++) lin[k] = foot[k] + (head[k] - foot[k]) * f;
+            float off[4] = {mid[0] + lean[0] * (l - half), mid[1] + lean[1] * (l - half), 0, 0};
+            put4(p, dst);
+            put4(p + 4, lin);
+            put4(p + 8, tint);
+            put4(p + 12, uv);
+            put4(p + 16, off);
+            put4(p + 20, cl);
+            p[28] = KIND_IMAGE;
+            p[29] = 1;
+        }
+    }
+}
+
+/* Terrain from a height map, ray marched on the GPU ("voxel space"): $path's colors
+ * (lit already) with heights in its alpha, 0 to $heightScale units, repeating every
+ * $size units, under the camera $camera [x, y, z, yaw, pitch, roll, focal, center x,
+ * center y]; hazing into $fog by $fogDistance, seen up to $far units. Its depth goes in
+ * the depth buffer, so things drawn with a depth hide behind hills. Sea (height 0)
+ * shimmers with $time. */
+PHP_METHOD(PhpSdl_Renderer, terrain)
+{
+    zend_string *path;
+    HashTable *rect, *camera, *fog = NULL;
+    double size, height_scale, pixel = 1, fog_distance = 0, far = 4000, time = 0;
+    ZEND_PARSE_PARAMETERS_START(5, 10)
+        Z_PARAM_STR(path)
+        Z_PARAM_ARRAY_HT(rect)
+        Z_PARAM_ARRAY_HT(camera)
+        Z_PARAM_DOUBLE(size)
+        Z_PARAM_DOUBLE(height_scale)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_DOUBLE(pixel)
+        Z_PARAM_ARRAY_HT_OR_NULL(fog)
+        Z_PARAM_DOUBLE(fog_distance)
+        Z_PARAM_DOUBLE(far)
+        Z_PARAM_DOUBLE(time)
+    ZEND_PARSE_PARAMETERS_END();
+    pr_renderer *r = renderer_of(ZEND_THIS);
+    if (!renderer_init(r)) return;
+    pr_image *img = image_load(path);
+    if (!img || img->w <= 0) return;
+    float rc[4] = {0, 0, 0, 0}, cam[9] = {0, 0, 10, 0, 0, 0, 400, 0, 0}, color[4] = {0, 0, 0, 0};
+    read_floats(rect, rc, 4);
+    read_floats(camera, cam, 9);
+    if (fog) read_floats(fog, color, 4);
+    r->deep = true;
+    float *p = instance(r, img->tex | TEX_REPEAT);
+    r->deep = false;
+    float view[4] = {cam[0], cam[1], cosf(cam[3]), sinf(cam[3])};
+    float more[4] = {cam[5], cam[8], cam[2], (float) height_scale};
+    float lens[4] = {cam[7], cam[6], (float) (size > 0 ? size : img->w), (float) fog_distance};
+    float params[4] = {(float) pixel, cam[4], (float) time, (float) far};
+    put4(p, rc);
+    put4(p + 4, view);
+    put4(p + 8, color);
+    put4(p + 12, more);
+    put4(p + 16, lens);
+    put4(p + 20, NO_CLIP);
+    put4(p + 24, params);
+    p[28] = 4;
+    p[29] = (float) img->w;
+}
+
 PHP_METHOD(PhpSdl_Renderer, flush)
 {
     ZEND_PARSE_PARAMETERS_NONE();
@@ -2237,12 +2415,14 @@ void phpsdl_render_shutdown(void)
         for (int i = 0; i < image_count; i++) if (images[i].tex) SDL_ReleaseGPUTexture(device, (SDL_GPUTexture *) images[i].tex);
         while (mask_count) mask_release(mask_count - 1);
         if (atlas_tex) SDL_ReleaseGPUTexture(device, (SDL_GPUTexture *) atlas_tex);
-        for (int i = 0; i < gpu_pipeline_count; i++) SDL_ReleaseGPUGraphicsPipeline(device, gpu_pipelines[i].pipeline);
+        for (int i = 0; i < gpu_pipeline_count; i++) { SDL_ReleaseGPUGraphicsPipeline(device, gpu_pipelines[i].pipeline); SDL_ReleaseGPUGraphicsPipeline(device, gpu_pipelines[i].deep); }
         if (gpu_vs) SDL_ReleaseGPUShader(device, gpu_vs);
         if (gpu_fs) SDL_ReleaseGPUShader(device, gpu_fs);
         if (gpu_sampler) SDL_ReleaseGPUSampler(device, gpu_sampler);
         if (gpu_sampler_nearest) SDL_ReleaseGPUSampler(device, gpu_sampler_nearest);
         if (gpu_sampler_repeat) SDL_ReleaseGPUSampler(device, gpu_sampler_repeat);
+        if (gpu_depth) SDL_ReleaseGPUTexture(device, gpu_depth);
+        gpu_depth = NULL; gpu_depth_w = gpu_depth_h = 0;
         gpu_sampler_nearest = gpu_sampler_repeat = NULL;
         if (gpu_instances) SDL_ReleaseGPUBuffer(device, gpu_instances);
         if (gpu_instances_upload) SDL_ReleaseGPUTransferBuffer(device, gpu_instances_upload);

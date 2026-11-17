@@ -28,13 +28,16 @@ same($wrapped->project(10, -120, 0), $wrapped->project(1010, 880, 0), 'a wrappin
 $file = (getenv('PHPUI_TEST_TMP') ?: sys_get_temp_dir()) . '/voxels/models.png';
 @unlink($file);
 $voxels = new Voxels($file, [
-    'box' => ['size' => [3, 2, 4], 'voxel' => fn ($x, $y, $z) => '#ff0000'],
+    'box' => ['size' => [3, 2, 4], 'lit' => false, 'voxel' => fn ($x, $y, $z) => '#ff0000'],
+    'lit' => ['size' => [3, 3, 3], 'voxel' => fn ($x, $y, $z) => '#808080'],
     'post' => ['size' => [1, 1, 6], 'unit' => 2, 'voxel' => fn ($x, $y, $z) => $z < 3 ? '#00ff00' : null],
 ]);
 check($voxels->built && is_file($file), 'the atlas is made');
-same([24, 3], PhpSdl\Renderer::imageSize($file), 'a row a model, a top and a side image a layer');
+same([24, 6], PhpSdl\Renderer::imageSize($file), 'a row a model, a top and a side image a layer');
 same(2.0, $voxels->models['post']['unit'], 'models keep their size in world units');
 same(str_repeat("\xff\0\0\xff", 6), $voxels->layer('box', 0), 'a layer\'s top is the voxels\' colors');
 $again = new Voxels($file, ['box' => ['size' => [3, 2, 4], 'voxel' => fn () => throw new LogicException('rebuilt')],
-    'post' => ['size' => [1, 1, 6], 'unit' => 2, 'voxel' => fn () => null]]);
+    'lit' => ['size' => [3, 3, 3], 'voxel' => fn () => null], 'post' => ['size' => [1, 1, 6], 'unit' => 2, 'voxel' => fn () => null]]);
+$top = $voxels->layer('lit', 2);
+check(ord($top[0]) > ord($top[8 * 4 + 0]), 'lit by the sun from the north-west: that corner is brighter than the far one');
 check(!$again->built && $again->layer('box', 0) === null, 'an existing atlas is reused, not rebuilt');

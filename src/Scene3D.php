@@ -17,8 +17,9 @@ use PhpSdl\Renderer;
  *     ]);
  *
  * 'size' is [width, depth, height] in voxels, nose toward -y; 'unit' world units a
- * voxel (1); 'shade' how dark the lowest sides are (0.55). The voxel functions run only
- * when the atlas file is missing; delete it (or change its name) to rebuild.
+ * voxel (1); 'shade' how dark the lowest sides are (0.55); 'lit' false keeps the colors
+ * flat instead of lighting them by the sun (true). The voxel functions run only when
+ * the atlas file is missing; delete it (or change its name) to rebuild.
  */
 final class Voxels
 {
@@ -42,7 +43,7 @@ final class Voxels
         }
         if (is_file($file)) return;
         $this->rows = array_fill(0, $row, str_repeat("\0", $width * 4));
-        foreach ($models as $name => $m) $this->slice($name, $m['voxel'], (float) ($m['shade'] ?? 0.55));
+        foreach ($models as $name => $m) $this->slice($name, $m['voxel'], (float) ($m['shade'] ?? 0.55), $m['lit'] ?? true);
         @mkdir(dirname($file), 0777, true);
         Renderer::savePng($file, $width, $row, implode('', $this->rows));
         $this->built = true;
@@ -58,18 +59,46 @@ final class Voxels
         return $rgba;
     }
 
-    private function slice(string $name, callable $voxel, float $shade): void
+    /**
+     * Each layer's top and side images. Lit, a voxel is shaded by which way its surface
+     * faces (the sun high in the north-west, from the voxels around it) and darkened in
+     * creases where neighbors crowd it (ambient occlusion); sides darken toward the ground.
+     */
+    private function slice(string $name, callable $voxel, float $shade, bool $lit): void
     {
         ['w' => $w, 'd' => $d, 'h' => $h, 'layers' => $layers] = $this->models[$name];
+        $grid = [];
+        for ($z = 0; $z < $h; $z++) for ($y = 0; $y < $d; $y++) for ($x = 0; $x < $w; $x++) {
+            $c = $voxel($x, $y, $z);
+            if ($c !== null) $grid[$z][$y][$x] = [hexdec(substr($c, 1, 2)), hexdec(substr($c, 3, 2)), hexdec(substr($c, 5, 2))];
+        }
+        [$lx, $ly, $lz] = [-0.45, -0.55, 0.7];
         for ($z = 0; $z < $h; $z++) {
             [$top, $side] = ['', ''];
             $k = $shade + (0.85 - $shade) * $z / max(1, $h - 1);
             for ($y = 0; $y < $d; $y++) for ($x = 0; $x < $w; $x++) {
-                $c = $voxel($x, $y, $z);
-                if ($c === null) { $top .= "\0\0\0\0"; $side .= "\0\0\0\0"; continue; }
-                [$r, $g, $b] = [hexdec(substr($c, 1, 2)), hexdec(substr($c, 3, 2)), hexdec(substr($c, 5, 2))];
-                $top .= pack('C4', $r, $g, $b, 255);
-                $side .= pack('C4', (int) ($r * $k), (int) ($g * $k), (int) ($b * $k), 255);
+                if (!isset($grid[$z][$y][$x])) { $top .= "\0\0\0\0"; $side .= "\0\0\0\0"; continue; }
+                [$r, $g, $b] = $grid[$z][$y][$x];
+                [$t, $sd] = [1.0, $k];
+                if ($lit) {
+                    // The surface's way out: away from the neighbors.
+                    [$nx, $ny, $nz, $above, $around] = [0, 0, 0, 0, 0];
+                    for ($c = -1; $c <= 1; $c++) for ($bb = -1; $bb <= 1; $bb++) for ($a = -1; $a <= 1; $a++) {
+                        if (($a || $bb || $c) && isset($grid[$z + $c][$y + $bb][$x + $a])) {
+                            [$nx, $ny, $nz] = [$nx - $a, $ny - $bb, $nz - $c];
+                            if ($c === 1) $above++;
+                            elseif ($c === 0) $around++;
+                        }
+                    }
+                    $n = sqrt($nx * $nx + $ny * $ny + $nz * $nz);
+                    $sun = $n > 0 ? ($nx * $lx + $ny * $ly + $nz * $lz) / $n : $lz;
+                    $t = max(0.6, min(1.18, 0.84 + 0.34 * $sun)) * (1 - 0.055 * $above);
+                    $flat = hypot($nx, $ny);
+                    $facing = $flat > 0 ? ($nx * $lx + $ny * $ly) / $flat / hypot($lx, $ly) : 0;
+                    $sd = $k * (0.86 + 0.2 * $facing) * (1 - 0.035 * $around);
+                }
+                $top .= pack('C4', min(255, (int) ($r * $t)), min(255, (int) ($g * $t)), min(255, (int) ($b * $t)), 255);
+                $side .= pack('C4', min(255, (int) ($r * $sd)), min(255, (int) ($g * $sd)), min(255, (int) ($b * $sd)), 255);
             }
             foreach ([$top, $side] as $which => $rgba) {
                 [$ax, $ay] = $layers[$z][$which];
@@ -97,6 +126,13 @@ final class Camera3D
         public float $x = 0, public float $y = 0, public float $z = 10,
         public float $yaw = 0, public float $pitch = 0, public float $focal = 400,
         public float $cx = 0, public float $cy = 0, public float $wrap = 0, public float $roll = 0,
+        /** Whether stacks are drawn at their depth, to hide behind terrain (on when terrain() was drawn). */
+        public bool $depth = false,
+        /**
+         * Stacks count as this much nearer than they are, so things standing on a slope
+         * are not cut by the terrain (which the GPU smooths with distance).
+         */
+        public float $depthBias = 0.96,
     ) {
         $this->aim();
     }
@@ -144,6 +180,18 @@ final class Camera3D
         return [$this->cx + $this->rc * $x - $this->rs * $y, $this->cy + $this->rs * $x + $this->rc * $y, $s, $depth];
     }
 
+    /** Where a direction (dx, dy, dz) lies on the canvas, as far as can be (the sun), or null when it is behind. */
+    public function toward(float $dx, float $dy, float $dz): ?array
+    {
+        $ahead = $dx * $this->fx + $dy * $this->fy;
+        $side = $dx * -$this->fy + $dy * $this->fx;
+        $depth = $ahead * $this->cp - $dz * $this->sp;
+        if ($depth <= 1e-6) return null;
+        $s = $this->focal / $depth;
+        [$x, $y] = [$side * $s, -($ahead * $this->sp + $dz * $this->cp) * $s];
+        return [$this->cx + $this->rc * $x - $this->rs * $y, $this->cy + $this->rs * $x + $this->rc * $y];
+    }
+
     /** The world point at height $z under canvas point ($sx, $sy), or null when the ray misses it. */
     public function unproject(float $sx, float $sy, float $z = 0): ?array
     {
@@ -166,12 +214,25 @@ final class Camera3D
     }
 
     /**
+     * Terrain from a height map (colors, heights in alpha up to $heightScale units)
+     * repeating every $size units, ray marched on the GPU under this camera; things
+     * stacked after it hide behind its hills. $time moves the sea.
+     */
+    public function terrain(Canvas $c, string $image, float $size, float $heightScale, float $pixel = 1,
+        string $fog = 'transparent', float $fogDistance = 0, float $far = 4000, float $time = 0): void
+    {
+        $c->drawTerrain($image, [$this->x, $this->y, $this->z, $this->yaw, $this->pitch, $this->roll, $this->focal, $this->cx, $this->cy],
+            $size, $heightScale, $pixel, $fog, $fogDistance, $far, $time);
+        $this->depth = true;
+    }
+
+    /**
      * Model $name of $voxels standing at ($x, $y, $z), its nose turned to $yaw and banked
      * $roll radians (positive dips its right side, as a plane turning right). Returns
      * false when it is out of sight.
      */
     public function stack(Canvas $c, Voxels $voxels, string $name, float $x, float $y, float $z, float $yaw = 0,
-        float $alpha = 1, float $roll = 0, int $maxSteps = 8): bool
+        float $alpha = 1, float $roll = 0, int $maxSteps = 32): bool
     {
         [$x, $y] = $this->near($x, $y);
         $m = $voxels->models[$name];
@@ -207,20 +268,10 @@ final class Camera3D
         // From below (clouds overhead), the layers go top first, all shaded.
         $below = $this->z < $z + $tall / 2;
         $c->globalAlpha = $alpha;
-        for ($n = 0; $n < $layers; $n++) {
-            $layer = $below ? $layers - 1 - $n : $n;
-            [$topImage, $sideImage] = $m['layers'][$layer];
-            for ($i = 0; $i < $steps; $i++) {
-                $l = $layer + ($below ? $steps - 1 - $i : $i) / $steps;
-                $f = $l / $layers;
-                $e = $base[0] + $zx * $mid + $lean[0] * ($l - $mid);
-                $g = $base[1] + $zy * $mid + $lean[1] * ($l - $mid);
-                $c->setTransform($foot[0] + ($head[0] - $foot[0]) * $f, $foot[1] + ($head[1] - $foot[1]) * $f,
-                    $foot[2] + ($head[2] - $foot[2]) * $f, $foot[3] + ($head[3] - $foot[3]) * $f, $e, $g);
-                $c->drawImage($voxels->file, ...[...(!$below && $i === $steps - 1 ? $topImage : $sideImage), -$m['w'] / 2, -$m['d'] / 2, $m['w'], $m['d']]);
-            }
-        }
-        $c->setTransform(1, 0, 0, 1, 0, 0);
+        if ($this->depth) $c->setDepth($base[3] * $this->depthBias);
+        $c->drawStack($voxels->file, [$m['layers'][0][0][1], $m['w'], $m['d'], $layers], $foot, $head,
+            [$base[0] + $zx * $mid, $base[1] + $zy * $mid], $lean, $steps, $below);
+        if ($this->depth) $c->setDepth(0);
         $c->globalAlpha = 1;
         return true;
     }

@@ -11,7 +11,8 @@ struct Instance
     float4 border : TEXCOORD4; // the box an image fills
     float4 clip   : TEXCOORD5;
     float4 params : TEXCOORD6; // border width, blur, spread, shadow offset
-    float4 kind   : TEXCOORD7; // 0 box, 1 mask (y: 1 when color), 2 image (y: 1 when transformed), 3 ground
+    float4 kind   : TEXCOORD7; // x: 0 box, 1 mask (y: 1 when color), 2 image (y: 1 when transformed), 3 ground,
+                               // 4 terrain (y: its texture's width); z: depth (distance from the camera, 0 in front)
 };
 
 struct Varyings
@@ -36,6 +37,9 @@ cbuffer VertexUniforms : register(b0, space1)
     float2 vertexPad;
 };
 
+// A distance from the camera as a depth buffer value: 0 (in front of everything) to 1.
+float depthOf(float d) { return d > 0.0 ? d / (d + 256.0) : 0.0; }
+
 Varyings VSMain(Instance i, uint id : SV_VertexID)
 {
     float2 corner = float2(id & 1, id >> 1);
@@ -56,7 +60,7 @@ Varyings VSMain(Instance i, uint id : SV_VertexID)
     }
     o.rect = i.rect; o.radii = i.radii; o.top = i.top; o.bottom = i.bottom;
     o.border = i.border; o.params = i.params; o.kind = i.kind; o.clip = i.clip;
-    o.position = float4(o.pos.x / view.x * 2.0 - 1.0, 1.0 - o.pos.y / view.y * 2.0, 0.0, 1.0);
+    o.position = float4(o.pos.x / view.x * 2.0 - 1.0, 1.0 - o.pos.y / view.y * 2.0, depthOf(i.kind.z), 1.0);
     return o;
 }
 
@@ -84,7 +88,7 @@ float roundedBox(float2 p, float2 center, float2 halfSize, float4 r)
 
 float4 premul(float4 c) { return float4(c.rgb * c.a, c.a); }
 
-float4 PSMain(Varyings v) : SV_Target0
+float4 PSColor(Varyings v)
 {
     if (v.kind.x == 1.0) {
         // A coverage mask (glyph, icon, path) in a color, or (kind.y 1) a canvas drawing
@@ -154,4 +158,86 @@ float4 PSMain(Varyings v) : SV_Target0
         fill = band + fill * (1.0 - band.a);
     }
     return fill;
+}
+
+// Terrain from a height map, ray marched ("voxel space"): each pixel's ray steps out from
+// the camera over the map (colors in rgb, heights in alpha) until it is under the ground,
+// then closes in on the crossing. radii: camera x, y, cos and sin of its yaw; top: fog;
+// bottom: roll, view center y, camera height, height scale; border: view center x, focal
+// length, map size in units, fog distance; params: pixel size, pitch, time, how far.
+float4 terrain(Varyings v, out float depth)
+{
+    float px = max(v.params.x, 1e-3);
+    float2 p = (floor(v.pos / px) + 0.5) * px;
+    float2 q = p - float2(v.border.x, v.bottom.y);
+    float cr = cos(v.bottom.x), sr = sin(v.bottom.x);
+    q = float2(cr * q.x + sr * q.y, -sr * q.x + cr * q.y);
+    float f = v.border.y;
+    float cp = cos(v.params.y), sp = sin(v.params.y);
+    float ahead = f * cp - q.y * sp;
+    float rise = -f * sp - q.y * cp;
+    float2 fwd = float2(v.radii.w, -v.radii.z);
+    float2 right = float2(v.radii.z, v.radii.w);
+    float len = length(float3(ahead, rise, q.x));
+    float3 dir = float3(fwd * ahead + right * q.x, rise) / len;
+    float3 cam = float3(v.radii.xy, v.bottom.z);
+    float top = v.bottom.w, size = v.border.z, far = v.params.w;
+    // Looking up from above the highest hill: sky.
+    if (dir.z >= 0.0 && cam.z >= top) discard;
+    float texels = v.kind.y / size;
+    float t = 1.0, last = 0.0;
+    bool hit = false;
+    [loop] for (int i = 0; i < 300; i++) {
+        float3 w = cam + dir * t;
+        if (dir.z >= 0.0 && w.z > top) break;
+        float lod = log2(max(1.0, t * px / f * texels));
+        float h = tex.SampleLevel(texSampler, w.xy / size, lod).a * top;
+        if (w.z <= h) { hit = true; break; }
+        last = t;
+        t += max(0.4, t * 0.02);
+        if (t > far) break;
+    }
+    if (!hit) discard;
+    float lo = last, hi = t;
+    [unroll] for (int k = 0; k < 6; k++) {
+        float m = (lo + hi) * 0.5;
+        float3 w = cam + dir * m;
+        float lod = log2(max(1.0, m * px / f * texels));
+        if (w.z <= tex.SampleLevel(texSampler, w.xy / size, lod).a * top) hi = m; else lo = m;
+    }
+    float3 w = cam + dir * hi;
+    float4 c = tex.SampleLevel(texSampler, w.xy / size, log2(max(1.0, hi * px / f * texels)));
+    float3 color = c.rgb;
+    if (c.a < 0.004) {
+        // The sea: slow swells, and glints where they crest.
+        float s = sin(w.x * 0.11 + v.params.z * 1.1) * sin(w.y * 0.09 - v.params.z * 0.8)
+                + 0.5 * sin((w.x - w.y) * 0.23 + v.params.z * 1.9);
+        float near = saturate(1.0 - hi / 700.0);
+        color *= 1.0 + 0.05 * s * near;
+        color += pow(saturate(s * 0.7), 8.0) * 0.3 * near;
+    }
+    float haze = v.border.w > 0.0 ? saturate(hi / v.border.w) : 0.0;
+    color = lerp(color, v.top.rgb, haze * haze);
+    depth = depthOf(hi * f / len);
+    return float4(color, 1.0);
+}
+
+struct Pixel
+{
+    float4 color : SV_Target0;
+    float depth : SV_Depth;
+};
+
+Pixel PSMain(Varyings v)
+{
+    Pixel o;
+    if (v.kind.x == 4.0) {
+        o.color = terrain(v, o.depth);
+        return o;
+    }
+    o.color = PSColor(v);
+    // Drawn at a depth (3D scenes): see-through pixels leave the depth alone.
+    if (v.kind.z > 0.0 && o.color.a < 0.004) discard;
+    o.depth = v.position.z;
+    return o;
 }
