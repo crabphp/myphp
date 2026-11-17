@@ -1,0 +1,32 @@
+# Checks that myphp's macOS executables can be signed: the app goes inside __LINKEDIT
+# and codesign signs the whole file (cli/package.php, myphpMachoEmbed).
+name: macho
+on:
+  workflow_dispatch:
+  push:
+    paths: [cli/package.php, tests/macho/**, .github/workflows/macho.yml]
+jobs:
+  sign:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Embed, sign, verify and run
+        run: |
+          set -x
+          clang -O2 -Wl,-dead_strip tests/macho/sfx.c -o /tmp/sfx
+          /tmp/sfx || true
+          php tests/macho/embed.php /tmp/sfx "hello from the payload" /tmp/app
+          codesign --force --sign - /tmp/app
+          codesign --verify --strict --verbose=2 /tmp/app
+          /tmp/app | grep "hello from the payload"
+          # Again over an embedded, signed one, as myphp build does with its own runtime.
+          head -c 200000 /dev/urandom | base64 > /tmp/big.txt
+          php tests/macho/embed.php /tmp/app "second $(cat /tmp/big.txt)" /tmp/app2
+          codesign --force --sign - /tmp/app2
+          codesign --verify --strict --verbose=2 /tmp/app2
+          /tmp/app2 | grep "payload.*: second"
+          ls -l /tmp/sfx /tmp/app /tmp/app2

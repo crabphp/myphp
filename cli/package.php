@@ -170,3 +170,74 @@ function myphpRemoveTree(string $path): void
     foreach (scandir($path) as $f) if ($f !== '.' && $f !== '..') myphpRemoveTree("$path/$f");
     rmdir($path);
 }
+
+/*
+ * Signable macOS executables. A micro runtime finds its app after the Mach-O, but
+ * codesign refuses data after __LINKEDIT. So the app goes inside __LINKEDIT (before
+ * the signature), and the runtime's __DATA,__micro_sfxsize section (phpsdl reserves
+ * it) says where it starts and ends. Then codesign can sign the whole file.
+ */
+
+/**
+ * $binary (a thin 64-bit Mach-O runtime, possibly from an earlier embed) with $payload
+ * inside its __LINKEDIT and no signature, ready for codesign; null when the runtime
+ * cannot carry it (no __micro_sfxsize section, not a 64-bit Mach-O).
+ */
+function myphpMachoEmbed(string $binary, string $payload): ?string
+{
+    if (strlen($binary) < 32 || unpack('V', $binary)[1] !== 0xfeedfacf) return null;
+    [, $ncmds, $sizeofcmds] = array_values(unpack('V3', $binary, 12));
+    $linkedit = $signature = $section = null;
+    $o = 32;
+    for ($i = 0; $i < $ncmds; $i++) {
+        [$cmd, $size] = array_values(unpack('V2', $binary, $o));
+        if ($cmd === 0x19) { // LC_SEGMENT_64
+            $segname = rtrim(substr($binary, $o + 8, 16), "\0");
+            if ($segname === '__LINKEDIT') $linkedit = $o;
+            $nsects = unpack('V', $binary, $o + 64)[1];
+            for ($s = 0; $s < $nsects; $s++) {
+                $so = $o + 72 + $s * 80;
+                if (rtrim(substr($binary, $so, 16), "\0") === '__micro_sfxsize' && rtrim(substr($binary, $so + 16, 16), "\0") === '__DATA') {
+                    $section = unpack('V', $binary, $so + 48)[1];
+                }
+            }
+        } elseif ($cmd === 0x1d) { // LC_CODE_SIGNATURE
+            $signature = $o;
+        }
+        $o += $size;
+    }
+    if ($linkedit === null || $section === null) return null;
+    $fileoff = unpack('P', $binary, $linkedit + 40)[1];
+    // Where the runtime's own data ends: the payload start of an earlier embed, else
+    // the signature, else the end of __LINKEDIT.
+    $start = unpack('J', $binary, $section)[1];
+    $end = $start > 0 ? $start : ($signature !== null ? unpack('V', $binary, $signature + 8)[1] : $fileoff + unpack('P', $binary, $linkedit + 48)[1]);
+    if ($end <= $fileoff || $end > strlen($binary)) return null;
+    $out = substr($binary, 0, $end);
+    // No signature: codesign adds a new one at the end.
+    if ($signature !== null) {
+        $sigSize = unpack('V', $out, $signature + 4)[1];
+        $cmds = substr($out, 32, $sizeofcmds);
+        $at = $signature - 32;
+        $cmds = substr($cmds, 0, $at) . substr($cmds, $at + $sigSize) . str_repeat("\0", $sigSize);
+        $out = substr_replace($out, $cmds, 32, $sizeofcmds);
+        $out = substr_replace($out, pack('V2', $ncmds - 1, $sizeofcmds - $sigSize), 16, 8);
+        if ($linkedit > $signature) $linkedit -= $sigSize;
+    }
+    $out .= $payload;
+    // __LINKEDIT now ends with the payload.
+    $filesize = strlen($out) - $fileoff;
+    $vmsize = (int) (ceil($filesize / 0x4000) * 0x4000);
+    $out = substr_replace($out, pack('P', $vmsize), $linkedit + 32, 8);
+    $out = substr_replace($out, pack('P', $filesize), $linkedit + 48, 8);
+    // Where micro finds its payload: [start, end), big endian.
+    return substr_replace($out, pack('J2', $end, $end + strlen($payload)), $section, 16);
+}
+
+/** Sign $file ad hoc; false (with codesign's words) when it cannot. */
+function myphpCodesign(string $file, ?string &$error = null): bool
+{
+    exec('codesign --force --sign - ' . escapeshellarg($file) . ' 2>&1', $out, $code);
+    $error = implode(' ', $out);
+    return $code === 0;
+}
