@@ -86,6 +86,12 @@ namespace PhpSdl {
          * $matrix [a, b, c, d, e, f]: rotated, scaled or flipped, on the GPU.
          */
         public function imageTransformed(string $path, array $source, array $dest, array $matrix, float $opacity = 1, ?array $clip = null, bool $smooth = true): void {}
+        /**
+         * A ground in perspective ("mode 7") filling $rect: the image repeating every $size units (its width by
+         * default) under a camera at [x, y, angle, height], horizon at y $horizon, focal length $focal, in blocks
+         * of $pixel, hazing into $fog by $fogDistance.
+         */
+        public function ground(string $path, array $rect, array $camera, float $horizon, float $focal, float $pixel = 1, ?array $fog = null, float $fogDistance = 0, float $size = 0): void {}
         /** $rgba (4 bytes a pixel, rows top down) saved as a PNG at $path. */
         public static function savePng(string $path, int $width, int $height, string $rgba): bool {}
         /** $from (PNG, JPEG, ...) scaled to $width×$height and saved as a PNG at $to, averaging what each pixel covers. */

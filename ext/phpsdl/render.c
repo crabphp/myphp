@@ -41,6 +41,8 @@
 /* A texture: an SDL_GPUTexture, its lowest bit set to sample it nearest (pixel art). */
 typedef uintptr_t pr_tex;
 #define TEX_NEAREST ((pr_tex) 1)
+#define TEX_REPEAT ((pr_tex) 2) /* sampled wrapping around (a ground that repeats) */
+#define TEX_FLAGS (TEX_NEAREST | TEX_REPEAT)
 
 /* Fonts --------------------------------------------------------------------- */
 
@@ -366,7 +368,7 @@ static pr_slot *icon_slot(zend_string *svg, int px)
 
 static SDL_GPUDevice *device = NULL;
 static SDL_GPUShader *gpu_vs = NULL, *gpu_fs = NULL;
-static SDL_GPUSampler *gpu_sampler = NULL, *gpu_sampler_nearest = NULL;
+static SDL_GPUSampler *gpu_sampler = NULL, *gpu_sampler_nearest = NULL, *gpu_sampler_repeat = NULL;
 static struct { SDL_GPUTextureFormat format; SDL_GPUGraphicsPipeline *pipeline; } gpu_pipelines[4];
 static int gpu_pipeline_count = 0;
 static SDL_GPUBuffer *gpu_instances = NULL;
@@ -464,6 +466,9 @@ static bool gpu_init(void)
     s.address_mode_u = s.address_mode_v = s.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
     s.max_lod = 1000;
     gpu_sampler = SDL_CreateGPUSampler(device, &s);
+    s.address_mode_u = s.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+    gpu_sampler_repeat = SDL_CreateGPUSampler(device, &s);
+    s.address_mode_u = s.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
     s.min_filter = s.mag_filter = SDL_GPU_FILTER_NEAREST;
     s.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
     gpu_sampler_nearest = SDL_CreateGPUSampler(device, &s);
@@ -718,7 +723,8 @@ static void renderer_flush_gpu(pr_renderer *r)
     for (int c = 0; c < r->command_count; c++) {
         pr_command *cmd = &r->commands[c];
         pr_tex tex = cmd->tex ? cmd->tex : atlas_tex;
-        SDL_GPUTextureSamplerBinding sampler = {(SDL_GPUTexture *) (tex & ~TEX_NEAREST), (tex & TEX_NEAREST) ? gpu_sampler_nearest : gpu_sampler};
+        SDL_GPUSampler *smp = (tex & TEX_REPEAT) ? gpu_sampler_repeat : (tex & TEX_NEAREST) ? gpu_sampler_nearest : gpu_sampler;
+        SDL_GPUTextureSamplerBinding sampler = {(SDL_GPUTexture *) (tex & ~TEX_FLAGS), smp};
         SDL_BindGPUFragmentSamplers(pass, 0, &sampler, 1);
         SDL_DrawGPUPrimitives(pass, 4, (Uint32) cmd->count, 0, (Uint32) cmd->first);
     }
@@ -2057,6 +2063,51 @@ PHP_METHOD(PhpSdl_Renderer, imageTransformed)
     p[29] = 1;
 }
 
+/* A ground in perspective ("mode 7") over $rect [x, y, w, h]: the image repeating every
+ * $size units under a camera at $camera [x, y, angle, height] (angle 0 looks toward -y),
+ * horizon at y $horizon, focal length $focal, in blocks of $pixel, hazing into $fog
+ * [r, g, b, a] by $fogDistance. One quad; the GPU works out every pixel. */
+PHP_METHOD(PhpSdl_Renderer, ground)
+{
+    zend_string *path;
+    HashTable *rect, *camera, *fog = NULL;
+    double horizon, focal, pixel = 1, fog_distance = 0, size = 0;
+    ZEND_PARSE_PARAMETERS_START(5, 9)
+        Z_PARAM_STR(path)
+        Z_PARAM_ARRAY_HT(rect)
+        Z_PARAM_ARRAY_HT(camera)
+        Z_PARAM_DOUBLE(horizon)
+        Z_PARAM_DOUBLE(focal)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_DOUBLE(pixel)
+        Z_PARAM_ARRAY_HT_OR_NULL(fog)
+        Z_PARAM_DOUBLE(fog_distance)
+        Z_PARAM_DOUBLE(size)
+    ZEND_PARSE_PARAMETERS_END();
+    pr_renderer *r = renderer_of(ZEND_THIS);
+    if (!renderer_init(r)) return;
+    pr_image *img = image_load(path);
+    if (!img || img->w <= 0) return;
+    float rc[4] = {0, 0, 0, 0}, cam[4] = {0, 0, 0, 10}, color[4] = {0, 0, 0, 0};
+    read_floats(rect, rc, 4);
+    read_floats(camera, cam, 4);
+    if (fog) read_floats(fog, color, 4);
+    float *p = instance(r, img->tex | TEX_REPEAT);
+    float view[4] = {cam[0], cam[1], cosf(cam[2]), sinf(cam[2])};
+    float lens[4] = {(float) horizon, cam[3], (float) focal, (float) (size > 0 ? size : img->w)};
+    float uv[4] = {0, 0, 1, 1};
+    put4(p, rc);
+    put4(p + 4, view);
+    put4(p + 8, color);
+    put4(p + 12, uv);
+    put4(p + 16, lens);
+    put4(p + 20, NO_CLIP);
+    p[24] = (float) pixel;
+    p[25] = rc[0] + rc[2] / 2;
+    p[26] = (float) fog_distance;
+    p[28] = 3;
+}
+
 PHP_METHOD(PhpSdl_Renderer, flush)
 {
     ZEND_PARSE_PARAMETERS_NONE();
@@ -2188,7 +2239,8 @@ void phpsdl_render_shutdown(void)
         if (gpu_fs) SDL_ReleaseGPUShader(device, gpu_fs);
         if (gpu_sampler) SDL_ReleaseGPUSampler(device, gpu_sampler);
         if (gpu_sampler_nearest) SDL_ReleaseGPUSampler(device, gpu_sampler_nearest);
-        gpu_sampler_nearest = NULL;
+        if (gpu_sampler_repeat) SDL_ReleaseGPUSampler(device, gpu_sampler_repeat);
+        gpu_sampler_nearest = gpu_sampler_repeat = NULL;
         if (gpu_instances) SDL_ReleaseGPUBuffer(device, gpu_instances);
         if (gpu_instances_upload) SDL_ReleaseGPUTransferBuffer(device, gpu_instances_upload);
         if (gpu_atlas_upload) SDL_ReleaseGPUTransferBuffer(device, gpu_atlas_upload);

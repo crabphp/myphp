@@ -122,7 +122,7 @@ myphp run showcase.php    # also: desktop, islandhop, logs, mail, notes, player,
 
 <img src="docs/images/skypatrol.webp" alt="Sky Patrol, a pixel-art shooter made with MyPHP" width="360">
 
-![Island Hop: the same scene from three headings, sprite-stacked voxel models](docs/images/islandhop.webp)
+![Island Hop: a chase camera behind a voxel jet over a perspective island world](docs/images/islandhop.webp)
 
 ## Docs
 

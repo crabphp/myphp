@@ -11,7 +11,7 @@ struct Instance
     float4 border : TEXCOORD4; // the box an image fills
     float4 clip   : TEXCOORD5;
     float4 params : TEXCOORD6; // border width, blur, spread, shadow offset
-    float4 kind   : TEXCOORD7; // 0 box, 1 mask (y: 1 when color), 2 image (y: 1 when transformed)
+    float4 kind   : TEXCOORD7; // 0 box, 1 mask (y: 1 when color), 2 image (y: 1 when transformed), 3 ground
 };
 
 struct Varyings
@@ -91,6 +91,25 @@ float4 PSMain(Varyings v) : SV_Target0
         // already in premultiplied color, faded by the color's alpha.
         float4 t = tex.Sample(texSampler, v.uv);
         return v.kind.y == 1.0 ? t * v.top.a : premul(v.top) * t.r;
+    }
+    if (v.kind.x == 3.0) {
+        // A ground plane seen in perspective ("mode 7"): where this pixel's ray meets the
+        // ground, from a camera at radii.xy turned by radii.zw (cos, sin), border.y high,
+        // looking at a horizon at border.x with focal length border.z; the texture repeats
+        // every border.w units. params: pixel size (blocky), screen center x, haze distance.
+        float px = max(v.params.x, 1e-3);
+        float2 p = (floor(v.pos / px) + 0.5) * px;
+        float below = p.y - v.border.x;
+        if (below <= 0.0) discard;
+        float dist = v.border.y * v.border.z / below;
+        float lateral = (p.x - v.params.y) * dist / v.border.z;
+        float2 forward = float2(v.radii.w, -v.radii.z);
+        float2 right = float2(v.radii.z, v.radii.w);
+        float2 world = v.radii.xy + forward * dist + right * lateral;
+        float lod = log2(max(1.0, px * dist / v.border.z * scale));
+        float4 c = premul(tex.SampleLevel(texSampler, world / v.border.w, lod));
+        float haze = v.params.z > 0.0 ? saturate(dist / v.params.z) : 0.0;
+        return lerp(c, premul(v.top), haze * haze);
     }
     if (v.kind.x == 2.0 && v.kind.y == 1.0) {
         // A transformed image (rotated, flipped): clipped here, as its quad is not upright.
