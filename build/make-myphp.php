@@ -25,8 +25,15 @@ $phar->setStub("<?php Phar::mapPhar('myphp.phar'); require 'phar://myphp.phar/cl
 $phar->stopBuffering();
 // FFI loads native libraries such as AccessKit; micro only allows it with ffi.enable=1.
 $ini = "phar.readonly=0\nffi.enable=1\n";
-$binary = $bytes . "\xfd\xf6\x69\xe6" . pack('N', strlen($ini)) . $ini . file_get_contents($out);
+$payload = "\xfd\xf6\x69\xe6" . pack('N', strlen($ini)) . $ini . file_get_contents($out);
+// macOS: the app goes inside the Mach-O, so the binary can be signed (cli/package.php).
+if (!defined('MYPHP_ROOT')) define('MYPHP_ROOT', $root);
+require "$root/cli/package.php";
+$macho = str_starts_with($bytes, "\xcf\xfa\xed\xfe") ? myphpMachoEmbed($bytes, $payload) : null;
+$binary = $macho ?? $bytes . $payload;
 $target = "$dir/" . (getenv('MYPHP_FLAVOR') === 'full' ? 'myphp-full' : 'myphp') . ($windows ? '.exe' : '');
 if (file_put_contents($target, $binary) !== strlen($binary)) throw new RuntimeException('Cannot write myphp binary');
 chmod($target, 0755);
+if ($macho !== null && PHP_OS_FAMILY === 'Darwin' && !myphpCodesign($target, $error)) throw new RuntimeException("Cannot sign $target: $error");
+if ($macho !== null) clearstatcache();
 printf("%s (%.1f MB)\n", $target, strlen($binary) / 1000000);

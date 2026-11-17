@@ -124,8 +124,21 @@ function cmdBuild(array $args): int
         $phar->stopBuffering();
         // Same INI as the CLI where apps need it: FFI for screen reader support.
         $ini = "ffi.enable=1\n";
-        // Written piece by piece: the runtime and the app together can exceed PHP's memory limit.
         $staged = tempnam(realpath($dir), '.myphp-');
+        // macOS: the app goes inside the Mach-O, so the executable can be signed.
+        if (str_starts_with($sfx, "\xcf\xfa\xed\xfe") && PHP_OS_FAMILY === 'Darwin') {
+            ini_set('memory_limit', '-1');
+            $macho = myphpMachoEmbed($sfx, "\xfd\xf6\x69\xe6" . pack('N', strlen($ini)) . $ini . file_get_contents($archive));
+            if ($macho !== null) {
+                unset($sfx);
+                if (file_put_contents($staged, $macho) !== strlen($macho) || !chmod($staged, 0755)) return myphpError("cannot write $output");
+                unset($macho);
+                if (!myphpCodesign($staged, $error)) return myphpError("cannot sign the app: $error");
+                if (!rename($staged, $target)) return myphpError("cannot write $output");
+                return myphpBuilt($output, $target, $info, $dir, $dmg);
+            }
+        }
+        // Written piece by piece: the runtime and the app together can exceed PHP's memory limit.
         $out = fopen($staged, 'wb');
         $in = fopen($archive, 'rb');
         $ok = $out && $in
@@ -138,25 +151,31 @@ function cmdBuild(array $args): int
         if (!$ok || !chmod($staged, 0755) || !rename($staged, $target)) {
             return myphpError("cannot write $output");
         }
-        clearstatcache();
-        printf("Built %s (%.1f MB, %s runtime)\n", $output, filesize($target) / 1000000, myphpFlavor());
-        // macOS apps live in bundles: name, icon and id from composer.json (extra.myphp).
-        if (PHP_OS_FAMILY === 'Darwin' || getenv('MYPHP_MAC_BUNDLE')) {
-            $bundle = myphpMacBundle($target, $info, dirname($target));
-            if ($bundle === null) return myphpError('cannot write the app bundle');
-            printf("Built %s\n", $dir . '/' . basename($bundle));
-            if ($dmg) {
-                $image = myphpDmg($bundle, $info, dirname($target));
-                if ($image === null) return myphpError('cannot make the disk image');
-                printf("Built %s\n", $dir . '/' . basename($image));
-            }
-        } elseif ($dmg) {
-            return myphpError('--dmg makes a macOS disk image: build on a Mac');
-        }
-        return 0;
+        return myphpBuilt($output, $target, $info, $dir, $dmg);
     } finally {
         unset($phar);
         if (is_file($archive)) unlink($archive);
         if ($staged !== null && is_file($staged)) unlink($staged);
     }
+}
+
+/** Report the executable, and on macOS make its app bundle (and disk image). */
+function myphpBuilt(string $output, string $target, array $info, string $dir, bool $dmg): int
+{
+    clearstatcache();
+    printf("Built %s (%.1f MB, %s runtime)\n", $output, filesize($target) / 1000000, myphpFlavor());
+    // macOS apps live in bundles: name, icon and id from composer.json (extra.myphp).
+    if (PHP_OS_FAMILY === 'Darwin' || getenv('MYPHP_MAC_BUNDLE')) {
+        $bundle = myphpMacBundle($target, $info, dirname($target));
+        if ($bundle === null) return myphpError('cannot write the app bundle');
+        printf("Built %s\n", $dir . '/' . basename($bundle));
+        if ($dmg) {
+            $image = myphpDmg($bundle, $info, dirname($target));
+            if ($image === null) return myphpError('cannot make the disk image');
+            printf("Built %s\n", $dir . '/' . basename($image));
+        }
+    } elseif ($dmg) {
+        return myphpError('--dmg makes a macOS disk image: build on a Mac');
+    }
+    return 0;
 }

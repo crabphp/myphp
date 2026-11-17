@@ -34,6 +34,13 @@
 
 ZEND_DECLARE_MODULE_GLOBALS(phpsdl)
 
+#ifdef __APPLE__
+/* Where the micro runtime finds its app: [start, end) in the executable, big endian.
+ * myphp writes it when it puts the app inside __LINKEDIT, where codesign can sign it
+ * (cli/package.php, myphpMachoEmbed). */
+__attribute__((used, section("__DATA,__micro_sfxsize"))) static const unsigned char phpsdl_micro_sfxsize[16] = {0};
+#endif
+
 typedef struct {
     SDL_Window *window;
     zend_object std;

@@ -56,4 +56,26 @@ same("$tmp/Cool.app", $app, 'the bundle is named after the app');
 check(is_executable("$app/Contents/MacOS/cool") && is_file("$app/Contents/Info.plist") && is_file("$app/Contents/Resources/AppIcon.icns") && file_get_contents("$app/Contents/PkgInfo") === 'APPL????', 'with its executable, Info.plist, icon and PkgInfo');
 check(myphpMacBundle("$tmp/cool", ['name' => 'Cool', 'id' => 'x.y', 'version' => '1', 'icon' => __DIR__ . '/../assets/icon.png', 'iconInProject' => false], $tmp) === $app, 'building again replaces it');
 
+// A Mach-O runtime the size of a stub: __DATA with __micro_sfxsize, __LINKEDIT, a signature.
+$macho = function (): string {
+    $section = str_pad('__micro_sfxsize', 16, "\0") . str_pad('__DATA', 16, "\0") . pack('P2V8', 0, 16, 0x1000, 0, 0, 0, 0, 0, 0, 0);
+    $data = pack('V2', 0x19, 72 + 80) . str_pad('__DATA', 16, "\0") . pack('P4V4', 0x1000, 0x4000, 0x1000, 0x1000, 3, 3, 1, 0) . $section;
+    $linkedit = pack('V2', 0x19, 72) . str_pad('__LINKEDIT', 16, "\0") . pack('P4V4', 0x8000, 0x4000, 0x2000, 0x100, 1, 1, 0, 0);
+    $sign = pack('V4', 0x1d, 16, 0x2080, 0x80);
+    $cmds = $data . $linkedit . $sign;
+    $head = pack('V8', 0xfeedfacf, 0x0100000c, 0, 2, 3, strlen($cmds), 0, 0) . $cmds;
+    return str_pad($head, 0x2000, "\0") . str_repeat('L', 0x80) . str_repeat('S', 0x80);
+};
+$runtime = $macho();
+$embedded = myphpMachoEmbed($runtime, 'APP');
+check($embedded !== null, 'a Mach-O runtime takes the app inside');
+same(0x2080 + 3, strlen($embedded), 'the old signature is gone and the app follows __LINKEDIT\'s data');
+same('APP', substr($embedded, 0x2080), 'the app sits where __LINKEDIT\'s data ended');
+same([0x2080, 0x2083], array_values(unpack('J2', $embedded, 0x1000)), '__micro_sfxsize says where it is');
+same(2, unpack('V', $embedded, 16)[1], 'the signature command is removed');
+same(0x2083 - 0x2000, unpack('P', $embedded, 32 + 152 + 48)[1], '__LINKEDIT grows to cover it');
+$again = myphpMachoEmbed($embedded . str_repeat('X', 50), 'NEW APP');
+same('NEW APP', substr((string) $again, 0x2080), 'embedding again replaces the app');
+same(null, myphpMachoEmbed(str_replace('__micro_sfxsize', '__other_section', $runtime), 'APP'), 'a runtime without the section keeps the old way');
+
 myphpRemoveTree($tmp);

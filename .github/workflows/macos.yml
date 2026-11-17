@@ -112,7 +112,10 @@ jobs:
           test -x build/Smoke.app/Contents/MacOS/smoke
           plutil -lint build/Smoke.app/Contents/Info.plist
           test "$(head -c 4 build/Smoke.app/Contents/Resources/AppIcon.icns)" = icns
-          codesign --verify --verbose build/Smoke.app || echo "::warning::the app bundle is not signed"
+          # Signed: the app sits inside the Mach-O (cli/package.php, myphpMachoEmbed).
+          codesign --verify --strict --verbose "$GITHUB_WORKSPACE/$MYPHP"
+          codesign --verify --strict --verbose build/smoke
+          codesign --verify --strict --verbose build/Smoke.app
           hdiutil verify build/Smoke.dmg
           MYPHP_DOWNLOAD_URL=file://$GITHUB_WORKSPACE/$MYPHP MYPHP_INSTALL_DIR=$WORK/bin sh "$GITHUB_WORKSPACE/install.sh"
           echo "SMOKE=$WORK/smoke" >> "$GITHUB_ENV"
