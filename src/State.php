@@ -13,6 +13,70 @@ final class State implements \IteratorAggregate, \Countable
 {
     /** @var array<string, object> State created with a key, kept for the whole process. */
     private static array $keyed = [];
+    /** @var object[] State the app's script created, in order, until its loop started (for hot reload). */
+    private static array $created = [];
+    /** @var object[] The previous run's, while hot reload runs the script again. */
+    private static array $previous = [];
+    private static bool $recording = true;
+
+    /** @internal state() registers what the script creates, so hot reload can keep its values. */
+    public static function track(object $state): object
+    {
+        if (!self::$recording) return $state;
+        $old = self::$previous[count(self::$created)] ?? null;
+        if ($old !== null) self::carry($old, $state);
+        self::$created[] = $state;
+        return $state;
+    }
+
+    /** @internal The app's loop started: state() calls from now on are not the script's. */
+    public static function stopRecording(): void
+    {
+        self::$recording = false;
+    }
+
+    /** @internal */
+    public static function beginReload(): void
+    {
+        [self::$previous, self::$created, self::$recording] = [self::$created, [], true];
+    }
+
+    /** @internal The reload failed: the previous run's state stays. */
+    public static function cancelReload(): void
+    {
+        self::$created = self::$previous;
+    }
+
+    /** @internal */
+    public static function endReload(): void
+    {
+        [self::$previous, self::$recording] = [[], false];
+    }
+
+    /**
+     * The values of $old in $new, the same state in the new code: keys or properties
+     * both have, where the value still fits the property's type.
+     */
+    private static function carry(object $old, object $new): void
+    {
+        if ($old instanceof self && $new instanceof self) {
+            foreach ($new->data as $k => $_) if (array_key_exists($k, $old->data)) $new->data[$k] = $old->data[$k];
+            return;
+        }
+        if ($old instanceof self || $new instanceof self) return;
+        foreach ((new \ReflectionObject($new))->getProperties(\ReflectionProperty::IS_PUBLIC) as $p) {
+            if ($p->isStatic() || $p->isReadOnly()) continue;
+            $name = $p->getName();
+            if (!property_exists($old, $name)) continue;
+            $from = new \ReflectionProperty($old, $name);
+            if ($from->isStatic() || !$from->isPublic() || !$from->isInitialized($old)) continue;
+            try {
+                $new->$name = $old->$name;
+            } catch (\TypeError) {
+                // The property's type changed: it starts from its new initial value.
+            }
+        }
+    }
 
     public function __construct(private array $data = []) {}
 

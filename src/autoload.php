@@ -16,6 +16,7 @@ require __DIR__ . '/Component.php';
 require __DIR__ . '/State.php';
 require __DIR__ . '/Canvas.php';
 require __DIR__ . '/Painter.php';
+require __DIR__ . '/HotReload.php';
 require __DIR__ . '/Layout.php';
 require __DIR__ . '/AccessKit.php';
 require __DIR__ . '/Window.php';

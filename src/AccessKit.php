@@ -95,6 +95,12 @@ final class AccessKit
         $this->ak = FFI::cdef(self::HEADER, $library);
     }
 
+    /** @internal Hot reload replaced the app: the screen reader follows the new one. */
+    public function rebind(App $app): void
+    {
+        $this->app = $app;
+    }
+
     /** The bridge for this app, or null where screen readers are not supported (yet). */
     public static function attach(App $app): ?self
     {

@@ -29,11 +29,22 @@ A file inside a myphp checkout (such as `examples/`) runs with that checkout's
 `src/` instead of the toolkit in the binary. The working directory does not change. Exceptions print their class, message,
 and trace to stderr.
 
-`--watch` (or `-w`, before the file) restarts the app whenever you save a PHP,
+`--watch` (or `-w`, before the file) hot-reloads the app whenever you save a PHP,
 image or font file in its folder; `vendor/`, `build/` and dotfiles are ignored, and
-so is data the app writes (JSON, text, databases). State starts fresh on each reload.
-If the app crashes, the watcher waits for your next save. Closing the window or
-Ctrl+C stops watching.
+so is data the app writes (JSON, text, databases). The script runs again in the same
+window: the new render function, handlers and timers take over, while `state()`
+values (matched by order, property by property), focus, scroll positions, text being
+edited and zoom stay. Changed images and icons load again. A syntax error or an
+exception shows in a banner over the app, and the last working version keeps
+running until the next save.
+
+PHP cannot declare a named function or class twice, so a save that changes a file
+declaring them (`function helper()`, `class Model`, an enum) restarts the app with
+fresh state instead; closures, `fn`, methods and anonymous classes
+(`state(new class { ... })`) reload in place. The script's top-level code runs again
+on each reload, and the replaced app's `onShutdown()` handlers run first. If the app
+crashes, the watcher waits for your next save. Closing the window or Ctrl+C stops
+watching.
 
 ## build
 

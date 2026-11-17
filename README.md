@@ -30,7 +30,7 @@ irm https://raw.githubusercontent.com/crabphp/myphp/main/install.ps1 | iex
 ```sh
 myphp init hello
 cd hello
-myphp run --watch    # reloads when you save
+myphp run --watch    # hot reload: saves show up instantly, state kept
 ```
 
 A small app:
@@ -92,7 +92,9 @@ run on a larger runtime that myphp picks and downloads by itself.
   hover and focus transitions.
 - **State:** `state()` with a typed object your editor autocompletes; timers;
   a data folder per app.
-- **Live reload:** `myphp run --watch` restarts the window when you save.
+- **Hot reload:** `myphp run --watch` reloads your code in the running window when
+  you save, keeping state, focus and scroll; errors show in the window
+  ([details](docs/cli.md#run)).
 - **Canvas:** `canvas()` draws with the HTML canvas 2D API: paths, arcs, Béziers,
   SVG path data, gradients, patterns, clipping, shadows, transforms, text and images
   ([details](docs/layout.md#canvas)).
@@ -151,7 +153,7 @@ Later:
 - **Text:** right-to-left and mixed-direction text (bidi), rich text, find in text.
 - **Large data:** virtualized lists and tables for many thousands of rows.
 - **Media:** SVG and WebP images, animated GIFs.
-- **Developer tools:** an element inspector, in-place reload that keeps state.
+- **Developer tools:** an element inspector.
 - **Platforms:** Linux and Windows on ARM64; a software fallback for machines without
   Vulkan, Metal or Direct3D 12.
 

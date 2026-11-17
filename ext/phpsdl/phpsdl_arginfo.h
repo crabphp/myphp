@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 7af736193c1169c7b31f3b55f48387779b62081b */
+ * Stub hash: 6cb27638ec81d23f771c9a21715ca2e78c6009c3 */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_PhpSdl_Window___construct, 0, 0, 3)
 	ZEND_ARG_TYPE_INFO(0, title, IS_STRING, 0)
@@ -166,6 +166,8 @@ ZEND_END_ARG_INFO()
 
 #define arginfo_class_PhpSdl_Renderer_flush arginfo_class_PhpSdl_Window_swap
 
+#define arginfo_class_PhpSdl_Renderer_forget arginfo_class_PhpSdl_Window_swap
+
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Renderer_imageSize, 0, 1, IS_ARRAY, 0)
 	ZEND_ARG_TYPE_INFO(0, path, IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -323,6 +325,7 @@ ZEND_METHOD(PhpSdl_Renderer, icon);
 ZEND_METHOD(PhpSdl_Renderer, image);
 ZEND_METHOD(PhpSdl_Renderer, path);
 ZEND_METHOD(PhpSdl_Renderer, flush);
+ZEND_METHOD(PhpSdl_Renderer, forget);
 ZEND_METHOD(PhpSdl_Renderer, imageSize);
 ZEND_METHOD(PhpSdl_Path, moveTo);
 ZEND_METHOD(PhpSdl_Path, lineTo);
@@ -388,6 +391,7 @@ static const zend_function_entry class_PhpSdl_Renderer_methods[] = {
 	ZEND_ME(PhpSdl_Renderer, image, arginfo_class_PhpSdl_Renderer_image, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Renderer, path, arginfo_class_PhpSdl_Renderer_path, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Renderer, flush, arginfo_class_PhpSdl_Renderer_flush, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Renderer, forget, arginfo_class_PhpSdl_Renderer_forget, ZEND_ACC_PUBLIC)
 	ZEND_ME(PhpSdl_Renderer, imageSize, arginfo_class_PhpSdl_Renderer_imageSize, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_FE_END
 };

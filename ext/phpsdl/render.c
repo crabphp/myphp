@@ -1991,6 +1991,20 @@ PHP_METHOD(PhpSdl_Renderer, path)
     renderer_path(renderer_of(ZEND_THIS), path_of(zpath), &st);
 }
 
+/* Images and patterns changed on disk (hot reload): drop them, so they load again. */
+PHP_METHOD(PhpSdl_Renderer, forget)
+{
+    ZEND_PARSE_PARAMETERS_NONE();
+    for (int i = 0; i < image_count; i++) {
+        if (images[i].tex && device) SDL_ReleaseGPUTexture(device, (SDL_GPUTexture *) images[i].tex);
+        zend_string_release(images[i].path);
+    }
+    image_count = 0;
+    for (int i = 0; i < pixels_count; i++) { free(pixels[i].px); zend_string_release(pixels[i].path); }
+    pixels_count = 0;
+    while (mask_count) mask_release(mask_count - 1);
+}
+
 PHP_METHOD(PhpSdl_Renderer, flush)
 {
     ZEND_PARSE_PARAMETERS_NONE();

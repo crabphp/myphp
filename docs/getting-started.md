@@ -44,7 +44,8 @@ requirement and no background service.
 - Input triggers a redraw; the idle loop sleeps.
 - `->run()` starts the loop. No `require` is needed with `myphp run`.
 
-While you work, `myphp run --watch` restarts the window each time you save.
+While you work, `myphp run --watch` hot-reloads the app each time you save: the
+window stays and so does your state, so you see each change right where you are.
 
 See [Components](components.md) and [Layout](layout.md) to change the UI.
 

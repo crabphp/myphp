@@ -473,6 +473,13 @@ final class Painter
     /** @var array<string, string> Image files by path, on disk (bundled images are exported once). */
     private array $images = [];
 
+    /** Icons and images changed on disk (hot reload): read them again. */
+    public function forgetAssets(): void
+    {
+        [$this->icons, $this->images] = [[], []];
+        $this->r->forget();
+    }
+
     private function image(Element $e, array $s): void
     {
         $file = $this->images[$e->text] ??= realFile($e->text);

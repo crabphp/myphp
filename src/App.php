@@ -55,16 +55,40 @@ final class App
     private string $composing = '';
     private int $composingCaret = 0;
     private ?string $composingIn = null;
+    /** Shutdown handlers from here on are the app's own (the toolkit's come first). */
+    private int $ownShutdown = 0;
 
     public function __construct(string $title, int $width, int $height, callable $render)
     {
         $this->title = $title;
-        $this->window = Window::open($title, $width, $height);
+        // Hot reload runs the script again: the new App takes over the running window.
+        $old = HotReload::reloading() ? self::$current : null;
+        $this->window = $old ? $old->window : Window::open($title, $width, $height);
         self::$current = $this;
 
         $this->render = $render(...);
-        $this->painter = new Painter();
-        $this->layout = new Layout($this->painter);
+        if ($old) {
+            $this->adopt($old);
+            if ($title !== $old->title) $this->window->setTitle($title);
+        } else {
+            $this->painter = new Painter();
+            $this->layout = new Layout($this->painter);
+        }
+        $this->bindWindow();
+        // Keep drawing at display rate while something is animating.
+        $this->waitHint(fn () => $this->painter->animating ? 1 / 120 : 0.5);
+        $this->waitHint(fn () => $this->nextTimer());
+        $this->poller(Desktop::poll(...));
+        Desktop::reducedMotion(fn (bool $on) => $this->painter->reduceMotion = $on);
+        $this->waitHint(Desktop::waitHint(...));
+        $this->onShutdown(Desktop::shutdown(...));
+        $this->ownShutdown = count($this->shutdownHandlers);
+        if (HotReload::enabled()) $this->poller(fn () => HotReload::poll($this));
+    }
+
+    /** The window's events go to this app. */
+    private function bindWindow(): void
+    {
         $this->window
             ->on('pointer', fn (float $x, float $y) => $this->pointer($x / $this->zoom, $y / $this->zoom))
             ->on('button', function (int $button, bool $pressed) {
@@ -78,13 +102,42 @@ final class App
             ->on('preedit', fn (string $text, int $caret) => $this->preedit($text, $caret))
             ->on('key', fn (int $key, int $mods) => $this->key($key, $mods))
             ->on('refresh', function () { $this->dirty = true; });
-        // Keep drawing at display rate while something is animating.
-        $this->waitHint(fn () => $this->painter->animating ? 1 / 120 : 0.5);
-        $this->waitHint(fn () => $this->nextTimer());
-        $this->poller(Desktop::poll(...));
-        Desktop::reducedMotion(fn (bool $on) => $this->painter->reduceMotion = $on);
-        $this->waitHint(Desktop::waitHint(...));
-        $this->onShutdown(Desktop::shutdown(...));
+    }
+
+    /** Hot reload: what the user sees and was doing carries over from the app's last run. */
+    private function adopt(App $old): void
+    {
+        [$this->painter, $this->layout] = [$old->painter, $old->layout];
+        foreach (['focusId', 'keyboardFocus', 'edits', 'history', 'zoom', 'mouseX', 'mouseY', 'textSelection',
+            'composing', 'composingCaret', 'composingIn', 'cursor', 'accessKit', 'accessKitTried'] as $k) {
+            $this->$k = $old->$k;
+        }
+        $this->accessKit?->rebind($this);
+    }
+
+    /** @internal Hot reload replaced this app: its own shutdown handlers run now. */
+    public function retire(): void
+    {
+        foreach (array_slice($this->shutdownHandlers, $this->ownShutdown) as $fn) {
+            try { $fn(); } catch (\Throwable $e) { fwrite(STDERR, "myphp: a shutdown handler failed: {$e->getMessage()}\n"); }
+        }
+        $this->timers = [];
+    }
+
+    /** @internal A hot reload failed: $app runs on, with the window's events. */
+    public static function restore(App $app): void
+    {
+        self::$current = $app;
+        $app->bindWindow();
+        $app->accessKit?->rebind($app);
+        $app->invalidate();
+    }
+
+    /** @internal Images and icons changed on disk: load them again. */
+    public function forgetAssets(): void
+    {
+        $this->painter->forgetAssets();
+        $this->invalidate();
     }
 
     /** Ask for a new frame, e.g. after state changed outside an event handler. */
@@ -152,7 +205,18 @@ final class App
             $this->building = false;
         }
         if ($this->modalTree) $tree->child($this->modalTree);
+        if (HotReload::$error !== null) $tree->child($this->reloadError(HotReload::$error));
         return $tree;
+    }
+
+    /** A failed hot reload, over the app: the last working version keeps running under it. */
+    private function reloadError(string $message): Element
+    {
+        return col()->absolute()->left(12)->right(12)->bottom(12)->p(14)->gap(6)->rounded(10)
+            ->bg('#7f1d1d')->shadow('lg')->label('Reload failed')->schema([
+                text('Reload failed: the last working version is still running')->font('semibold')->textSize(13)->textColor('#ffffff'),
+                text($message)->wrap()->font('mono')->textSize(12)->textColor('#fecaca'),
+            ]);
     }
 
     /** Let components build their elements from their settings, parents first. */
@@ -187,6 +251,10 @@ final class App
 
     public function run(): void
     {
+        // Hot reload runs the script again: its run() joins the loop already running.
+        if (HotReload::reloading()) return;
+        State::stopRecording();
+        $app = $this;
         try {
             $path = getenv('PHPUI_SCREENSHOT');
             if ($path !== false && $path !== '') {
@@ -194,23 +262,25 @@ final class App
                 $this->screenshot($path, $w, $h, 1);
                 return;
             }
-            while (!$this->window->shouldClose()) {
+            // The app may be replaced by a hot reload: the loop drives the current one.
+            while (!$app->window->shouldClose()) {
                 $wait = 0.5;
-                foreach ($this->waitHints as $hint) $wait = min($wait, max(0.0001, $hint()));
-                $this->window->waitEvents($wait);
-                $this->step();
+                foreach ($app->waitHints as $hint) $wait = min($wait, max(0.0001, $hint()));
+                $app->window->waitEvents($wait);
+                $app->step();
+                $app = self::$current ?? $app;
             }
         } finally {
             try {
                 // A failing shutdown handler must not skip the remaining cleanup.
                 $error = null;
-                foreach ($this->shutdownHandlers as $fn) {
+                foreach ($app->shutdownHandlers as $fn) {
                     try { $fn(); } catch (\Throwable $e) { $error ??= $e; }
                 }
                 if ($error) throw $error;
             } finally {
-                $this->window->close();
-                if (self::$current === $this) self::$current = null;
+                $app->window->close();
+                if (self::$current === $app) self::$current = null;
             }
         }
     }

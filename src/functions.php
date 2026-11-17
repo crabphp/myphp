@@ -42,7 +42,7 @@ function realFile(string $path): string
 function state(object|array $initial = [], ?string $key = null): object
 {
     if ($key !== null) return State::keyed($key, $initial);
-    return is_array($initial) ? new State($initial) : $initial;
+    return State::track(is_array($initial) ? new State($initial) : $initial);
 }
 
 /**

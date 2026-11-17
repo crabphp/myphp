@@ -71,8 +71,10 @@ function myphpSnapshot(string $dir): array
 }
 
 /**
- * Run the app in a child process and restart it when a project file changes.
- * Closing the window ends watching; a crash waits for the next change.
+ * Run the app in a child process with hot reload: the app watches the project and
+ * reloads changed code in its own window, keeping its state (PhpUi\HotReload). When
+ * code cannot be reloaded in place the app exits with HotReload::RESTART and starts
+ * again here. Closing the window ends watching; a crash waits for the next change.
  */
 function myphpWatch(string $file, array $args): int
 {
@@ -80,41 +82,28 @@ function myphpWatch(string $file, array $args): int
     $self = PHP_SAPI === 'micro' ? [Phar::running(false)] : [PHP_BINARY, realpath($_SERVER['SCRIPT_FILENAME'])];
     $command = [...$self, 'run', $file, ...$args];
     $poll = (float) (getenv('MYPHP_WATCH_INTERVAL') ?: 0.3);
+    $env = getenv();
+    $env['MYPHP_HOT_RELOAD'] = realpath($file);
     fwrite(STDERR, "myphp: watching $dir for changes (Ctrl+C to stop)\n");
-    $files = myphpSnapshot($dir);
     while (true) {
-        $child = proc_open($command, [STDIN, STDOUT, STDERR], $pipes);
+        $child = proc_open($command, [STDIN, STDOUT, STDERR], $pipes, null, $env);
         if (!is_resource($child)) return myphpError('cannot start the app');
-        [$changed, $code] = [false, 0];
-        while (true) {
-            usleep((int) ($poll * 1e6));
-            $status = proc_get_status($child);
-            $now = myphpSnapshot($dir);
-            if ($now !== $files) {
-                $files = $now;
-                $changed = true;
-                if ($status['running']) {
-                    proc_terminate($child);
-                    for ($i = 0; $i < 50 && proc_get_status($child)['running']; $i++) usleep(20000);
-                    if (proc_get_status($child)['running']) proc_terminate($child, 9);
-                }
-                break;
-            }
-            if (!$status['running']) { $code = $status['exitcode']; break; }
-        }
+        while (($status = proc_get_status($child))['running']) usleep((int) ($poll * 1e6));
+        $code = $status['exitcode'];
+        $files = myphpSnapshot($dir);
         proc_close($child);
-        if ($changed) {
-            fwrite(STDERR, "myphp: reloading\n");
+        // The app asked for a fresh start: code it cannot reload in place changed.
+        if ($code === 75) {
+            fwrite(STDERR, "myphp: restarting\n");
             continue;
         }
-        // The app ended by itself: a closed window stops watching, a crash waits for a fix.
+        // A closed window stops watching, a crash waits for a fix.
         if ($code === 0) return 0;
         fwrite(STDERR, "myphp: the app exited with code $code; waiting for changes\n");
         do {
             usleep((int) ($poll * 1e6));
             $now = myphpSnapshot($dir);
         } while ($now === $files);
-        $files = $now;
         fwrite(STDERR, "myphp: reloading\n");
     }
 }

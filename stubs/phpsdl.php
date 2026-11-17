@@ -75,6 +75,8 @@ namespace PhpSdl {
          */
         public function path(Path $path, array $style): void {}
         public function flush(): void {}
+        /** Forget loaded images, patterns and canvas drawings, so changed files load again. */
+        public function forget(): void {}
         /** @return array{int, int} */
         public static function imageSize(string $path): array {}
     }
