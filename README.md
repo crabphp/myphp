@@ -100,7 +100,8 @@ run on a larger runtime that myphp picks and downloads by itself.
 - **Canvas:** `canvas()` draws with the HTML canvas 2D API: paths, arcs, Béziers,
   SVG path data, gradients, patterns, clipping, shadows, transforms, text and images
   ([details](docs/layout.md#canvas)).
-- **Audio:** play MP3, FLAC and WAV with `GL\Audio\Engine`, built in; see the player demo.
+- **Audio:** play MP3, FLAC and WAV with `PhpSdl\Sound`, built in, and draw their
+  waveforms; see the player demo ([details](docs/desktop.md#audio)).
 - **Keyboard and zoom:** Tab to every control, Enter/Space/arrows/Escape, a focus ring,
   Ctrl/Cmd +/− zoom, reduced motion and accessible names ([details](docs/accessibility.md)).
 - **Desktop:** file dialogs, notifications, clipboard, file drop, open links,

@@ -1,4 +1,4 @@
-dnl phpsdl: SDL3 window and input, SDL_GPU drawing, canvas paths, textures, buffers and audio for myphp.
+dnl phpsdl: SDL3 window and input, SDL_GPU drawing, text, canvas paths and sound for myphp.
 
 PHP_ARG_ENABLE([phpsdl], [whether to enable phpsdl],
   [AS_HELP_STRING([--enable-phpsdl], [Enable phpsdl (needs SDL3)])])
@@ -19,24 +19,10 @@ if test "$PHP_PHPSDL" != "no"; then
   PHP_EVAL_INCLINE($HARFBUZZ_CFLAGS)
   PHP_EVAL_LIBLINE($SDL3_STATIC_LIBS, PHPSDL_SHARED_LIBADD)
 
-  PHPSDL_SOURCES="phpsdl.c \
-    render.c \
-    path.c \
-    raster.c \
-    gl/phpglfw_math.c \
-    gl/phpglfw_buffer.c \
-    gl/phpglfw_texture.c \
-    gl/phpglfw_audio.c"
+  PHPSDL_SOURCES="phpsdl.c render.c path.c raster.c audio.c"
 
-  dnl stb is implemented once, in gl/phpglfw_texture.c; the generated arginfo has
-  dnl class names that trip -Wunicode.
-  PHPSDL_CFLAGS="-Wno-unicode -Wno-unknown-warning-option"
-
-  PHP_NEW_EXTENSION(phpsdl, $PHPSDL_SOURCES, $ext_shared,, $PHPSDL_CFLAGS)
-  PHP_ADD_BUILD_DIR($ext_builddir/gl)
+  PHP_NEW_EXTENSION(phpsdl, $PHPSDL_SOURCES, $ext_shared,, -Wno-unknown-warning-option)
   PHP_ADD_INCLUDE([$ext_srcdir])
-  PHP_ADD_INCLUDE([$ext_srcdir/gl])
-  PHP_ADD_INCLUDE([$ext_srcdir/vendor/cvector])
   PHP_ADD_INCLUDE([$ext_srcdir/vendor/stb])
   PHP_ADD_INCLUDE([$ext_srcdir/vendor/nanosvg/src])
   PHP_ADD_INCLUDE([$ext_srcdir/vendor/miniaudio])

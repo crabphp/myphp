@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 
-use PhpUi\{App, Desktop, Theme};
+use PhpUi\{App, Desktop, Key, Theme};
 use function PhpUi\{button, card, col, row, state, t, text, textInput};
 
 Desktop::$appName = 'MyPHP Desktop';
@@ -69,7 +69,7 @@ if ($dir = getenv('PHPUI_SCREENSHOTS')) {
     @mkdir($dir, 0777, true);
     $shot = fn ($name) => $app->screenshot("$dir/$name.png", 800, 700, 2);
     $shot('desktop-start');
-    $app->clickId('message'); $shot('desktop-message'); $app->key(GLFW_KEY_ENTER);
+    $app->clickId('message'); $shot('desktop-message'); $app->key(Key::ENTER);
     $app->clickId('confirm'); $shot('desktop-confirm'); $app->clickId('message-button-1');
     $app->clickId('copy'); $app->clickId('paste');
     $app->drop(['/tmp/first file.txt', '/tmp/é.png'], 10, 10);

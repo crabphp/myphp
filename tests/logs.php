@@ -9,6 +9,7 @@ mkdir($logsDir);
 putenv("MYPHP_LOGS_DIR=$logsDir");
 putenv('PHPUI_NO_RUN=1');
 require __DIR__ . '/../examples/logs.php';
+use PhpUi\{Key, Mod};
 $app->frame();
 
 same(8, count($state->entries), 'the sample Laravel log has eight entries');
@@ -24,8 +25,8 @@ $app->clickId('level-all');
 $app->clickId('search');
 $app->type('getKey');
 check($app->find('entry-6') !== null && $app->find('entry-3') === null, 'search looks in messages and traces');
-$app->key(GLFW_KEY_A, PHP_OS_FAMILY === 'Darwin' ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL);
-$app->key(GLFW_KEY_BACKSPACE);
+$app->key(Key::A, PHP_OS_FAMILY === 'Darwin' ? Mod::SUPER : Mod::CONTROL);
+$app->key(Key::BACKSPACE);
 
 // Follow: a new entry, then its stack trace written separately.
 $file = $state->file;

@@ -145,7 +145,7 @@ final class AccessKit
         return is_file($bundled) ? realFile($bundled) : null;
     }
 
-    /** Attach to the app's NSWindow (SDL's or GLFW's): AccessKit subclasses its content view. */
+    /** Attach to the app's NSWindow (SDL's): AccessKit subclasses its content view. */
     private function connectMacOS(): bool
     {
         $objc = FFI::cdef('void *objc_getClass(const char *name); void *sel_registerName(const char *name); void *objc_msgSend(void *self, void *op); const char *object_getClassName(void *obj);', '/usr/lib/libobjc.A.dylib');
@@ -160,7 +160,7 @@ final class AccessKit
             $window = $at->objc_msgSend($windows, $objc->sel_registerName('objectAtIndex:'), 0);
         }
         // The window system focuses its window, not the view: forward VoiceOver's focus
-        // question to the view, on the window's own class (SDL3Window, GLFWWindow).
+        // question to the view, on the window's own class (SDL3Window).
         $class = $objc->object_getClassName($window);
         $this->ak->accesskit_macos_add_focus_forwarder_to_window_class(is_string($class) ? $class : \FFI::string($class));
         $this->callbacks = [
@@ -185,7 +185,7 @@ final class AccessKit
     public function sync(): void
     {
         if (!$this->adapter) return;
-        // Polled rather than a GLFW focus callback (that callback breaks later layout in PHP-GLFW).
+        // Polled: the window's focus is read each frame.
         $focused = $this->app->window->focused();
         if ($focused !== $this->windowFocused) $this->windowFocus($this->windowFocused = $focused);
         $signature = serialize([$this->app->accessibilityTree(), $this->app->zoom(), $this->app->title]);
@@ -225,7 +225,7 @@ final class AccessKit
     private function step(string $id, bool $up): void
     {
         $this->app->focusElement($id);
-        $this->app->key($up ? GLFW_KEY_RIGHT : GLFW_KEY_LEFT);
+        $this->app->key($up ? Key::RIGHT : Key::LEFT);
     }
 
     /** A tree update for AccessKit; the library takes ownership of it. */

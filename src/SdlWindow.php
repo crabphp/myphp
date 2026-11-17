@@ -7,7 +7,7 @@ namespace PhpUi;
 /**
  * A window on phpsdl (SDL3, ext/phpsdl): input methods show the text being composed
  * at the caret and place their candidate list beside it. phpsdl delivers key codes
- * and modifiers in GLFW numbering, so the toolkit and apps keep GLFW_KEY_*.
+ * and modifiers as Key::* and Mod::* number them.
  */
 final class SdlWindow extends Window
 {

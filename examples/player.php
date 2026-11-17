@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 
-use GL\Audio\{Engine, Sound};
-use GL\Buffer\FloatBuffer;
-use PhpUi\{App, Canvas, Desktop, Element, Theme};
+use PhpSdl\Sound;
+use PhpUi\{App, Canvas, Desktop, Element, Key, Theme};
 use function PhpUi\{button, canvas, col, dataDir, icon, row, slider, spacer, state, t, text, textInput};
 
-// A music player: MP3, FLAC and WAV through the audio engine inside PHP-GLFW.
+// A music player: MP3, FLAC and WAV with PhpSdl\Sound (miniaudio, built into myphp).
 // Drop files or folders on the window, or add a folder. Three demo tracks are made on first run.
 
 $home = getenv('MYPHP_PLAYER_DIR') ?: dataDir('myphp-player');
@@ -31,16 +30,9 @@ $state = state(new class {
 
 /** Audio objects stay out of state: they are not data to render. */
 $audio = new class {
-    public ?Engine $engine = null;
     public ?Sound $sound = null;
     public ?int $timer = null;
 };
-try {
-    $audio->engine = new Engine([]);
-    $audio->engine->start();
-} catch (Throwable $e) {
-    $state->notice = 'No audio device: ' . $e->getMessage();
-}
 
 /** Short synthesized songs, so the player has something to play without any files. */
 $makeDemos = function (string $dir): void {
@@ -86,10 +78,7 @@ $makeDemos = function (string $dir): void {
 $describe = function (string $path) use ($audio): ?array {
     $name = preg_replace('/^\d+[\s.\-_]+/', '', pathinfo($path, PATHINFO_FILENAME));
     [$artist, $title] = str_contains($name, ' - ') ? explode(' - ', $name, 2) : ['Unknown artist', $name];
-    $length = 0.0;
-    if ($audio->engine) {
-        try { $length = $audio->engine->soundFromDisk($path)->getLength(); } catch (Throwable) { return null; }
-    }
+    try { $length = Sound::length($path); } catch (Throwable) { return null; }
     return ['path' => $path, 'title' => trim($title), 'artist' => trim($artist), 'length' => $length];
 };
 
@@ -123,45 +112,31 @@ $add = function (array $paths) use ($state, $describe, $save) {
     $save();
 };
 
-/** Peaks for the waveform: decode the file once, keeping the loudest sample of each slice. */
-$waveform = function (string $path, int $bars = 140) use ($audio): array {
-    if (!$audio->engine) return [];
-    $sound = $audio->engine->soundFromDisk($path);
-    $frames = max(1, intdiv($sound->getLengthPCM(), $bars));
-    $channels = max(1, $sound->getChannels());
-    $peaks = [];
-    for ($b = 0; $b < $bars; $b++) {
-        $buffer = new FloatBuffer();
-        $read = $sound->readFrames($frames, $buffer);
-        $max = 0.0;
-        // Every 16th sample is plenty for a picture and keeps long files fast.
-        for ($i = 0, $n = $read * $channels; $i < $n; $i += 16) $max = max($max, abs($buffer[$i]));
-        $peaks[] = $max;
-    }
-    $top = max(0.001, ...$peaks);
-    return array_map(fn ($p) => $p / $top, $peaks);
+/** Peaks for the waveform: one 0..1 bar per slice of the file, decoded once. */
+$waveform = function (string $path, int $bars = 140): array {
+    try { return Sound::peaks($path, $bars); } catch (Throwable) { return []; }
 };
 
 $play = null;
 $tick = function () use ($state, $audio, &$play) {
-    if (!$state->playing || !$audio->sound || $audio->sound->isPlaying()) return;
+    if (!$state->playing || !$audio->sound || $audio->sound->playing()) return;
     // The track ended by itself.
     $last = $state->current === count($state->tracks) - 1;
     if ($state->repeat === 'one') $play($state->current);
     elseif ($state->shuffle) $play(array_rand($state->tracks));
     elseif (!$last || $state->repeat === 'all') $play(($state->current + 1) % count($state->tracks));
-    else { $state->playing = false; $audio->sound->seekTo(0); }
+    else { $state->playing = false; $audio->sound->seek(0); }
 };
 $play = function (int $index) use ($state, $audio, $waveform, $tick) {
-    if (!$audio->engine || !isset($state->tracks[$index])) return;
-    $audio->sound?->stop();
+    if (!isset($state->tracks[$index])) return;
+    $audio->sound?->pause();
     try {
-        $audio->sound = $audio->engine->soundFromDisk($state->tracks[$index]['path']);
+        $audio->sound = new Sound($state->tracks[$index]['path']);
     } catch (Throwable $e) {
-        $state->notice = 'Cannot play ' . basename($state->tracks[$index]['path']);
+        $state->notice = str_starts_with($e->getMessage(), 'No audio device') ? $e->getMessage() : 'Cannot play ' . basename($state->tracks[$index]['path']);
         return;
     }
-    $audio->sound->setVolume($state->volume / 100);
+    $audio->sound->volume($state->volume / 100);
     $audio->sound->play();
     [$state->current, $state->playing] = [$index, true];
     $state->peaks = $waveform($state->tracks[$index]['path']);
@@ -172,7 +147,7 @@ $play = function (int $index) use ($state, $audio, $waveform, $tick) {
 $toggle = function () use ($state, $audio, $play, $tick) {
     if ($state->current === null || !$audio->sound) { if ($state->tracks) $play(0); return; }
     if ($state->playing) {
-        $audio->sound->stop();
+        $audio->sound->pause();
         $state->playing = false;
         if ($audio->timer !== null) { App::current()?->cancel($audio->timer); $audio->timer = null; }
     } else {
@@ -184,17 +159,17 @@ $toggle = function () use ($state, $audio, $play, $tick) {
 };
 $step = function (int $direction) use ($state, $audio, $play) {
     if (!$state->tracks) return;
-    if ($direction < 0 && $audio->sound && $audio->sound->getCursor() > 3) { $audio->sound->seekTo(0); return; }
+    if ($direction < 0 && $audio->sound && $audio->sound->position() > 3) { $audio->sound->seek(0); return; }
     $count = count($state->tracks);
     $play($state->shuffle && $direction > 0 ? array_rand($state->tracks) : ((($state->current ?? 0) + $direction) % $count + $count) % $count);
 };
 $seek = function (float $fraction) use ($state, $audio) {
     if (!$audio->sound || $state->current === null) return;
-    $audio->sound->seekTo(max(0, min(0.999, $fraction)) * $state->tracks[$state->current]['length']);
+    $audio->sound->seek(max(0, min(0.999, $fraction)) * $state->tracks[$state->current]['length']);
 };
 $setVolume = function (float $v) use ($state, $audio, $save) {
     $state->volume = max(0, min(100, $v));
-    $audio->sound?->setVolume($state->volume / 100);
+    $audio->sound?->volume($state->volume / 100);
     $save();
 };
 
@@ -240,7 +215,7 @@ $render = function () use ($state, $audio, $play, $toggle, $step, $seek, $setVol
     }
 
     $track = $state->tracks[$state->current ?? 0] ?? null;
-    $position = $audio->sound && $state->current !== null ? $audio->sound->getCursor() : 0.0;
+    $position = $audio->sound && $state->current !== null ? $audio->sound->position() : 0.0;
     $length = $track['length'] ?? 0.0;
     $done = $length > 0 ? min(1, $position / $length) : 0;
     $peaks = $state->peaks;
@@ -311,23 +286,23 @@ $app = new App('MyPHP Player', 1000, 640, $render);
 $app->onKey(function (int $key) use ($toggle, $step, $seek, $setVolume, $state, $audio) {
     $length = $state->tracks[$state->current ?? 0]['length'] ?? 0;
     match ($key) {
-        GLFW_KEY_SPACE => $toggle(),
-        GLFW_KEY_N => $step(1),
-        GLFW_KEY_P => $step(-1),
-        GLFW_KEY_RIGHT => $length && $audio->sound ? $seek(($audio->sound->getCursor() + 5) / $length) : null,
-        GLFW_KEY_LEFT => $length && $audio->sound ? $seek(($audio->sound->getCursor() - 5) / $length) : null,
-        GLFW_KEY_UP => $setVolume($state->volume + 5),
-        GLFW_KEY_DOWN => $setVolume($state->volume - 5),
+        Key::SPACE => $toggle(),
+        Key::N => $step(1),
+        Key::P => $step(-1),
+        Key::RIGHT => $length && $audio->sound ? $seek(($audio->sound->position() + 5) / $length) : null,
+        Key::LEFT => $length && $audio->sound ? $seek(($audio->sound->position() - 5) / $length) : null,
+        Key::UP => $setVolume($state->volume + 5),
+        Key::DOWN => $setVolume($state->volume - 5),
         default => null,
     };
 });
-$app->onShutdown(fn () => $audio->sound?->stop());
+$app->onShutdown(fn () => $audio->sound?->pause());
 
 if ($dir = getenv('PHPUI_SCREENSHOTS')) {
     @mkdir($dir, 0777, true);
-    $audio->engine?->setMasterVolume(0);
+    if (Sound::available()) Sound::masterVolume(0);
     $play(0);
-    $audio->sound?->seekTo(5.5);
+    $audio->sound?->seek(5.5);
     $app->screenshot("$dir/player.png", 1000, 640, 2);
     exit;
 }

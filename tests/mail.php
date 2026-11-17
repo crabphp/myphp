@@ -7,6 +7,7 @@ require __DIR__ . '/lib.php';
 putenv('PHPUI_NO_RUN=1');
 putenv('PHPUI_SCREENSHOTS');
 require __DIR__ . '/../examples/mail.php';
+use PhpUi\Key;
 $app->frame();
 
 $unread = fn () => count(array_filter($state->mail, fn ($m) => $m['folder'] === 'inbox' && $m['unread']));
@@ -15,9 +16,9 @@ $app->clickId('mail-1');
 same([1, 0], [$state->open, $unread()], 'clicking a message opens it and marks it read');
 same('[crabphp/myphp] v0.2.0 released', $app->find('subject')->text, 'the reader shows the subject');
 
-$app->key(GLFW_KEY_J);
+$app->key(Key::J);
 same(2, $state->open, 'j opens the next message');
-$app->key(GLFW_KEY_K);
+$app->key(Key::K);
 same(1, $state->open, 'k goes back');
 
 $app->clickId('star');

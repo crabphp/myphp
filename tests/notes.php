@@ -9,13 +9,14 @@ mkdir($notesDir);
 putenv("MYPHP_NOTES_DIR=$notesDir");
 putenv('PHPUI_NO_RUN=1');
 require __DIR__ . '/../examples/notes.php';
-$mod = PHP_OS_FAMILY === 'Darwin' ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL;
+use PhpUi\{Key, Mod};
+$mod = PHP_OS_FAMILY === 'Darwin' ? Mod::SUPER : Mod::CONTROL;
 
 $app->frame();
 $app->clickId('new');
 same('Untitled', $state->notes[0]['title'], 'the plus button adds a note at the top');
 $app->clickId('title');
-$app->key(GLFW_KEY_A, $mod);
+$app->key(Key::A, $mod);
 $app->type('Groceries');
 $app->clickId('body');
 $app->type("Eggs\nMilk");
@@ -30,8 +31,8 @@ check(str_starts_with($app->find('saved')->text, 'Saved '), 'the footer shows wh
 $app->clickId('search');
 $app->type('coffee');
 check($app->find('note-0') === null && $app->find('note-2') !== null, 'search filters the list');
-$app->key(GLFW_KEY_A, $mod);
-$app->key(GLFW_KEY_BACKSPACE);
+$app->key(Key::A, $mod);
+$app->key(Key::BACKSPACE);
 $app->clickId('note-2');
 same(2, $state->selected, 'clicking a note selects it');
 $app->clickId('delete');

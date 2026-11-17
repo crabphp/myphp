@@ -6,6 +6,7 @@ require __DIR__ . '/../src/autoload.php';
 
 use PhpUi\App;
 use function PhpUi\{button, card, checkbox, col, row, state, t, tabs, text, textInput};
+use PhpUi\Key;
 
 // State lives in plain PHP; render() turns it into a tree on every frame.
 $state = state([
@@ -68,7 +69,7 @@ if ($dir = getenv('PHPUI_SCREENSHOTS')) {
     $app->type('Ship a prototype');
     $app->hoverId('add');
     $shot('todo-2-typing');
-    $app->key(GLFW_KEY_ENTER);
+    $app->key(Key::ENTER);
     $app->clickId('check-2');
     $app->hoverId('delete-3');
     $shot('todo-3-added');

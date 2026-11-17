@@ -5,6 +5,7 @@ require __DIR__ . '/lib.php';
 require __DIR__ . '/../src/autoload.php';
 use PhpUi\App;
 use function PhpUi\{alert, badge, button, card, checkbox, col, dialog, grid, row, select, slider, state, switchToggle, tabs, text, textarea, textInput, toast, toggleGroup};
+use PhpUi\Key;
 
 // Filament-style components: chained settings, schema() for children, bind() for state.
 $s = state(new class {
@@ -65,7 +66,7 @@ same(2, count($app->find('grid')->children), 'grid()->schema([...]) holds its ch
 // bind(): inputs show the property and write it back.
 same('ada@example.com', $app->find('email')->text, 'a bound input shows the property');
 $app->clickId('email');
-$app->key(GLFW_KEY_END);
+$app->key(Key::END);
 $app->type('!');
 same('ada@example.com!', $s->email, 'typing writes the bound property');
 same(['email:ada@example.com!'], $s->log, 'afterStateUpdated runs after a change');
@@ -81,9 +82,9 @@ $menu = $app->find('plan-menu');
 $app->click($menu->x + 20, $menu->y + 4 + 32 * 1 + 16);
 same('pro', $s->plan, 'a bound select writes the chosen option');
 $app->focusElement('rating');
-$app->key(GLFW_KEY_RIGHT);
+$app->key(Key::RIGHT);
 same(4, $s->rating, 'a slider with min/max/step writes an int property');
-$app->key(GLFW_KEY_END);
+$app->key(Key::END);
 same(5, $s->rating, 'End moves it to max');
 $v = $app->find('volume');
 $app->press($v->x + 8 + ($v->w - 16) * 0.75, $v->y + 8);

@@ -1,4 +1,4 @@
-// phpsdl: SDL3 window and input, SDL_GPU drawing, canvas paths, textures, buffers and audio for myphp.
+// phpsdl: SDL3 window and input, SDL_GPU drawing, text, canvas paths and sound for myphp.
 
 ARG_ENABLE("phpsdl", "Enable phpsdl (needs SDL3)", "no");
 
@@ -12,11 +12,8 @@ if (PHP_PHPSDL != "no") {
             "uuid.lib", "advapi32.lib", "setupapi.lib", "shell32.lib", "cfgmgr32.lib"];
         for (var i = 0; i < libs.length; i++) CHECK_LIB(libs[i], "phpsdl");
 
-        EXTENSION("phpsdl", "phpsdl.c render.c path.c raster.c", PHP_PHPSDL_SHARED, "/DZEND_ENABLE_STATIC_TSRMLS_CACHE=1");
-        ADD_SOURCES(configure_module_dirname + "\\gl", "phpglfw_math.c phpglfw_buffer.c " +
-            "phpglfw_texture.c phpglfw_audio.c", "phpsdl");
-        var dirs = ["", "\\gl", "\\vendor\\cvector", "\\vendor\\stb", "\\vendor\\nanosvg\\src",
-            "\\vendor\\miniaudio"];
+        EXTENSION("phpsdl", "phpsdl.c render.c path.c raster.c audio.c", PHP_PHPSDL_SHARED, "/DZEND_ENABLE_STATIC_TSRMLS_CACHE=1");
+        var dirs = ["", "\\vendor\\stb", "\\vendor\\nanosvg\\src", "\\vendor\\miniaudio"];
         for (var j = 0; j < dirs.length; j++) ADD_FLAG("CFLAGS_PHPSDL", "/I" + configure_module_dirname + dirs[j]);
         AC_DEFINE("HAVE_PHPSDL", 1, "phpsdl support");
     } else {

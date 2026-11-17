@@ -47,7 +47,7 @@ jobs:
             libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev wayland-protocols libdecor-0-dev libegl-dev \
             libdbus-1-dev libibus-1.0-dev xvfb mesa-vulkan-drivers libvulkan1 imagemagick pkg-config cmake > /dev/null
           # The runner ships older OpenSSL, libxml2, curl and SQLite development links, and the
-          # glfw recipe puts the system library folder first: remove those links so the
+          # toolchain puts the system library folder first: remove those links so the
           # runtime links the versions static-php-cli builds.
           for l in xml2 ssl crypto curl sqlite3 z lzma iconv; do sudo rm -f /usr/lib/x86_64-linux-gnu/lib$l.so /usr/lib/x86_64-linux-gnu/lib$l.a; done
 

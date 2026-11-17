@@ -7,7 +7,7 @@ namespace PhpUi;
 /**
  * The native window under an App: events in, a GPU context to draw into. The toolkit
  * talks only to this, so the window system can change underneath (SdlWindow, on
- * phpsdl). Key codes and modifiers use the GLFW_KEY_* and GLFW_MOD_* numbering.
+ * phpsdl). Key codes and modifiers are Key::* and Mod::* (src/Key.php).
  */
 abstract class Window
 {

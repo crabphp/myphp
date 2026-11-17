@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 
-use PhpUi\{App, Desktop, Theme};
+use PhpUi\{App, Desktop, Key, Theme};
 use function PhpUi\{badge, button, col, dataDir, icon, row, spacer, state, switchToggle, t, text, textInput};
 
 // A log viewer for Laravel (Monolog) and plain logs: live follow, level filters,
@@ -224,7 +224,7 @@ $render = function () use ($state, $load, $pick, $colors) {
 $app = new App('MyPHP Logs', 1000, 680, $render);
 $app->every(1, $poll);
 $app->onKey(function (int $key) use ($state) {
-    if ($key === GLFW_KEY_ESCAPE) $state->open = null;
+    if ($key === Key::ESCAPE) $state->open = null;
 });
 
 if ($dir = getenv('PHPUI_SCREENSHOTS')) {

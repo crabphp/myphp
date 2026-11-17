@@ -94,8 +94,8 @@ final class App
         $this->window
             ->on('pointer', fn (float $x, float $y) => $this->pointer($x / $this->zoom, $y / $this->zoom))
             ->on('button', function (int $button, bool $pressed) {
-                if ($button === GLFW_MOUSE_BUTTON_RIGHT && $pressed) $this->rightClick($this->mouseX, $this->mouseY);
-                if ($button !== GLFW_MOUSE_BUTTON_LEFT) return;
+                if ($button === Mouse::RIGHT && $pressed) $this->rightClick($this->mouseX, $this->mouseY);
+                if ($button !== Mouse::LEFT) return;
                 $pressed ? $this->press($this->mouseX, $this->mouseY) : $this->release($this->mouseX, $this->mouseY);
             })
             ->on('scroll', fn (float $dy) => $this->wheel($dy))
@@ -584,24 +584,24 @@ final class App
         $this->fresh();
         if ($this->modalTree) {
             $index = match ($key) {
-                GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER => $this->modalTree->get('modalDefault'),
-                GLFW_KEY_ESCAPE => $this->modalTree->get('modalCancel'),
+                Key::ENTER, Key::KP_ENTER => $this->modalTree->get('modalDefault'),
+                Key::ESCAPE => $this->modalTree->get('modalCancel'),
                 default => null,
             };
             if ($index !== null) $this->clickId('message-button-' . $index);
             return;
         }
-        $primary = (bool) ($mods & (PHP_OS_FAMILY === 'Darwin' ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL));
-        if ($primary && in_array($key, [GLFW_KEY_EQUAL, GLFW_KEY_KP_ADD, GLFW_KEY_MINUS, GLFW_KEY_KP_SUBTRACT, GLFW_KEY_0, GLFW_KEY_KP_0], true)) {
+        $primary = (bool) ($mods & (PHP_OS_FAMILY === 'Darwin' ? Mod::SUPER : Mod::CONTROL));
+        if ($primary && in_array($key, [Key::EQUAL, Key::KP_ADD, Key::MINUS, Key::KP_SUBTRACT, Key::DIGIT_0, Key::KP_0], true)) {
             $this->zoom(match ($key) {
-                GLFW_KEY_EQUAL, GLFW_KEY_KP_ADD => $this->zoom * 1.1,
-                GLFW_KEY_MINUS, GLFW_KEY_KP_SUBTRACT => $this->zoom / 1.1,
+                Key::EQUAL, Key::KP_ADD => $this->zoom * 1.1,
+                Key::MINUS, Key::KP_SUBTRACT => $this->zoom / 1.1,
                 default => 1.0,
             });
             return;
         }
-        if ($key === GLFW_KEY_TAB) {
-            $moved = $this->focusNext(($mods & GLFW_MOD_SHIFT) ? -1 : 1);
+        if ($key === Key::TAB) {
+            $moved = $this->focusNext(($mods & Mod::SHIFT) ? -1 : 1);
             AccessKit::debug('Tab: ' . ($moved ? "focus is now {$this->focusId}" : 'nothing focusable'));
             if ($moved) {
                 $this->stale = $this->dirty = true;
@@ -610,10 +610,10 @@ final class App
         }
         $focused = $this->focused();
         $input = $focused?->kind === 'input' ? $focused : null;
-        $used = $input !== null && $key !== GLFW_KEY_ESCAPE && $this->editKey($input, $key, $mods);
+        $used = $input !== null && $key !== Key::ESCAPE && $this->editKey($input, $key, $mods);
         if (!$used && $focused && !$input) $used = $this->controlKey($focused, $key, $mods);
-        if (!$used && $key === GLFW_KEY_ESCAPE) $used = $this->escape();
-        if (!$used && $this->textSelection && ($mods & (PHP_OS_FAMILY === 'Darwin' ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL))) {
+        if (!$used && $key === Key::ESCAPE) $used = $this->escape();
+        if (!$used && $this->textSelection && ($mods & (PHP_OS_FAMILY === 'Darwin' ? Mod::SUPER : Mod::CONTROL))) {
             $used = $this->textKey($key);
         }
         if (!$used && $this->onKey) ($this->onKey)($key, $mods);
@@ -822,12 +822,12 @@ final class App
             $this->stale = true;
             return true;
         }
-        if (in_array($key, [GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER, GLFW_KEY_SPACE], true) && $e->onClick) {
+        if (in_array($key, [Key::ENTER, Key::KP_ENTER, Key::SPACE], true) && $e->onClick) {
             ($e->onClick)($e->x + $e->w / 2, $e->y + $e->h / 2, $e);
             $this->stale = true;
             return true;
         }
-        $step = match ($key) { GLFW_KEY_LEFT, GLFW_KEY_UP => -1, GLFW_KEY_RIGHT, GLFW_KEY_DOWN => 1, default => 0 };
+        $step = match ($key) { Key::LEFT, Key::UP => -1, Key::RIGHT, Key::DOWN => 1, default => 0 };
         if ($step && $e->parent && in_array($e->parent->get('role'), ['tablist', 'radiogroup', 'menu', 'toolbar', 'listbox'], true)) {
             // Tab bars, toggle groups and menus: arrows move between their items.
             $siblings = array_values(array_filter($e->parent->children, fn (Element $c) => $c->id !== null && $this->isFocusable($c) && empty($c->style['hidden'])));
@@ -934,11 +934,11 @@ final class App
     /** Ctrl/Cmd+C copies selected text; Ctrl/Cmd+A selects all of it. */
     private function textKey(int $key): bool
     {
-        if ($key === GLFW_KEY_C && ($text = $this->selectedText()) !== '') {
+        if ($key === Key::C && ($text = $this->selectedText()) !== '') {
             Desktop::setClipboard($text);
             return true;
         }
-        if ($key === GLFW_KEY_A && ($e = $this->find($this->textSelection[0]))) {
+        if ($key === Key::A && ($e = $this->find($this->textSelection[0]))) {
             $this->textSelection = [$e->id, 0, mb_strlen($e->text)];
             return true;
         }
@@ -968,9 +968,9 @@ final class App
     private function editKey(Element $input, int $key, int $mods): bool
     {
         $mac = PHP_OS_FAMILY === 'Darwin';
-        $primary = (bool) ($mods & ($mac ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL));
-        $byWord = (bool) ($mods & ($mac ? GLFW_MOD_ALT : GLFW_MOD_CONTROL));
-        $shift = (bool) ($mods & GLFW_MOD_SHIFT);
+        $primary = (bool) ($mods & ($mac ? Mod::SUPER : Mod::CONTROL));
+        $byWord = (bool) ($mods & ($mac ? Mod::ALT : Mod::CONTROL));
+        $shift = (bool) ($mods & Mod::SHIFT);
         $multi = (bool) $input->get('multiline');
         $text = $input->text;
         $len = mb_strlen($text);
@@ -979,24 +979,24 @@ final class App
         $hasSelection = $from !== $to;
 
         switch (true) {
-            case $primary && ($key === GLFW_KEY_Z || (!$mac && $key === GLFW_KEY_Y)):
-                $this->undo($input, $key === GLFW_KEY_Y || $shift);
+            case $primary && ($key === Key::Z || (!$mac && $key === Key::Y)):
+                $this->undo($input, $key === Key::Y || $shift);
                 return true;
-            case $primary && $key === GLFW_KEY_A:
+            case $primary && $key === Key::A:
                 $this->moveCaret($input, 0, false);
                 $this->moveCaret($input, $len, true);
                 return true;
-            case $primary && in_array($key, [GLFW_KEY_C, GLFW_KEY_X], true):
+            case $primary && in_array($key, [Key::C, Key::X], true):
                 // With nothing selected, copy and cut take the whole value.
                 if (!$hasSelection) [$from, $to] = [0, $len];
                 Desktop::setClipboard(mb_substr($text, $from, $to - $from));
-                if ($key === GLFW_KEY_X) $this->replace($input, $from, $to, '');
+                if ($key === Key::X) $this->replace($input, $from, $to, '');
                 return true;
-            case $primary && $key === GLFW_KEY_V:
+            case $primary && $key === Key::V:
                 $this->replace($input, $from, $to, Desktop::clipboard());
                 return true;
-            case $key === GLFW_KEY_LEFT || $key === GLFW_KEY_RIGHT:
-                $left = $key === GLFW_KEY_LEFT;
+            case $key === Key::LEFT || $key === Key::RIGHT:
+                $left = $key === Key::LEFT;
                 if ($mac && $primary) {
                     $target = $this->lineEdge($input, $edit['caret'], $left);
                 } elseif ($hasSelection && !$shift) {
@@ -1008,16 +1008,16 @@ final class App
                 }
                 $this->moveCaret($input, $target, $shift);
                 return true;
-            case $key === GLFW_KEY_HOME || $key === GLFW_KEY_END:
-                $start = $key === GLFW_KEY_HOME;
+            case $key === Key::HOME || $key === Key::END:
+                $start = $key === Key::HOME;
                 $this->moveCaret($input, $primary || !$multi ? ($start ? 0 : $len) : $this->lineEdge($input, $edit['caret'], $start), $shift);
                 return true;
-            case $multi && ($key === GLFW_KEY_UP || $key === GLFW_KEY_DOWN):
-                $this->moveLine($input, $key === GLFW_KEY_UP ? -1 : 1, $shift);
+            case $multi && ($key === Key::UP || $key === Key::DOWN):
+                $this->moveLine($input, $key === Key::UP ? -1 : 1, $shift);
                 return true;
-            case $key === GLFW_KEY_BACKSPACE || $key === GLFW_KEY_DELETE:
+            case $key === Key::BACKSPACE || $key === Key::DELETE:
                 if (!$hasSelection) {
-                    $back = $key === GLFW_KEY_BACKSPACE;
+                    $back = $key === Key::BACKSPACE;
                     $c = $edit['caret'];
                     [$from, $to] = $back
                         ? [$byWord ? $this->wordLeft($text, $c) : max(0, $c - 1), $c]
@@ -1025,7 +1025,7 @@ final class App
                 }
                 $this->replace($input, $from, $to, '');
                 return true;
-            case in_array($key, [GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER], true):
+            case in_array($key, [Key::ENTER, Key::KP_ENTER], true):
                 if ($multi && !$primary) {
                     $this->replace($input, $from, $to, "\n");
                     return true;
@@ -1033,7 +1033,7 @@ final class App
                 if (!$input->onSubmit) return false;
                 ($input->onSubmit)($text);
                 return true;
-            case $key === GLFW_KEY_ESCAPE:
+            case $key === Key::ESCAPE:
                 $this->focusId = null;
                 return false;
         }

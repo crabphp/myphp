@@ -8,6 +8,7 @@ putenv('PHPUI_NO_RUN=1');
 putenv('PHPUI_SCREENSHOTS');
 require __DIR__ . '/../examples/showcase.php';
 use PhpUi\Theme;
+use PhpUi\Key;
 
 $tmp = getenv('PHPUI_TEST_TMP');
 foreach (['light', 'dark'] as $mode) {
@@ -36,7 +37,7 @@ $app->clickId('dialog-save');
 same(false, $state->editing, 'the dialog closes');
 $app->clickId('open-menu');
 check($app->find('menu') !== null, 'the dropdown menu opens');
-$app->key(GLFW_KEY_ESCAPE);
+$app->key(Key::ESCAPE);
 same(false, $state->menu, 'Escape closes the menu');
 // The toast example is below the fold: scroll the page first.
 $app->pointer(600, 400);

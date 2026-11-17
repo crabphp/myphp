@@ -4,8 +4,7 @@ Notes for working on MyPHP itself. Internal history: `docs/handover.md` and the 
 
 ## Setup
 
-Use PHP 8.2+ with the `phpsdl` extension (`ext/phpsdl`, built as in its README; the
-older `glfw` extension also works). Examples below call it `php84`. Tests need
+Use PHP 8.2+ with the `phpsdl` extension (`ext/phpsdl`, built as in its README). Examples below call it `php84`. Tests need
 Xvfb on `:99` and `dbus-run-session`; they start private D-Bus sessions themselves.
 
 ```sh

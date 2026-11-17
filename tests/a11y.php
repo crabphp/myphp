@@ -5,6 +5,7 @@ require __DIR__ . '/lib.php';
 require __DIR__ . '/../src/autoload.php';
 use PhpUi\App;
 use function PhpUi\{button, checkbox, col, dialog, label, row, select, slider, state, switchToggle, tabs, text, textInput};
+use PhpUi\{Key, Mod};
 
 // Keyboard access to every control, focus ring, Escape, dialogs, zoom, reduced motion
 // and the accessibility tree.
@@ -25,57 +26,57 @@ $app->frame();
 $focused = fn () => (function () { return $this->focusId; })->call($app);
 
 // Tab reaches every control in order; Enter and Space activate.
-$app->key(GLFW_KEY_TAB);
+$app->key(Key::TAB);
 same('save', $focused(), 'Tab starts at the first control');
 check($app->find('save')->focusVisible, 'keyboard focus shows a ring');
-$app->key(GLFW_KEY_ENTER);
+$app->key(Key::ENTER);
 same(1, $s->clicks, 'Enter presses a button');
-$app->key(GLFW_KEY_TAB);
+$app->key(Key::TAB);
 same('agree', $focused(), 'Tab moves to the checkbox');
-$app->key(GLFW_KEY_SPACE);
+$app->key(Key::SPACE);
 same(true, $s->agree, 'Space toggles a checkbox');
-$app->key(GLFW_KEY_TAB);
-$app->key(GLFW_KEY_SPACE);
+$app->key(Key::TAB);
+$app->key(Key::SPACE);
 same(true, $s->on, 'Space toggles a switch');
-$app->key(GLFW_KEY_TAB);
+$app->key(Key::TAB);
 same('tab-a', $focused(), 'Tab reaches the tabs');
-$app->key(GLFW_KEY_RIGHT);
+$app->key(Key::RIGHT);
 same('tab-b', $focused(), 'Right arrow moves to the next tab');
-$app->key(GLFW_KEY_ENTER);
+$app->key(Key::ENTER);
 same('b', $s->tab, 'Enter picks the tab');
-$app->key(GLFW_KEY_TAB, GLFW_MOD_SHIFT);
+$app->key(Key::TAB, Mod::SHIFT);
 same('switch', $focused(), 'Shift+Tab goes back');
 
 // Slider keys.
 $app->focusElement('slider');
-$app->key(GLFW_KEY_RIGHT);
+$app->key(Key::RIGHT);
 same(55.0, (float) $s->level, 'Right arrow raises a slider by 5');
-$app->key(GLFW_KEY_HOME);
+$app->key(Key::HOME);
 same(0.0, (float) $s->level, 'Home moves a slider to 0');
 
 // Select: Down opens and enters the menu, arrows move, Enter picks, focus returns.
 $app->focusElement('size-trigger');
-$app->key(GLFW_KEY_DOWN);
+$app->key(Key::DOWN);
 check($app->find('size-menu') !== null, 'Down opens a select');
 same('size-menu-0', $focused(), 'and focuses its first option');
-$app->key(GLFW_KEY_DOWN);
-$app->key(GLFW_KEY_DOWN);
-$app->key(GLFW_KEY_ENTER);
+$app->key(Key::DOWN);
+$app->key(Key::DOWN);
+$app->key(Key::ENTER);
 same('l', $s->size, 'arrows and Enter choose an option');
 same(null, $app->find('size-menu'), 'choosing closes the menu');
 same('size-trigger', $focused(), 'focus returns to the select');
-$app->key(GLFW_KEY_SPACE);
+$app->key(Key::SPACE);
 check($app->find('size-menu') !== null, 'Space opens it too');
-$app->key(GLFW_KEY_ESCAPE);
+$app->key(Key::ESCAPE);
 same(null, $app->find('size-menu'), 'Escape closes the menu');
 
 // A dialog: Escape closes it, and Tab stays inside while it is open.
 $app->clickId('open-dialog');
 same(true, $s->dialog, 'the icon button opens a dialog');
 $seen = [];
-for ($i = 0; $i < 6; $i++) { $app->key(GLFW_KEY_TAB); $seen[] = $focused(); }
+for ($i = 0; $i < 6; $i++) { $app->key(Key::TAB); $seen[] = $focused(); }
 same(['dialog-close', 'dialog-name', 'cancel', 'ok', 'dialog-close', 'dialog-name'], $seen, 'Tab cycles inside an open dialog');
-$app->key(GLFW_KEY_ESCAPE);
+$app->key(Key::ESCAPE);
 same(false, $s->dialog, 'Escape closes a dialog');
 
 // Mouse clicks focus without a ring.
@@ -83,12 +84,12 @@ $app->clickId('save');
 check(!$app->find('save')->focusVisible, 'a mouse click shows no focus ring');
 
 // Zoom: the interface scales; the pointer still lands on the right control.
-$mod = PHP_OS_FAMILY === 'Darwin' ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL;
-$app->key(GLFW_KEY_EQUAL, $mod);
+$mod = PHP_OS_FAMILY === 'Darwin' ? Mod::SUPER : Mod::CONTROL;
+$app->key(Key::EQUAL, $mod);
 same(1.1, $app->zoom(), 'Ctrl/Cmd + zooms in');
 $app->frame();
 same(600 / 1.1, $app->find('0')->w, 'zoom lays out a smaller logical window');
-$app->key(GLFW_KEY_0, $mod);
+$app->key(Key::DIGIT_0, $mod);
 same(1.0, $app->zoom(), 'Ctrl/Cmd 0 resets zoom');
 
 // Reduced motion turns transitions off.

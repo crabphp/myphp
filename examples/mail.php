@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 
-use PhpUi\{App, Element, Theme};
+use PhpUi\{App, Element, Key, Theme};
 use function PhpUi\{avatar, badge, button, col, dialog, div, icon, paragraph, row, separator, spacer, state, t, text, textarea, textInput, toast};
 
 // A mail client's interface with sample mail: folders, a searchable list, a reader,
@@ -201,9 +201,9 @@ $app = new App('MyPHP Mail', 1180, 720, $render);
 $app->onKey(function (int $key, int $mods) use ($state, $step, $compose) {
     if ($state->composing) return;
     match ($key) {
-        GLFW_KEY_J, GLFW_KEY_DOWN => $step(1),
-        GLFW_KEY_K, GLFW_KEY_UP => $step(-1),
-        GLFW_KEY_C => $compose(),
+        Key::J, Key::DOWN => $step(1),
+        Key::K, Key::UP => $step(-1),
+        Key::C => $compose(),
         default => null,
     };
 });

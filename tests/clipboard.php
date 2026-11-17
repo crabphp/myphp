@@ -3,7 +3,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib.php';
 require __DIR__ . '/../src/autoload.php';
-use PhpUi\{App, Desktop};
+use PhpUi\{App, Desktop, Key, Mod};
 $state = (object) ['text' => ''];
 $app = new App('Clipboard', 400, 200, fn () => PhpUi\col()->full()->child(PhpUi\textInput('input', $state->text, fn ($v) => $state->text = $v)));
 Desktop::setClipboard('a ✓');
@@ -19,15 +19,15 @@ check(until(function () use (&$result) { return $result !== null; }, poll: funct
 same([0, 'y'], $result, 'another program reads our clipboard');
 $app->clickId('input');
 Desktop::setClipboard("one\r\ntwo\nthree");
-$app->key(GLFW_KEY_V, GLFW_MOD_CONTROL);
+$app->key(Key::V, Mod::CONTROL);
 same('one two three', $state->text, 'Ctrl+V converts line breaks to spaces');
-$app->key(GLFW_KEY_C, GLFW_MOD_CONTROL);
+$app->key(Key::C, Mod::CONTROL);
 same($state->text, Desktop::clipboard(), 'Ctrl+C copies the entire input');
-$app->key(GLFW_KEY_X, GLFW_MOD_CONTROL);
+$app->key(Key::X, Mod::CONTROL);
 same('one two three', Desktop::clipboard(), 'Ctrl+X copies before clearing');
 same('', $state->text, 'Ctrl+X clears the input');
 $app->type('a'); $app->type('b');
-$app->key(GLFW_KEY_C, GLFW_MOD_CONTROL);
+$app->key(Key::C, Mod::CONTROL);
 same('ab', Desktop::clipboard(), 'copy reads the latest unframed input');
 if (proc_get_status($owner)['running']) proc_terminate($owner, 9);
 proc_close($owner);

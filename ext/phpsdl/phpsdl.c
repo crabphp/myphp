@@ -1,10 +1,11 @@
 /*
- * phpsdl: myphp's native layer. SDL3 for the window, input and input methods, SDL_GPU
- * (Vulkan, Metal, Direct3D 12) for drawing, canvas paths (path.c, raster.c); textures,
- * buffers, math and audio from PHP-GLFW's modules (gl/).
+ * phpsdl: myphp's native layer. SDL3 for the window, input and input methods; SDL_GPU
+ * (Vulkan, Metal, Direct3D 12) for drawing, with text and canvas paths (render.c,
+ * path.c, raster.c); sound with miniaudio (audio.c).
  *
- * Keys, modifiers and mouse buttons are reported in GLFW's numbering, and the
- * GLFW_KEY_* constants are defined, so code written for PHP-GLFW keeps working.
+ * Keys are numbered by their place on a US keyboard (letters and digits as ASCII,
+ * others from 256), modifiers as bits and mouse buttons from 0: PhpUi\Key, Mod and
+ * Mouse name them.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -18,21 +19,11 @@
 
 #include <SDL3/SDL.h>
 
-#include "phpglfw.h"
-#include "phpglfw_arginfo.h"
-#include "phpglfw_constants.h"
-#include "phpglfw_math.h"
-#include "phpglfw_buffer.h"
-#include "phpglfw_texture.h"
-#include "phpglfw_audio.h"
-
 #include "php_phpsdl.h"
 #include "phpsdl_arginfo.h"
-#include "phpsdl_keys.h"
 #include "render.h"
+#include "audio.h"
 #include "stb_image.h"
-
-ZEND_DECLARE_MODULE_GLOBALS(phpsdl)
 
 #ifdef __APPLE__
 /* Where the micro runtime finds its app: [start, end) in the executable, big endian.
@@ -87,8 +78,8 @@ static void phpsdl_throw(const char *what)
     zend_throw_exception_ex(zend_ce_exception, 0, "%s: %s", what, SDL_GetError());
 }
 
-/* GLFW key numbering, from the physical key (GLFW names keys by the US layout). */
-static int phpsdl_glfw_key(SDL_Scancode sc)
+/* A key's number, from its place on the keyboard (named after the US layout). */
+static int phpsdl_key(SDL_Scancode sc)
 {
     if (sc >= SDL_SCANCODE_A && sc <= SDL_SCANCODE_Z) return 65 + (sc - SDL_SCANCODE_A);
     if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_9) return 49 + (sc - SDL_SCANCODE_1);
@@ -150,7 +141,7 @@ static int phpsdl_glfw_key(SDL_Scancode sc)
     }
 }
 
-static int phpsdl_glfw_mods(SDL_Keymod mod)
+static int phpsdl_mods(SDL_Keymod mod)
 {
     int m = 0;
     if (mod & SDL_KMOD_SHIFT) m |= 0x0001;
@@ -162,7 +153,7 @@ static int phpsdl_glfw_mods(SDL_Keymod mod)
     return m;
 }
 
-static int phpsdl_glfw_button(Uint8 button)
+static int phpsdl_button(Uint8 button)
 {
     switch (button) {
         case SDL_BUTTON_LEFT: return 0;
@@ -423,14 +414,14 @@ static void phpsdl_add_event(zval *list, SDL_Event *ev)
         case SDL_EVENT_MOUSE_BUTTON_UP:
             array_init(&e);
             add_assoc_string(&e, "type", "button");
-            add_assoc_long(&e, "button", phpsdl_glfw_button(ev->button.button));
+            add_assoc_long(&e, "button", phpsdl_button(ev->button.button));
             add_assoc_bool(&e, "pressed", ev->type == SDL_EVENT_MOUSE_BUTTON_DOWN);
             add_assoc_double(&e, "x", ev->button.x);
             add_assoc_double(&e, "y", ev->button.y);
             break;
         case SDL_EVENT_MOUSE_WHEEL: {
             /* As the system scrolls: SDL's values already follow "natural" scrolling (its
-             * FLIPPED flag only says so), the way GLFW reported them. */
+             * FLIPPED flag only says so), as other apps scroll. */
             array_init(&e);
             add_assoc_string(&e, "type", "scroll");
             add_assoc_double(&e, "dx", ev->wheel.x);
@@ -450,12 +441,12 @@ static void phpsdl_add_event(zval *list, SDL_Event *ev)
             add_assoc_long(&e, "length", ev->edit.length);
             break;
         case SDL_EVENT_KEY_DOWN: {
-            int key = phpsdl_glfw_key(ev->key.scancode);
+            int key = phpsdl_key(ev->key.scancode);
             if (key < 0) return;
             array_init(&e);
             add_assoc_string(&e, "type", "key");
             add_assoc_long(&e, "key", key);
-            add_assoc_long(&e, "mods", phpsdl_glfw_mods(ev->key.mod));
+            add_assoc_long(&e, "mods", phpsdl_mods(ev->key.mod));
             add_assoc_bool(&e, "repeat", ev->key.repeat);
             break;
         }
@@ -542,21 +533,8 @@ ZEND_METHOD(PhpSdl_Sdl, version)
 
 /* Module ------------------------------------------------------------------- */
 
-PHP_INI_BEGIN()
-    STD_PHP_INI_BOOLEAN("phpsdl.buffer_serialize_hex_float", "0", PHP_INI_ALL, OnUpdateBool, buffer_serialize_hex_float, zend_phpsdl_globals, phpsdl_globals)
-PHP_INI_END()
-
 PHP_MINIT_FUNCTION(phpsdl)
 {
-    REGISTER_INI_ENTRIES();
-    phpglfw_register_math_module(INIT_FUNC_ARGS_PASSTHRU);
-    phpglfw_register_buffer_module(INIT_FUNC_ARGS_PASSTHRU);
-    phpglfw_register_texture_module(INIT_FUNC_ARGS_PASSTHRU);
-    phpglfw_register_audio_module(INIT_FUNC_ARGS_PASSTHRU);
-    for (int i = 0; phpsdl_glfw_constants[i].name; i++) {
-        zend_register_long_constant(phpsdl_glfw_constants[i].name, strlen(phpsdl_glfw_constants[i].name),
-            phpsdl_glfw_constants[i].value, CONST_PERSISTENT, module_number);
-    }
     phpsdl_window_ce = register_class_PhpSdl_Window();
     phpsdl_window_ce->create_object = phpsdl_window_create;
     memcpy(&phpsdl_window_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
@@ -568,12 +546,13 @@ PHP_MINIT_FUNCTION(phpsdl)
     register_class_PhpSdl_Text();
     zend_class_entry *renderer_ce = register_class_PhpSdl_Renderer();
     phpsdl_render_register(renderer_ce, register_class_PhpSdl_Path());
+    phpsdl_audio_register(register_class_PhpSdl_Sound());
     return SUCCESS;
 }
 
 PHP_MSHUTDOWN_FUNCTION(phpsdl)
 {
-    UNREGISTER_INI_ENTRIES();
+    phpsdl_audio_shutdown();
     phpsdl_render_shutdown();
     for (int i = 0; i < 3; i++) if (phpsdl_cursors[i]) SDL_DestroyCursor(phpsdl_cursors[i]);
     if (phpsdl_video) SDL_Quit();
@@ -591,15 +570,6 @@ PHP_MINFO_FUNCTION(phpsdl)
     php_info_print_table_row(2, "phpsdl version", PHP_PHPSDL_VERSION);
     php_info_print_table_row(2, "SDL version", sdl);
     php_info_print_table_end();
-    DISPLAY_INI_ENTRIES();
-}
-
-static PHP_GINIT_FUNCTION(phpsdl)
-{
-#if defined(COMPILE_DL_PHPSDL) && defined(ZTS)
-    ZEND_TSRMLS_CACHE_UPDATE();
-#endif
-    phpsdl_globals->buffer_serialize_hex_float = false;
 }
 
 zend_module_entry phpsdl_module_entry = {
@@ -612,11 +582,7 @@ zend_module_entry phpsdl_module_entry = {
     NULL,
     PHP_MINFO(phpsdl),
     PHP_PHPSDL_VERSION,
-    PHP_MODULE_GLOBALS(phpsdl),
-    PHP_GINIT(phpsdl),
-    NULL,
-    NULL,
-    STANDARD_MODULE_PROPERTIES_EX
+    STANDARD_MODULE_PROPERTIES
 };
 
 #ifdef COMPILE_DL_PHPSDL

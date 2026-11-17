@@ -94,18 +94,24 @@ writes the user's system-style preference. Pass test filenames to run a subset.
 
 ## Audio
 
-The runtime includes an audio engine (miniaudio, in phpsdl): no extension or library
-to install. It decodes MP3, FLAC and WAV.
+The runtime plays sound (miniaudio, in phpsdl): no extension or library to install.
+It decodes MP3, FLAC and WAV.
 
 ```php
-$engine = new GL\Audio\Engine([]);
-$engine->start();
-$song = $engine->soundFromDisk(__DIR__ . '/song.mp3');
-$song->play();             // stop() pauses; play() resumes
-$song->seekTo(30.0);       // seconds; getCursor() and getLength() too
-$song->setVolume(0.8);
+use PhpSdl\Sound;
+
+$song = new Sound(__DIR__ . '/song.mp3');   // throws without an audio device
+$song->play();             // pause() stops where it is; play() goes on
+$song->seek(30.0);         // seconds; position() and duration() too
+$song->volume(0.8);
+$song->loop();
+$song->playing();          // false once it ended or paused; ended() for the end
+
+Sound::available();        // is there an audio device?
+Sound::length($path);      // seconds, without playing
+Sound::peaks($path, 140);  // a waveform: 140 bars, the loudest 1
 ```
 
-`readFrames()` returns decoded samples, e.g. to draw a waveform. Redraw while
-playing with `$app->every(1 / 30, ...)`. `examples/player.php` is a complete example.
+Redraw while playing with `$app->every(1 / 30, ...)`. `examples/player.php` is a
+complete example.
 

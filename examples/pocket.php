@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 
-use GL\Audio\{Engine, Sound};
-use PhpUi\{App, Theme};
+use PhpSdl\Sound;
+use PhpUi\{App, Key, Theme};
 use function PhpUi\{col, dataDir, icon, row, spacer, state, text};
 
 // A pocket music player with a click wheel. Turn the wheel (drag around it, or
@@ -31,7 +31,8 @@ $state = state(new class {
 });
 
 $audio = new class {
-    public ?Engine $engine = null;
+    /** No audio device: the player still works, silently. */
+    public bool $device = false;
     public ?Sound $sound = null;
     public ?int $timer = null;
     /** The wheel gesture: last angle, time and how far it turned. */
@@ -40,12 +41,7 @@ $audio = new class {
     public float $turned = 0;
     public float $carry = 0;
 };
-try {
-    $audio->engine = new Engine([]);
-    $audio->engine->start();
-} catch (Throwable) {
-    // No audio device: the player still works, silently.
-}
+$audio->device = Sound::available();
 
 /** Three short synthesized songs, so there is something to play. */
 $makeDemos = function (string $dir): void {
@@ -91,39 +87,39 @@ if (!$state->tracks) {
     foreach (glob("$home/demo/*.wav") as $path) {
         [$artist, $title] = explode(' - ', preg_replace('/^\d+\s+/', '', basename($path, '.wav')), 2);
         $length = 0.0;
-        try { $length = $audio->engine?->soundFromDisk($path)->getLength() ?? 0.0; } catch (Throwable) {}
+        try { $length = Sound::length($path); } catch (Throwable) {}
         $state->tracks[] = ['path' => $path, 'title' => $title, 'artist' => $artist, 'length' => $length];
     }
 }
 
 $play = null;
 $tick = function () use ($state, $audio, &$play) {
-    if (!$state->playing || !$audio->sound || $audio->sound->isPlaying()) return;
+    if (!$state->playing || !$audio->sound || $audio->sound->playing()) return;
     $play($state->shuffle ? array_rand($state->tracks) : ($state->current + 1) % count($state->tracks));
 };
 $play = function (int $index) use ($state, $audio, $tick) {
     if (!isset($state->tracks[$index])) return;
-    $audio->sound?->stop();
+    $audio->sound?->pause();
     [$state->current, $state->playing] = [$index, true];
-    if (!$audio->engine) return;
+    if (!$audio->device) return;
     try {
-        $audio->sound = $audio->engine->soundFromDisk($state->tracks[$index]['path']);
+        $audio->sound = new Sound($state->tracks[$index]['path']);
     } catch (Throwable) {
         $state->playing = false;
         return;
     }
-    $audio->sound->setVolume($state->volume / 100);
+    $audio->sound->volume($state->volume / 100);
     $audio->sound->play();
     if (($app = App::current()) && $audio->timer === null) $audio->timer = $app->every(1 / 10, $tick);
 };
 $toggle = function () use ($state, $audio, $play) {
     if ($state->current === null || !$audio->sound) { if ($state->tracks) $play(0); return; }
-    $state->playing ? $audio->sound->stop() : $audio->sound->play();
+    $state->playing ? $audio->sound->pause() : $audio->sound->play();
     $state->playing = !$state->playing;
 };
 $skip = function (int $direction) use ($state, $audio, $play) {
     if (!$state->tracks) return;
-    if ($direction < 0 && $audio->sound && $audio->sound->getCursor() > 3) { $audio->sound->seekTo(0); return; }
+    if ($direction < 0 && $audio->sound && $audio->sound->position() > 3) { $audio->sound->seek(0); return; }
     $count = count($state->tracks);
     $play($state->shuffle && $direction > 0 ? array_rand($state->tracks) : ((($state->current ?? -1) + $direction) % $count + $count) % $count);
 };
@@ -156,7 +152,7 @@ $turn = function (int $steps) use ($state, $audio, $screen, $rows) {
     $name = $screen();
     if ($name === 'now') {
         $state->volume = max(0, min(100, $state->volume + $steps * 4));
-        $audio->sound?->setVolume($state->volume / 100);
+        $audio->sound?->volume($state->volume / 100);
         $state->volumeShown = microtime(true);
         return;
     }
@@ -193,7 +189,7 @@ $render = function () use ($state, $audio, $screen, $rows, $turn, $choose, $back
 
     if ($name === 'now' && $state->current !== null) {
         $track = $state->tracks[$state->current];
-        $position = $audio->sound?->getCursor() ?? 0.0;
+        $position = $audio->sound?->position() ?? 0.0;
         $length = max(0.001, $track['length']);
         $volume = microtime(true) - $state->volumeShown < 1.5;
         $bar = fn (float $fraction, ?string $icon = null) => row()->itemsCenter()->gap(6)->schema([
@@ -309,26 +305,26 @@ Theme::use('light');
 $app = new App('Pocket', 340, 560, $render);
 $app->onKey(function (int $key) use ($turn, $choose, $back, $toggle, $skip) {
     match ($key) {
-        GLFW_KEY_DOWN => $turn(1),
-        GLFW_KEY_UP => $turn(-1),
-        GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER => $choose(),
-        GLFW_KEY_ESCAPE, GLFW_KEY_BACKSPACE => $back(),
-        GLFW_KEY_SPACE => $toggle(),
-        GLFW_KEY_RIGHT => $skip(1),
-        GLFW_KEY_LEFT => $skip(-1),
+        Key::DOWN => $turn(1),
+        Key::UP => $turn(-1),
+        Key::ENTER, Key::KP_ENTER => $choose(),
+        Key::ESCAPE, Key::BACKSPACE => $back(),
+        Key::SPACE => $toggle(),
+        Key::RIGHT => $skip(1),
+        Key::LEFT => $skip(-1),
         default => null,
     };
 });
 // Redraw while playing, for the time.
 $app->every(1 / 4, fn () => null);
-$app->onShutdown(fn () => $audio->sound?->stop());
+$app->onShutdown(fn () => $audio->sound?->pause());
 
 if ($dir = getenv('PHPUI_SCREENSHOTS')) {
     @mkdir($dir, 0777, true);
-    $audio->engine?->setMasterVolume(0);
+    if ($audio->device) Sound::masterVolume(0);
     $app->screenshot("$dir/pocket-menu.png", 340, 560, 2);
     $play(0);
-    $audio->sound?->seekTo(5.5);
+    $audio->sound?->seek(5.5);
     $state->screens[] = 'now';
     $app->screenshot("$dir/pocket.png", 340, 560, 2);
     exit;

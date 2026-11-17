@@ -3,7 +3,7 @@
 declare(strict_types=1);
 require __DIR__ . '/lib.php';
 require __DIR__ . '/../src/autoload.php';
-use PhpUi\{App, Desktop, Theme};
+use PhpUi\{App, Desktop, Key, Theme};
 use function PhpUi\{col, textInput, t};
 $state = (object) ['text' => '', 'keys' => 0];
 $app = new App('Messages', 640, 560, fn () => col()->full()->bg(t('background'))->child(textInput('input', $state->text, fn ($v) => $state->text = $v)));
@@ -23,22 +23,22 @@ foreach (['light', 'dark'] as $mode) {
     foreach ($app->find('message-text')->children as $line) check($line->w <= 400, "$mode message line fits");
     $app->click(0, 0);
     check($app->find('message-panel') !== null, 'outside click does not dismiss message');
-    $app->type('hidden'); $app->key(GLFW_KEY_F1);
+    $app->type('hidden'); $app->key(Key::F1);
     same('', $state->text, 'message clears input focus');
     same(0, $state->keys, 'modal swallows other keys');
     $app->clickId('message-button-1');
     same(true, $result, 'confirm OK reports true');
     same(null, $app->find('message-panel'), 'confirm disappears after click');
     Desktop::confirm('Enter', 'Default', function ($ok) use (&$result) { $result = $ok; });
-    $app->key(GLFW_KEY_ENTER); same(true, $result, 'Enter activates default');
+    $app->key(Key::ENTER); same(true, $result, 'Enter activates default');
     Desktop::confirm('Escape', 'Cancel', function ($ok) use (&$result) { $result = $ok; });
-    $app->key(GLFW_KEY_ESCAPE); same(false, $result, 'Escape activates cancel');
+    $app->key(Key::ESCAPE); same(false, $result, 'Escape activates cancel');
     $queue = [];
     Desktop::message('One', 'First', done: function ($i) use (&$queue) { $queue[] = 1; });
     Desktop::message('Two', 'Second', done: function ($i) use (&$queue) { $queue[] = 2; });
-    $app->key(GLFW_KEY_ENTER);
+    $app->key(Key::ENTER);
     same([1], $queue, 'first queued message alone completes');
     check($app->find('message-panel') !== null, 'next queued message is shown');
-    $app->key(GLFW_KEY_ESCAPE);
+    $app->key(Key::ESCAPE);
     same([1, 2], $queue, 'second queued message completes');
 }

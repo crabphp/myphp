@@ -215,7 +215,7 @@ foreach (['app.php', 'composer.json', '.gitignore', 'README.md'] as $file) {
 same(0, $code, "template syntax: $err");
 $composer = json_decode(file_get_contents("$hello/composer.json"), true, flags: JSON_THROW_ON_ERROR);
 same('app/hello', $composer['name'], 'composer name');
-same('^1.0', $composer['require-dev']['phpgl/ide-stubs'], 'editor stubs package');
+check(!isset($composer['require-dev']['phpgl/ide-stubs']), 'no PHP-GLFW stubs: myphp has its own');
 same('dev-main', $composer['require-dev']['crabphp/myphp'], 'dev constraint');
 check(!file_exists("$hello/vendor"), 'init does not run composer');
 [$code, $out, $err] = cli(['run'], $hello, ['PHPUI_SCREENSHOT' => "$workspace/hello.png"]);

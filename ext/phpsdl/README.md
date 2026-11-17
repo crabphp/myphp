@@ -1,7 +1,8 @@
 # phpsdl
 
-myphp's native layer, compiled into the myphp runtime. It replaces PHP-GLFW, and
-draws with SDL_GPU: Vulkan, Metal or Direct3D 12. There is no OpenGL.
+myphp's native layer, compiled into the myphp runtime: windows and input with SDL3,
+drawing with SDL_GPU (Vulkan, Metal or Direct3D 12), text with HarfBuzz, sound with
+miniaudio.
 
 - **SDL3** (`phpsdl.c`): window, mouse, keyboard, clipboard, cursors, and input
   methods. Text being composed arrives as `preedit` events, and the window tells the
@@ -26,15 +27,15 @@ draws with SDL_GPU: Vulkan, Metal or Direct3D 12. There is no OpenGL.
   or Direct3D 12. `shaders/ui.hlsl` is compiled to SPIR-V, DXIL and MSL by
   `shaders/build.sh` (DXC and SPIRV-Cross) into `shaders/ui_shaders.h`, which is
   committed.
-- **Textures, buffers, math and audio** (`gl/`, `vendor/`): PHP-GLFW's modules,
-  generated without GLFW, OpenGL or NanoVG by `tools/generate.sh` (MIT, see
-  `gl/LICENSE-php-glfw`). The PHP API is the same: `GL\Texture\Texture2D`,
-  `GL\Buffer\FloatBuffer`, `GL\Math\Vec2`, `GL\Audio\Engine`. There are no `gl*()`
-  functions and no `GL\VectorGraphics`: canvases draw with `PhpUi\Canvas`.
+- **Sound** (`audio.c`): `PhpSdl\Sound` plays MP3, FLAC and WAV with miniaudio
+  (play, pause, seek, position, duration, volume, loop), and reads a file's length
+  and waveform peaks without playing it.
+- **Vendored C** (`vendor/`): stb_image and stb_image_write (images, PNG screenshots),
+  nanosvg (icons), miniaudio (sound), each a single public-domain or MIT header.
 
-Keys, modifiers and mouse buttons use GLFW's numbering, and the `GLFW_KEY_*`,
-`GLFW_MOD_*` and `GLFW_MOUSE_BUTTON_*` constants exist, so apps written for
-PHP-GLFW keep working.
+Keys are numbered by their place on a US keyboard (letters and digits as ASCII,
+others from 256), modifiers as bits and mouse buttons from 0; `PhpUi\Key`, `Mod` and
+`Mouse` (src/Key.php) name them.
 
 ## PHP API
 
@@ -48,7 +49,7 @@ $window->endCapture('frame.png');                  // ...and saved
 PhpSdl\Sdl::backend();                             // "vulkan", "metal" or "direct3d12"
 $window->startTextInput($x, $y, $w, $h);           // text and composition at this caret
 $window->stopTextInput();
-PhpSdl\Sdl::events(0.5);  // [['type' => 'key', 'key' => GLFW_KEY_A, 'mods' => 0], ...]
+PhpSdl\Sdl::events(0.5);  // [['type' => 'key', 'key' => PhpUi\Key::A, 'mods' => 0], ...]
 PhpSdl\Sdl::clipboard(); PhpSdl\Sdl::setClipboard('text'); PhpSdl\Sdl::time();
 
 PhpSdl\Text::addFont('regular', 'Geist-Regular.ttf');
@@ -82,7 +83,7 @@ cmake -S harfbuzz-x.y.z -B hb -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDE
 cmake -S SDL3-x.y.z -B build -DSDL_SHARED=OFF -DSDL_STATIC=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
   -DSDL_GPU=ON -DSDL_OPENGL=OFF -DSDL_OPENGLES=OFF -DSDL_AUDIO=OFF -DCMAKE_INSTALL_PREFIX=$HOME/.cache/phpsdl/sdl3 && cmake --build build && cmake --install build
 phpize && ./configure --enable-phpsdl --with-sdl3-dir=$HOME/.cache/phpsdl/sdl3 && make
-php -d extension=modules/phpsdl.so ...   # without the glfw extension loaded
+php -d extension=modules/phpsdl.so ...
 # No GPU (a VM, CI)? Mesa's lavapipe is a software Vulkan: mesa-vulkan-drivers
 ```
 

@@ -442,7 +442,7 @@ class Select extends Component
                 ->when($this->fieldLabel !== null, fn ($e) => $e->label($this->fieldLabel))
                 // Down opens the menu and moves into it, as in native selects.
                 ->onKeyDown(function (int $key) use ($menu, $id) {
-                    if ($key !== GLFW_KEY_DOWN) return false;
+                    if ($key !== Key::DOWN) return false;
                     $menu->open = true;
                     App::current()?->focusElement("$id-menu-0");
                     return true;
@@ -513,9 +513,9 @@ class Slider extends Component
                 // Arrows move one step, Page Up/Down two, Home/End to the ends.
                 ->onKeyDown(function (int $key) use ($set, $value, $step) {
                     $to = match ($key) {
-                        GLFW_KEY_RIGHT, GLFW_KEY_UP => $value + $step, GLFW_KEY_LEFT, GLFW_KEY_DOWN => $value - $step,
-                        GLFW_KEY_PAGE_UP => $value + 2 * $step, GLFW_KEY_PAGE_DOWN => $value - 2 * $step,
-                        GLFW_KEY_HOME => $this->min, GLFW_KEY_END => $this->max, default => null,
+                        Key::RIGHT, Key::UP => $value + $step, Key::LEFT, Key::DOWN => $value - $step,
+                        Key::PAGE_UP => $value + 2 * $step, Key::PAGE_DOWN => $value - 2 * $step,
+                        Key::HOME => $this->min, Key::END => $this->max, default => null,
                     };
                     if ($to === null) return false;
                     $set($to);

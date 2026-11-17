@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 775d45497dfe7d23c6e40db83ff71591aaf597ac */
+ * Stub hash: 9a3b3d94085dd226493be353867d7770ed7f4ad6 */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_PhpSdl_Window___construct, 0, 0, 3)
 	ZEND_ARG_TYPE_INFO(0, title, IS_STRING, 0)
@@ -288,12 +288,53 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Path_bounds, 0, 0, IS_ARRAY, 1)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_class_PhpSdl_Sound___construct, 0, 0, 1)
+	ZEND_ARG_TYPE_INFO(0, path, IS_STRING, 0)
+ZEND_END_ARG_INFO()
+
+#define arginfo_class_PhpSdl_Sound_play arginfo_class_PhpSdl_Window_swap
+
+#define arginfo_class_PhpSdl_Sound_pause arginfo_class_PhpSdl_Window_swap
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Sound_seek, 0, 1, IS_VOID, 0)
+	ZEND_ARG_TYPE_INFO(0, seconds, IS_DOUBLE, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Sound_position, 0, 0, IS_DOUBLE, 0)
+ZEND_END_ARG_INFO()
+
+#define arginfo_class_PhpSdl_Sound_duration arginfo_class_PhpSdl_Sound_position
+
+#define arginfo_class_PhpSdl_Sound_playing arginfo_class_PhpSdl_Window_focused
+
+#define arginfo_class_PhpSdl_Sound_ended arginfo_class_PhpSdl_Window_focused
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Sound_volume, 0, 1, IS_VOID, 0)
+	ZEND_ARG_TYPE_INFO(0, volume, IS_DOUBLE, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Sound_loop, 0, 0, IS_VOID, 0)
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, on, _IS_BOOL, 0, "true")
+ZEND_END_ARG_INFO()
+
+#define arginfo_class_PhpSdl_Sound_available arginfo_class_PhpSdl_Window_focused
+
+#define arginfo_class_PhpSdl_Sound_masterVolume arginfo_class_PhpSdl_Sound_volume
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Sound_length, 0, 1, IS_DOUBLE, 0)
+	ZEND_ARG_TYPE_INFO(0, path, IS_STRING, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Sound_peaks, 0, 2, IS_ARRAY, 0)
+	ZEND_ARG_TYPE_INFO(0, path, IS_STRING, 0)
+	ZEND_ARG_TYPE_INFO(0, count, IS_LONG, 0)
+ZEND_END_ARG_INFO()
+
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Sdl_events, 0, 1, IS_ARRAY, 0)
 	ZEND_ARG_TYPE_INFO(0, timeout, IS_DOUBLE, 0)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Sdl_time, 0, 0, IS_DOUBLE, 0)
-ZEND_END_ARG_INFO()
+#define arginfo_class_PhpSdl_Sdl_time arginfo_class_PhpSdl_Sound_position
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_PhpSdl_Sdl_clipboard, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
@@ -358,6 +399,20 @@ ZEND_METHOD(PhpSdl_Path, isEmpty);
 ZEND_METHOD(PhpSdl_Path, contains);
 ZEND_METHOD(PhpSdl_Path, containsStroke);
 ZEND_METHOD(PhpSdl_Path, bounds);
+ZEND_METHOD(PhpSdl_Sound, __construct);
+ZEND_METHOD(PhpSdl_Sound, play);
+ZEND_METHOD(PhpSdl_Sound, pause);
+ZEND_METHOD(PhpSdl_Sound, seek);
+ZEND_METHOD(PhpSdl_Sound, position);
+ZEND_METHOD(PhpSdl_Sound, duration);
+ZEND_METHOD(PhpSdl_Sound, playing);
+ZEND_METHOD(PhpSdl_Sound, ended);
+ZEND_METHOD(PhpSdl_Sound, volume);
+ZEND_METHOD(PhpSdl_Sound, loop);
+ZEND_METHOD(PhpSdl_Sound, available);
+ZEND_METHOD(PhpSdl_Sound, masterVolume);
+ZEND_METHOD(PhpSdl_Sound, length);
+ZEND_METHOD(PhpSdl_Sound, peaks);
 ZEND_METHOD(PhpSdl_Sdl, events);
 ZEND_METHOD(PhpSdl_Sdl, time);
 ZEND_METHOD(PhpSdl_Sdl, clipboard);
@@ -433,6 +488,24 @@ static const zend_function_entry class_PhpSdl_Path_methods[] = {
 	ZEND_FE_END
 };
 
+static const zend_function_entry class_PhpSdl_Sound_methods[] = {
+	ZEND_ME(PhpSdl_Sound, __construct, arginfo_class_PhpSdl_Sound___construct, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Sound, play, arginfo_class_PhpSdl_Sound_play, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Sound, pause, arginfo_class_PhpSdl_Sound_pause, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Sound, seek, arginfo_class_PhpSdl_Sound_seek, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Sound, position, arginfo_class_PhpSdl_Sound_position, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Sound, duration, arginfo_class_PhpSdl_Sound_duration, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Sound, playing, arginfo_class_PhpSdl_Sound_playing, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Sound, ended, arginfo_class_PhpSdl_Sound_ended, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Sound, volume, arginfo_class_PhpSdl_Sound_volume, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Sound, loop, arginfo_class_PhpSdl_Sound_loop, ZEND_ACC_PUBLIC)
+	ZEND_ME(PhpSdl_Sound, available, arginfo_class_PhpSdl_Sound_available, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
+	ZEND_ME(PhpSdl_Sound, masterVolume, arginfo_class_PhpSdl_Sound_masterVolume, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
+	ZEND_ME(PhpSdl_Sound, length, arginfo_class_PhpSdl_Sound_length, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
+	ZEND_ME(PhpSdl_Sound, peaks, arginfo_class_PhpSdl_Sound_peaks, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
+	ZEND_FE_END
+};
+
 static const zend_function_entry class_PhpSdl_Sdl_methods[] = {
 	ZEND_ME(PhpSdl_Sdl, events, arginfo_class_PhpSdl_Sdl_events, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_ME(PhpSdl_Sdl, time, arginfo_class_PhpSdl_Sdl_time, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
@@ -478,6 +551,16 @@ static zend_class_entry *register_class_PhpSdl_Path(void)
 	zend_class_entry ce, *class_entry;
 
 	INIT_NS_CLASS_ENTRY(ce, "PhpSdl", "Path", class_PhpSdl_Path_methods);
+	class_entry = zend_register_internal_class_with_flags(&ce, NULL, ZEND_ACC_FINAL);
+
+	return class_entry;
+}
+
+static zend_class_entry *register_class_PhpSdl_Sound(void)
+{
+	zend_class_entry ce, *class_entry;
+
+	INIT_NS_CLASS_ENTRY(ce, "PhpSdl", "Sound", class_PhpSdl_Sound_methods);
 	class_entry = zend_register_internal_class_with_flags(&ce, NULL, ZEND_ACC_FINAL);
 
 	return class_entry;

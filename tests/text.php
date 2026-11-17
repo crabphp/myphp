@@ -3,11 +3,11 @@
 declare(strict_types=1);
 require __DIR__ . '/lib.php';
 require __DIR__ . '/../src/autoload.php';
-use PhpUi\{App, Painter};
+use PhpUi\{App, Key, Mod, Painter};
 use function PhpUi\{col, icon, paragraph, row, state, text, textarea, textInput};
 
-$mod = PHP_OS_FAMILY === 'Darwin' ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL;
-$word = PHP_OS_FAMILY === 'Darwin' ? GLFW_MOD_ALT : GLFW_MOD_CONTROL;
+$mod = PHP_OS_FAMILY === 'Darwin' ? Mod::SUPER : Mod::CONTROL;
+$word = PHP_OS_FAMILY === 'Darwin' ? Mod::ALT : Mod::CONTROL;
 $sentence = 'The quick brown fox jumps over the lazy dog and keeps running far away.';
 
 // State ----------------------------------------------------------------------
@@ -72,26 +72,26 @@ check(count($lines) > 4, 'a long word splits across lines');
 $app->clickId('line');
 $app->type('hello world');
 same('hello world', $s->line, 'typing appends at the caret');
-for ($i = 0; $i < 5; $i++) $app->key(GLFW_KEY_LEFT);
+for ($i = 0; $i < 5; $i++) $app->key(Key::LEFT);
 $app->type('X');
 same('hello Xworld', $s->line, 'arrow keys move the caret and typing inserts there');
-$app->key(GLFW_KEY_HOME, GLFW_MOD_SHIFT);
+$app->key(Key::HOME, Mod::SHIFT);
 $app->type('Hi ');
 same('Hi world', $s->line, 'Shift+Home selects to the start and typing replaces the selection');
-$app->key(GLFW_KEY_END);
-$app->key(GLFW_KEY_BACKSPACE, $word);
+$app->key(Key::END);
+$app->key(Key::BACKSPACE, $word);
 same('Hi ', $s->line, 'word backspace deletes the previous word');
-$app->key(GLFW_KEY_A, $mod);
-$app->key(GLFW_KEY_BACKSPACE);
+$app->key(Key::A, $mod);
+$app->key(Key::BACKSPACE);
 same('', $s->line, 'select all then backspace clears the input');
 $app->type('one two three');
-$app->key(GLFW_KEY_LEFT, $word | GLFW_MOD_SHIFT);
-$app->key(GLFW_KEY_C, $mod);
+$app->key(Key::LEFT, $word | Mod::SHIFT);
+$app->key(Key::C, $mod);
 same('three', PhpUi\Desktop::clipboard(), 'copy takes only the selection');
-$app->key(GLFW_KEY_X, $mod);
+$app->key(Key::X, $mod);
 same('one two ', $s->line, 'cut removes only the selection');
-$app->key(GLFW_KEY_HOME);
-$app->key(GLFW_KEY_DELETE);
+$app->key(Key::HOME);
+$app->key(Key::DELETE);
 same('ne two ', $s->line, 'Delete removes the next character');
 
 // Mouse: click, double-click, drag
@@ -115,48 +115,48 @@ $app->type('Z');
 same('Z B gamma!', $s->line, 'dragging selects text');
 
 // Long text scrolls so the caret stays visible
-$app->key(GLFW_KEY_A, $mod);
+$app->key(Key::A, $mod);
 $app->type(str_repeat('wide ', 30));
 check($app->find('line')->scrollX > 0, 'a long single line scrolls to keep the caret visible');
-$app->key(GLFW_KEY_HOME);
+$app->key(Key::HOME);
 same(0.0, $app->find('line')->scrollX, 'Home scrolls back to the start');
 
 // Undo and redo
-$app->key(GLFW_KEY_A, $mod);
+$app->key(Key::A, $mod);
 $app->type('abc');
 $app->type(' ');
 $app->type('def');
 same('abc def', $s->line, 'typed text before undo');
-$app->key(GLFW_KEY_Z, $mod);
+$app->key(Key::Z, $mod);
 same('abc ', $s->line, 'undo removes the last run of typing');
-$app->key(GLFW_KEY_Z, $mod);
+$app->key(Key::Z, $mod);
 same('abc', $s->line, 'undo steps back through edits');
-$app->key(GLFW_KEY_Z, $mod | GLFW_MOD_SHIFT);
+$app->key(Key::Z, $mod | Mod::SHIFT);
 same('abc ', $s->line, 'Shift+undo redoes');
 $app->type('x');
-$app->key(GLFW_KEY_Z, $mod | GLFW_MOD_SHIFT);
+$app->key(Key::Z, $mod | Mod::SHIFT);
 same('abc x', $s->line, 'typing clears the redo history');
 $s->line = 'reset by the app';
-$app->key(GLFW_KEY_Z, $mod);
+$app->key(Key::Z, $mod);
 same('reset by the app', $s->line, 'a value set by the app starts a new history');
 
 // Multi-line editing ---------------------------------------------------------
 
 $app->clickId('note');
 $app->type('first');
-$app->key(GLFW_KEY_ENTER);
+$app->key(Key::ENTER);
 $app->type('second');
 same("first\nsecond", $s->note, 'Enter adds a line in a textarea');
-$app->key(GLFW_KEY_UP);
+$app->key(Key::UP);
 $app->type('>');
 same("first>\nsecond", $s->note, 'Up moves to the line above, keeping the column');
-$app->key(GLFW_KEY_DOWN);
-$app->key(GLFW_KEY_END);
+$app->key(Key::DOWN);
+$app->key(Key::END);
 $app->type('!');
 same("first>\nsecond!", $s->note, 'Down and End move within lines');
-$app->key(GLFW_KEY_ENTER, $mod);
+$app->key(Key::ENTER, $mod);
 same("first>\nsecond!", $sent->value, 'Ctrl/Cmd+Enter submits a textarea');
-$app->key(GLFW_KEY_A, $mod);
+$app->key(Key::A, $mod);
 $app->type($sentence . ' ' . $sentence);
 $note = $app->find('note');
 check(count($note->lines) > 3, 'a textarea wraps long text');
@@ -164,7 +164,7 @@ check($note->scrollY > 0, 'a textarea scrolls to keep the caret visible');
 $app->wheel(5);
 same(0.0, $app->find('note')->scrollY, 'the mouse wheel scrolls a textarea');
 $s->note = "a\nb";
-$app->key(GLFW_KEY_ENTER);
+$app->key(Key::ENTER);
 same("a\nb\n", $s->note, 'a value changed by the app puts the caret at its end');
 
 $shot = getenv('PHPUI_TEST_TMP') . '/text.png';
@@ -187,9 +187,9 @@ $selApp->press($sel->x + 1, $y0);
 $selApp->pointer($sel->x + $painter->textWidth('Copy this', 'regular', 14) + 1, $y0);
 $selApp->release($sel->x + $painter->textWidth('Copy this', 'regular', 14) + 1, $y0);
 same('Copy this', $selApp->selectedText(), 'dragging over selectable text selects it');
-$selApp->key(GLFW_KEY_C, $mod);
+$selApp->key(Key::C, $mod);
 same('Copy this', PhpUi\Desktop::clipboard(), 'Ctrl/Cmd+C copies the selected text');
-$selApp->key(GLFW_KEY_A, $mod);
+$selApp->key(Key::A, $mod);
 same($copy, $selApp->selectedText(), 'Ctrl/Cmd+A selects the whole text');
 $wordX = $sel->x + $painter->textWidth('Copy th', 'regular', 14);
 $selApp->click($wordX, $y0);

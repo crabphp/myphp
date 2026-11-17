@@ -11,6 +11,7 @@ if (class_exists(\PhpUi\App::class, false)) return;
 require __DIR__ . '/DBus.php';
 require __DIR__ . '/Desktop.php';
 require __DIR__ . '/Theme.php';
+require __DIR__ . '/Key.php';
 require __DIR__ . '/Element.php';
 require __DIR__ . '/Component.php';
 require __DIR__ . '/State.php';

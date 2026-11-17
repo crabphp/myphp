@@ -44,6 +44,7 @@ same(realpath(__DIR__ . '/../src/App.php'), (new ReflectionClass(PhpUi\App::clas
 
 putenv('PHPUI_NO_RUN=1');
 require __DIR__ . '/../examples/showcase.php';
+use PhpUi\{Key, Mod};
 $app->frame();
 $app->clickId('quick-create');
 same(true, $state->adding, 'dashboard quick-create opens dialog');
@@ -52,18 +53,18 @@ $app->type('a');
 $app->type('b');
 $app->type('c');
 same('abc', $state->draft['header'], 'typing between frames preserves every character');
-$app->key(GLFW_KEY_BACKSPACE);
-$app->key(GLFW_KEY_BACKSPACE);
+$app->key(Key::BACKSPACE);
+$app->key(Key::BACKSPACE);
 same('a', $state->draft['header'], 'repeated backspace sees the latest text');
-$app->key(GLFW_KEY_ESCAPE);
+$app->key(Key::ESCAPE);
 same(false, $state->adding, 'Escape closes the dashboard dialog with its input focused');
 $keys = [];
 $app->onKey(function (int $key, int $mods) use (&$keys) { $keys[] = [$key, $mods]; });
-$app->key(GLFW_KEY_V, GLFW_MOD_CONTROL);
-same([[GLFW_KEY_V, GLFW_MOD_CONTROL]], $keys, 'unhandled keys preserve modifiers');
+$app->key(Key::V, Mod::CONTROL);
+same([[Key::V, Mod::CONTROL]], $keys, 'unhandled keys preserve modifiers');
 $app->clickId('search');
-$app->key(GLFW_KEY_F1, GLFW_MOD_SHIFT);
-same([GLFW_KEY_F1, GLFW_MOD_SHIFT], end($keys), 'input forwards keys it does not use');
+$app->key(Key::F1, Mod::SHIFT);
+same([Key::F1, Mod::SHIFT], end($keys), 'input forwards keys it does not use');
 
 $counter = (object) ['value' => 0];
 $counterApp = new PhpUi\App('Counter', 200, 100, fn () => PhpUi\col()->full()->child(

@@ -6,6 +6,7 @@ require __DIR__ . '/../src/autoload.php';
 
 use PhpUi\App;
 use function PhpUi\{button, col, dataDir, row, separator, spacer, state, t, text, textarea, textInput};
+use PhpUi\{Key, Mod};
 
 // Notes are saved as JSON in the app's data folder (MYPHP_NOTES_DIR overrides it for tests).
 $file = (getenv('MYPHP_NOTES_DIR') ?: dataDir('myphp-notes')) . '/notes.json';
@@ -101,7 +102,7 @@ if ($dir = getenv('PHPUI_SCREENSHOTS')) {
     @mkdir($dir, 0777, true);
     $app->frame();
     $app->clickId('body');
-    $app->key(GLFW_KEY_END, PHP_OS_FAMILY === 'Darwin' ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL);
+    $app->key(Key::END, PHP_OS_FAMILY === 'Darwin' ? Mod::SUPER : Mod::CONTROL);
     $app->type("\n\nThis line was typed by the screenshot script.");
     $app->screenshot("$dir/notes.png", 820, 560, 2);
     exit;

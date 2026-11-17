@@ -8,7 +8,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 
-use PhpUi\{App, Desktop, Element, Theme};
+use PhpUi\{App, Desktop, Element, Key, Theme};
 use function PhpUi\{alert, areaChart, avatar, badge, barChart, button, card, checkbox, col, dialog, div, dropdownMenu,
     grid, icon, image, kbd, label, paragraph, progress, row, select, selectTrigger, separator, skeleton, slider,
     spacer, sparkline, state, switchToggle, t, table, tabs, text, textarea, textInput, toast, toggleGroup};
@@ -562,7 +562,7 @@ $render = function () use ($state, $sections, $sidebar, $siteHeader, $dashboard,
 
 $app = new App('MyPHP Showcase', 1440, 900, $render);
 $app->onKey(function (int $key) use ($state) {
-    if ($key === GLFW_KEY_ESCAPE) [$state->adding, $state->editing, $state->menu, $state->rowMenu] = [false, false, false, null];
+    if ($key === Key::ESCAPE) [$state->adding, $state->editing, $state->menu, $state->rowMenu] = [false, false, false, null];
 });
 
 // Screenshots: PHPUI_SCREENSHOTS=dir myphp run examples/showcase.php ---------------

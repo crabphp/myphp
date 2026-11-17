@@ -114,6 +114,31 @@ namespace PhpSdl {
         public function bounds(): ?array {}
     }
 
+    /** A sound file (MP3, FLAC, WAV) to play, with miniaudio; throws when there is no audio device. */
+    final class Sound
+    {
+        public function __construct(string $path) {}
+        public function play(): void {}
+        /** Stops where it is; play() goes on from there. */
+        public function pause(): void {}
+        public function seek(float $seconds): void {}
+        public function position(): float {}
+        public function duration(): float {}
+        public function playing(): bool {}
+        public function ended(): bool {}
+        /** 0 to 1 (more amplifies). */
+        public function volume(float $volume): void {}
+        public function loop(bool $on = true): void {}
+        /** Whether there is an audio device to play on. */
+        public static function available(): bool {}
+        /** The volume of everything played. */
+        public static function masterVolume(float $volume): void {}
+        /** A file's length in seconds, without playing it. */
+        public static function length(string $path): float {}
+        /** A waveform: the loudest sample of each of $count slices of the file, the loudest slice 1. */
+        public static function peaks(string $path, int $count): array {}
+    }
+
     final class Sdl
     {
         /** Wait up to $timeout seconds, then return every pending event as an array with a 'type'. */

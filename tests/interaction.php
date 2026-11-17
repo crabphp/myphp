@@ -5,6 +5,7 @@ require __DIR__ . '/lib.php';
 require __DIR__ . '/../src/autoload.php';
 use PhpUi\App;
 use function PhpUi\{col, dataDir, div, slider, state, text, textInput};
+use PhpUi\{Key, Mod};
 
 $s = state(['a' => '', 'b' => 'second', 'level' => 0, 'menu' => null, 'ticks' => 0, 'once' => 0]);
 $app = new App('Interaction', 400, 300, fn () => col()->full()->p(10)->gap(10)
@@ -18,10 +19,10 @@ $app->frame();
 // Tab moves between inputs and selects their text.
 $app->clickId('a');
 $app->type('first');
-$app->key(GLFW_KEY_TAB);
+$app->key(Key::TAB);
 $app->type('typed over');
 same('typed over', $s->b, 'Tab focuses the next input with its text selected');
-$app->key(GLFW_KEY_TAB, GLFW_MOD_SHIFT);
+$app->key(Key::TAB, Mod::SHIFT);
 $app->type('!');
 same('!', $s->a, 'Shift+Tab goes back');
 

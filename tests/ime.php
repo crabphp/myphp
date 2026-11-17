@@ -5,6 +5,7 @@ require __DIR__ . '/lib.php';
 require __DIR__ . '/../src/autoload.php';
 use PhpUi\App;
 use function PhpUi\{col, state, textarea, textInput};
+use PhpUi\{Key, Mod};
 
 // Input methods: text being composed shows at the caret, underlined, and is not part
 // of the value until the input method types it. The window learns where the caret is.
@@ -17,7 +18,7 @@ $app = new App('IME', 500, 300, fn () => col()->gap(10)->p(20)
 $app->frame();
 
 $app->clickId('line');
-$app->key(GLFW_KEY_END);
+$app->key(Key::END);
 $app->frame();
 same(null, $app->find('line')->composing ?: null, 'nothing is composed before the input method starts');
 $plain = PhpUi\Painter::$shared->caretRect;
@@ -43,7 +44,7 @@ $app->frame();
 same(['xin chào', ''], [$s->line, $app->find('line')->composing], 'an empty composition is cancelled without typing');
 
 $app->clickId('note');
-$app->key(GLFW_KEY_END, PHP_OS_FAMILY === 'Darwin' ? GLFW_MOD_SUPER : GLFW_MOD_CONTROL);
+$app->key(Key::END, PHP_OS_FAMILY === 'Darwin' ? Mod::SUPER : Mod::CONTROL);
 $app->preedit('日本', 2);
 $app->frame();
 same(["first\nsecond ", '日本'], [$s->note, $app->find('note')->composing], 'a textarea composes at its caret too');
