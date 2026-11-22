@@ -1,9 +1,8 @@
 # MyPHP
 
-Native desktop apps in plain PHP, drawn on the GPU (Vulkan, Metal, Direct3D 12).
-
-One binary of about 15 MB holds PHP, the UI toolkit and its assets. No PHP install,
-no webview, no Electron. Apps build into a single file you can send to anyone.
+MyPHP lets you write native desktop apps in plain PHP. SDL3 draws the UI on the GPU,
+without a webview. `myphp build` bundles your app, PHP, and the UI toolkit into a
+single executable. Your users don’t need to install PHP.
 
 ![Dashboard built with MyPHP](docs/images/dashboard.webp)
 
